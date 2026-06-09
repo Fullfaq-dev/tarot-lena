@@ -20,6 +20,7 @@ PERSON_PATTERNS = [
 _NAME_STOPWORDS = {
     "запомни",
     "запиши",
+    "запомню",
     "важно",
     "привет",
     "спасибо",
@@ -36,6 +37,27 @@ _NAME_STOPWORDS = {
     "путь",
     "энергия",
     "здоровье",
+    "чем",
+    "том",
+    "этом",
+    "тебе",
+    "меня",
+    "того",
+    "этого",
+    "нас",
+    "вас",
+    "ней",
+    "нем",
+    "зовут",
+    "зовутся",
+    "твоём",
+    "твоем",
+    "твою",
+    "твоей",
+    "прошлый",
+    "прошлом",
+    "раз",
+    "максим",
 }
 
 IMPORTANT_MARKERS = {
@@ -127,10 +149,10 @@ class MemoryExtractor:
     def _extract_people(self, text: str) -> set[str]:
         names: set[str] = set()
         for pattern in PERSON_PATTERNS:
-            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            for match in re.finditer(pattern, text):
                 name = (match.group(1) if match.lastindex else match.group(0)).strip()
                 if self._is_valid_name(name):
-                    names.add(name[0].upper() + name[1:] if len(name) > 1 else name)
+                    names.add(self._normalize_name(name))
         return names
 
     def _extract_people_from_assistant(self, text: str) -> set[str]:
@@ -138,15 +160,29 @@ class MemoryExtractor:
         for match in _ASSISTANT_NAME.finditer(text):
             name = match.group(1).strip()
             if self._is_valid_name(name):
-                names.add(name)
-        names.update(self._extract_people(text))
+                names.add(self._normalize_name(name))
+        for match in re.finditer(rf"(?:зовут|зовёт)\s+{_NAME}", text):
+            name = match.group(1).strip()
+            if self._is_valid_name(name):
+                names.add(self._normalize_name(name))
         return names
+
+    def _normalize_name(self, name: str) -> str:
+        cleaned = name.strip()
+        if not cleaned:
+            return cleaned
+        return cleaned[0].upper() + cleaned[1:]
 
     def _is_valid_name(self, name: str) -> bool:
         cleaned = name.strip()
         if len(cleaned) < 2:
             return False
-        return cleaned.casefold() not in _NAME_STOPWORDS
+        if cleaned.casefold() in _NAME_STOPWORDS:
+            return False
+        # После предлога «о/про» часто попадают служебные слова вроде «чем».
+        if len(cleaned) <= 4 and cleaned[0].islower():
+            return False
+        return True
 
     def _guess_relationship_type(self, text: str) -> str:
         lower = text.lower()
