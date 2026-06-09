@@ -1,0 +1,228 @@
+import random
+from datetime import date
+
+from sqlalchemy import select
+
+from app.database.models import DailyPrediction, TarotReading, User
+from app.database.session import AsyncSessionLocal
+from app.core.config import get_settings
+from app.services.tarot.cards import FULL_DECK, storage_image_path
+
+READING_TYPES = {
+    "day": 1,
+    "week": 3,
+    "month": 5,
+    "love": 3,
+    "relationship": 5,
+    "money": 3,
+    "career": 3,
+    "choice": 2,
+    "past_present_future": 3,
+    "compatibility": 6,
+}
+
+
+READING_TYPE_LABELS = {
+    "love": "Любовь",
+    "relationship": "Отношения",
+    "money": "Деньги",
+    "career": "Карьера",
+    "choice": "Выбор решения",
+    "past_present_future": "Прошлое / настоящее / будущее",
+    "compatibility": "Совместимость",
+}
+
+
+class TarotService:
+    async def menu_text(self, selected: str) -> str:
+        if selected == "История раскладов":
+            return "История раскладов уже сохраняется. Скоро здесь будет список прошлых вопросов, карт и толкований."
+        return (
+            "Доступные расклады: карта дня, любовь, отношения, деньги, карьера, выбор решения, "
+            "прошлое / настоящее / будущее, совместимость.\n\n"
+            "Напиши вопрос обычным сообщением, а я сделаю расклад и объясню карты простым языком."
+        )
+
+    async def daily_card_for_telegram(self, telegram_id: int) -> tuple[str, dict | None]:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return "Сначала нажми /start, чтобы я создала твой профиль.", None
+
+            existing = await session.scalar(
+                select(DailyPrediction).where(
+                    DailyPrediction.user_id == user.id,
+                    DailyPrediction.prediction_date == date.today(),
+                )
+            )
+            if existing:
+                return existing.text, None
+
+            card = self.draw_cards(1)[0]
+            text = (
+                f"Твоя карта дня — {card['name']}.\n\n"
+                f"В эзотерической интерпретации это может означать: {card['description']}.\n"
+                "Сегодня важно прислушиваться к знакам и не торопить то, что должно раскрыться естественно."
+            )
+            session.add(DailyPrediction(user_id=user.id, prediction_date=date.today(), text=text))
+            await session.commit()
+            return text, card
+
+    async def create_reading(
+        self,
+        user_id: str,
+        reading_type: str,
+        question: str,
+        *,
+        cards: list[dict] | None = None,
+        interpretation: str | None = None,
+    ) -> TarotReading:
+        count = READING_TYPES.get(reading_type, 3)
+        drawn_cards = cards or self.draw_cards(count)
+        text = interpretation or self.interpret_locally(question, drawn_cards)
+        async with AsyncSessionLocal() as session:
+            reading = TarotReading(
+                user_id=user_id,
+                reading_type=reading_type,
+                question=question,
+                cards=drawn_cards,
+                interpretation=text,
+            )
+            session.add(reading)
+            await session.commit()
+            await session.refresh(reading)
+            return reading
+
+    def draw_cards(self, count: int) -> list[dict]:
+        settings = get_settings()
+        cards = random.sample(FULL_DECK, k=min(count, len(FULL_DECK)))
+        return [
+            {
+                **card,
+                "image_path": storage_image_path(card, settings.tarot_cards_dir),
+            }
+            for card in cards
+        ]
+
+    async def history_entries(self, telegram_id: int) -> tuple[str, list[TarotReading]]:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return "Сначала нажми /start, чтобы я создала твой профиль.", []
+
+            readings = await session.scalars(
+                select(TarotReading)
+                .where(TarotReading.user_id == user.id)
+                .order_by(TarotReading.created_at.desc())
+                .limit(5)
+            )
+            items = list(readings)
+            if not items:
+                return "Пока раскладов нет. Выбери «Сделать расклад» или просто задай вопрос в чате.", []
+
+            lines = ["История раскладов\n", "Нажми на расклад, чтобы открыть полное толкование:\n"]
+            for index, reading in enumerate(items, start=1):
+                label = READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type)
+                question = reading.question[:60] + ("…" if len(reading.question) > 60 else "")
+                lines.append(f"{index}. {label} — «{question}»")
+            return "\n".join(lines), items
+
+    async def history_for_telegram(self, telegram_id: int) -> str:
+        text, _ = await self.history_entries(telegram_id)
+        return text
+
+    async def reading_detail_for_telegram(self, telegram_id: int, reading_id: str) -> str | None:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return None
+            reading = await session.scalar(
+                select(TarotReading).where(
+                    TarotReading.id == reading_id,
+                    TarotReading.user_id == user.id,
+                )
+            )
+            if reading is None:
+                return None
+            return self.format_reading_message(
+                reading.reading_type,
+                reading.question,
+                reading.cards,
+                reading.interpretation,
+            )
+
+    async def profile_for_telegram(self, telegram_id: int) -> str:
+        from app.database.models import SoulProfile
+
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return "Сначала нажми /start, чтобы я создала твой профиль."
+
+            profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
+            if profile is None:
+                return "Профиль ещё не собран. Нажми /start и пройди короткую анкету."
+
+            birth_date = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "не указана"
+            return (
+                f"Имя: {profile.name or '—'}\n"
+                f"Дата рождения: {birth_date}\n"
+                f"Время рождения: {profile.birth_time or '—'}\n"
+                f"Город рождения: {profile.birth_city or '—'}\n"
+                f"Цель на 6 месяцев: {profile.six_month_goal or '—'}\n"
+                f"Сейчас беспокоит: {profile.main_concern or '—'}\n"
+                f"Ближе всего: {profile.belief_system or '—'}"
+            )
+
+    async def profile_extended_for_telegram(self, telegram_id: int) -> str:
+        from app.database.models import Memory, SoulProfile
+
+        base = await self.profile_for_telegram(telegram_id)
+        if base.startswith("Сначала") or base.startswith("Профиль"):
+            return base
+
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return base
+            profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
+            memories_count = len(
+                list(
+                    await session.scalars(
+                        select(Memory).where(Memory.user_id == user.id, Memory.is_active.is_(True)).limit(100)
+                    )
+                )
+            )
+
+        if profile is None:
+            return base
+
+        extra = (
+            f"\n\nПол: {profile.gender or '—'}\n"
+            f"Семейное положение: {profile.relationship_status or '—'}\n"
+            f"Дети: {profile.has_children or '—'}\n"
+            f"Сфера: {profile.profession or '—'}\n"
+            f"Архетип: {profile.archetype or '—'}\n"
+            f"Запомненных важных событий: {memories_count}"
+        )
+        return f"Мой профиль\n\n{base}{extra}"
+
+    def format_reading_message(self, reading_type: str, question: str, cards: list[dict], interpretation: str) -> str:
+        label = READING_TYPE_LABELS.get(reading_type, reading_type)
+        card_lines = "\n".join(f"• {card['name']}" for card in cards)
+        return (
+            f"Расклад: {label}\n"
+            f"Вопрос: {question}\n\n"
+            f"Карты:\n{card_lines}\n\n"
+            f"{interpretation}"
+        )
+
+    def interpret_locally(self, question: str, cards: list[dict]) -> str:
+        names = ", ".join(card["name"] for card in cards)
+        meanings = "; ".join(f"{card['name']}: {card['description']}" for card in cards)
+        return (
+            f"Вопрос: {question}\n"
+            f"Выпали карты: {names}.\n\n"
+            f"В эзотерической интерпретации расклад может говорить так: {meanings}. "
+            "Главный совет — смотреть не только на внешний знак, но и на то, какой выбор он поднимает внутри тебя."
+        )

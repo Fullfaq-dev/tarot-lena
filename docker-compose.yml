@@ -1,0 +1,77 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app/backend
+      - ./prompts:/app/prompts
+      - ./Cards-jpg:/app/Cards-jpg
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    command: python -m app.workers.runner
+    volumes:
+      - ./backend:/app/backend
+      - ./prompts:/app/prompts
+      - ./Cards-jpg:/app/Cards-jpg
+    depends_on:
+      - postgres
+      - redis
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    command: python -m app.bot.polling
+    volumes:
+      - ./backend:/app/backend
+      - ./prompts:/app/prompts
+      - ./Cards-jpg:/app/Cards-jpg
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tarot
+      POSTGRES_USER: tarot
+      POSTGRES_PASSWORD: tarot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  admin:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ./frontend-admin:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
