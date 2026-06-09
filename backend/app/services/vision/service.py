@@ -28,16 +28,19 @@ _ANALYSIS_PROMPTS = {
         "(развлекательная интерпретация, без медицинских утверждений).\n"
         "Верни ТОЛЬКО валидный JSON без markdown:\n"
         '{"interpretation":"2-4 предложения на русском, markdown **жирный** *курсив*, без HTML",'
-        '"image_prompt":"Detailed English prompt for a premium mystical Russian aura infographic '
-        'with readable Russian labels, soft gradients, tarot aesthetics, no medical claims"}'
+        '"image_prompt":"Detailed English prompt for a fully illustrated mystical Russian aura infographic '
+        '(NOT a photo, NOT photorealistic). Stylized symbolic figure, readable Russian labels, '
+        'soft gradients, tarot aesthetics, no medical claims"}'
     ),
     "palm": (
         "Ты эзотерический консультант. Проанализируй фото ладони "
         "(развлекательная хиромантия, без медицинских утверждений).\n"
         "Верни ТОЛЬКО валидный JSON без markdown:\n"
         '{"interpretation":"2-4 предложения на русском, markdown **жирный** *курсив*, без HTML",'
-        '"image_prompt":"Detailed English prompt for a premium mystical Russian palmistry infographic '
-        'with readable Russian labels, palm line map, tarot aesthetics, no medical claims"}'
+        '"image_prompt":"Detailed English prompt for a fully illustrated mystical Russian palmistry infographic '
+        '(NOT a photo, NOT photorealistic). Stylized illustrated open palm with glowing golden line map, '
+        'readable Russian labels for major lines, ornate esoteric frame, dark celestial background, '
+        'tarot aesthetics, no medical claims"}'
     ),
 }
 
@@ -144,7 +147,6 @@ class VisionService:
             interpretation = parsed["interpretation"]
             infographic_urls = await self._generate_infographic(
                 user_id=user.id,
-                image_url=image_url,
                 image_prompt=parsed["image_prompt"],
                 mode=mode,
             )
@@ -187,19 +189,24 @@ class VisionService:
         self,
         *,
         user_id: str,
-        image_url: str,
         image_prompt: str,
         mode: str,
     ) -> list[str]:
         settings = get_settings()
+        full_prompt = (
+            f"{image_prompt.strip()} "
+            "Fully illustrated esoteric infographic only. "
+            "No real photograph, no photorealistic skin, no user photo reference. "
+            "Stylized symbolic art with readable Russian text labels."
+        )
         payload = {
-            "prompt": image_prompt,
-            "input_urls": [image_url],
+            "prompt": full_prompt,
             "aspect_ratio": "4:5",
             "resolution": "1K",
+            "nsfw_checker": False,
         }
         response = await self.kie.create_media_task(
-            "gpt-image-2-image-to-image",
+            "gpt-image-2-text-to-image",
             payload,
             callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
         )
