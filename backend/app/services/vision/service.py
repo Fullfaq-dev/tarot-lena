@@ -22,25 +22,38 @@ _MODE_LABELS = {
     "custom": "Фото",
 }
 
+_JSON_SYSTEM = (
+    "Ты анализируешь фото для эзотерического Telegram-бота.\n"
+    "Ответь ТОЛЬКО JSON-объектом, без markdown-обёртки и без пояснений.\n"
+    'Формат: {"interpretation":"...", "image_prompt":"..."}\n'
+    "interpretation — 2-4 предложения по-русски, markdown **жирный** *курсив*, без HTML.\n"
+    "image_prompt — подробный промпт на английском для полностью нарисованной инфографики "
+    "(не фото, не фотореализм)."
+)
+
 _ANALYSIS_PROMPTS = {
     "aura": (
-        "Ты эзотерический консультант. Проанализируй фото как символическую ауру "
-        "(развлекательная интерпретация, без медицинских утверждений).\n"
-        "Верни ТОЛЬКО валидный JSON без markdown:\n"
-        '{"interpretation":"2-4 предложения на русском, markdown **жирный** *курсив*, без HTML",'
-        '"image_prompt":"Detailed English prompt for a fully illustrated mystical Russian aura infographic '
-        '(NOT a photo, NOT photorealistic). Stylized symbolic figure, readable Russian labels, '
-        'soft gradients, tarot aesthetics, no medical claims"}'
+        "Проанализируй фото как символическую ауру (развлекательная интерпретация, "
+        "без медицинских утверждений). image_prompt: illustrated mystical Russian aura infographic, "
+        "readable Russian labels, tarot aesthetics."
     ),
     "palm": (
-        "Ты эзотерический консультант. Проанализируй фото ладони "
-        "(развлекательная хиромантия, без медицинских утверждений).\n"
-        "Верни ТОЛЬКО валидный JSON без markdown:\n"
-        '{"interpretation":"2-4 предложения на русском, markdown **жирный** *курсив*, без HTML",'
-        '"image_prompt":"Detailed English prompt for a fully illustrated mystical Russian palmistry infographic '
-        '(NOT a photo, NOT photorealistic). Stylized illustrated open palm with glowing golden line map, '
-        'readable Russian labels for major lines, ornate esoteric frame, dark celestial background, '
-        'tarot aesthetics, no medical claims"}'
+        "Проанализируй фото ладони (развлекательная хиромантия, без медицинских утверждений). "
+        "image_prompt: illustrated mystical Russian palmistry infographic with glowing line map, "
+        "readable Russian labels, dark celestial background, tarot aesthetics."
+    ),
+}
+
+_DEFAULT_IMAGE_PROMPTS = {
+    "aura": (
+        "Fully illustrated mystical Russian aura reading infographic, stylized symbolic human figure "
+        "with soft gradient aura colors, readable Russian labels, ornate gold frame, dark celestial "
+        "background, tarot aesthetics, no photograph, no photorealism"
+    ),
+    "palm": (
+        "Fully illustrated mystical Russian palmistry infographic, stylized open palm with glowing "
+        "golden line map, readable Russian labels for heart head life fate lines, ornate esoteric "
+        "frame, dark celestial background, tarot aesthetics, no photograph, no photorealism"
     ),
 }
 
@@ -92,6 +105,7 @@ class VisionService:
                 ]
             else:
                 question = f"Анализ: {_MODE_LABELS[mode]}"
+                self._append_json_instruction(messages)
                 user_content = [
                     {"type": "text", "text": _ANALYSIS_PROMPTS[mode]},
                     {"type": "image_url", "image_url": {"url": image_url}},
@@ -143,7 +157,7 @@ class VisionService:
                     None,
                 )
 
-            parsed = await self._analyze_structured(messages)
+            parsed = await self._analyze_structured(messages, mode)
             interpretation = parsed["interpretation"]
             infographic_urls = await self._generate_infographic(
                 user_id=user.id,
@@ -176,14 +190,39 @@ class VisionService:
         answer = await self.kie.chat_completion(messages)
         return answer.strip() or "Не удалось получить ответ по фото."
 
-    async def _analyze_structured(self, messages: list[dict]) -> dict[str, str]:
+    async def _analyze_structured(self, messages: list[dict], mode: str) -> dict[str, str]:
         raw = await self.kie.chat_completion(messages)
-        parsed = self._parse_json_response(raw)
-        interpretation = str(parsed.get("interpretation", "")).strip()
-        image_prompt = str(parsed.get("image_prompt", "")).strip()
-        if not interpretation or not image_prompt:
-            raise ValueError("Модель вернула неполный ответ")
-        return {"interpretation": interpretation, "image_prompt": image_prompt}
+        try:
+            return self._coerce_structured_response(raw, mode)
+        except ValueError:
+            retry_messages = [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"{_JSON_SYSTEM}\n"
+                                "Повтори ответ строго как JSON. Никакого текста вне JSON."
+                            ),
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"Предыдущий ответ не удалось разобрать. Верни только JSON для режима {mode}.\n"
+                                f"Предыдущий ответ:\n{raw[:3000]}"
+                            ),
+                        }
+                    ],
+                },
+            ]
+            raw_retry = await self.kie.chat_completion(retry_messages)
+            return self._coerce_structured_response(raw_retry, mode)
 
     async def _generate_infographic(
         self,
@@ -286,23 +325,68 @@ class VisionService:
             return usage
 
     @staticmethod
+    def _append_json_instruction(messages: list[dict]) -> None:
+        if not messages or messages[0].get("role") != "system":
+            messages.insert(0, {"role": "system", "content": [{"type": "text", "text": _JSON_SYSTEM}]})
+            return
+        content = messages[0].get("content")
+        if isinstance(content, list) and content and isinstance(content[0], dict):
+            content[0]["text"] = f"{content[0].get('text', '')}\n\n{_JSON_SYSTEM}"
+        elif isinstance(content, str):
+            messages[0]["content"] = f"{content}\n\n{_JSON_SYSTEM}"
+
+    def _coerce_structured_response(self, raw: str, mode: str) -> dict[str, str]:
+        parsed = self._parse_json_response(raw)
+        interpretation = str(parsed.get("interpretation", "")).strip()
+        image_prompt = str(parsed.get("image_prompt", "")).strip()
+
+        if not interpretation:
+            interpretation = self._extract_json_string_field(raw, "interpretation")
+        if not image_prompt:
+            image_prompt = self._extract_json_string_field(raw, "image_prompt")
+
+        if not interpretation:
+            cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
+            if cleaned and not cleaned.startswith("{"):
+                interpretation = cleaned[:2000]
+
+        if not image_prompt:
+            image_prompt = _DEFAULT_IMAGE_PROMPTS.get(mode, _DEFAULT_IMAGE_PROMPTS["palm"])
+
+        if not interpretation:
+            raise ValueError("Модель вернула неполный ответ")
+
+        return {"interpretation": interpretation, "image_prompt": image_prompt}
+
+    @staticmethod
+    def _extract_json_string_field(raw: str, field: str) -> str:
+        pattern = rf'"{field}"\s*:\s*"((?:\\.|[^"\\])*)"'
+        match = re.search(pattern, raw, flags=re.DOTALL)
+        if not match:
+            return ""
+        try:
+            return json.loads(f'"{match.group(1)}"')
+        except json.JSONDecodeError:
+            return match.group(1).replace('\\"', '"').strip()
+
+    @staticmethod
     def _parse_json_response(raw: str) -> dict:
         text = raw.strip()
         if text.startswith("```"):
-            text = re.sub(r"^```(?:json)?\s*", "", text)
+            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
             text = re.sub(r"\s*```$", "", text)
 
-        try:
-            parsed = json.loads(text)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            pass
+        candidates = [text]
+        for match in re.finditer(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, flags=re.DOTALL):
+            candidates.append(match.group(0))
 
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, dict):
-                return parsed
+        for candidate in candidates:
+            for payload in (candidate, candidate.replace("'", '"')):
+                try:
+                    parsed = json.loads(payload)
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError:
+                    continue
 
-        raise ValueError("Не удалось разобрать ответ модели")
+        return {}
