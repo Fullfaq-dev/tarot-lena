@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from aiogram import Dispatcher, F, Router
 from aiogram.enums import ChatAction, ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User as TelegramUser
 from sqlalchemy import select
@@ -28,6 +28,7 @@ from app.bot.keyboards import (
     inline_profile_edit_menu,
     inline_reading_prompt,
     inline_readings_menu,
+    inline_referral_menu,
     inline_settings_menu,
     is_balance_button,
     main_menu,
@@ -45,6 +46,7 @@ from app.services.billing.tokens import format_balance
 from app.services.billing.service import BillingService
 from app.services.onboarding.service import ONBOARDING_STEPS, OnboardingService
 from app.services.profile.service import ProfileService
+from app.services.referrals.service import MIN_WITHDRAWAL_RUB, ReferralService
 from app.services.settings.service import SettingsService
 from app.services.tarot.service import READING_TYPES, TarotService
 from app.services.vision.service import VisionService
@@ -83,6 +85,33 @@ async def _user_main_menu(telegram_id: int):
 async def _open_billing(message: Message, *, edit_message: Message | None = None) -> None:
     text = await BillingService().panel_text(message.from_user.id)
     markup = inline_billing_menu()
+    if edit_message is not None:
+        await safe_edit(edit_message, text, markup)
+    else:
+        await message.answer(text, reply_markup=markup, parse_mode=None)
+
+
+async def _referral_panel_markup(telegram_id: int) -> InlineKeyboardMarkup:
+    async with AsyncSessionLocal() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        if user is None:
+            return inline_referral_menu(can_withdraw=False)
+        stats = await ReferralService().get_stats(session, user)
+        return inline_referral_menu(can_withdraw=stats["available"] >= MIN_WITHDRAWAL_RUB)
+
+
+async def _open_referrals(
+    message: Message,
+    *,
+    edit_message: Message | None = None,
+    telegram_id: int | None = None,
+) -> None:
+    actor_id = telegram_id or (message.from_user.id if message.from_user else None)
+    if actor_id is None:
+        return
+    bot_user = await message.bot.get_me()
+    text = await ReferralService().panel_text(actor_id, bot_username=bot_user.username)
+    markup = await _referral_panel_markup(actor_id)
     if edit_message is not None:
         await safe_edit(edit_message, text, markup)
     else:
@@ -365,12 +394,23 @@ async def _stream_chat_reply(message: Message, text: str) -> None:
 
 
 @router.message(CommandStart())
-async def start(message: Message, state: FSMContext) -> None:
+async def start(message: Message, command: CommandObject, state: FSMContext) -> None:
     await state.clear()
     try:
         service = OnboardingService()
         text, user_id, is_new = await service.start_or_resume(telegram_user=message.from_user)
         onboarded = await service.is_onboarded(message.from_user)
+
+        if is_new and command.args and message.from_user:
+            referrer_name = await ReferralService().attach_from_start_code(
+                message.from_user.id,
+                command.args,
+            )
+            if referrer_name:
+                text = (
+                    f"{text}\n\n"
+                    f"Тебя пригласил(а) {referrer_name}. Спасибо, что пришёл по рекомендации ✨"
+                )
 
         if onboarded:
             await message.answer(text, reply_markup=await _user_main_menu(message.from_user.id))
@@ -511,6 +551,42 @@ async def settings_callback(callback: CallbackQuery) -> None:
     await _track(None, "bot.settings", {"action": action})
 
 
+@router.callback_query(F.data == "ref:share")
+async def referral_share_callback(callback: CallbackQuery) -> None:
+    await callback.answer()
+    bot_user = await callback.message.bot.get_me()
+    link = ReferralService().build_referral_link(bot_user.username, callback.from_user.id)
+    await callback.message.answer(
+        f"Твоя реферальная ссылка:\n{link}\n\n"
+        "Перешли её другу — получишь 40% с каждой его оплаты.",
+    )
+
+
+@router.callback_query(F.data == "ref:withdraw")
+async def referral_withdraw_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    available = Decimal("0")
+    async with AsyncSessionLocal() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == callback.from_user.id))
+        if user is None:
+            await callback.message.answer("Сначала нажми /start.")
+            return
+        stats = await ReferralService().get_stats(session, user)
+        available = stats["available"]
+        if available < MIN_WITHDRAWAL_RUB:
+            await callback.message.answer(
+                f"Для вывода нужно минимум {format_balance(MIN_WITHDRAWAL_RUB)}. "
+                f"Сейчас доступно: {format_balance(available)}."
+            )
+            return
+
+    await state.set_state(BotStates.waiting_referral_withdrawal)
+    await callback.message.answer(
+        f"Доступно к выводу: {format_balance(available)}.\n\n"
+        "Напиши реквизиты одним сообщением: карта, СБП, USDT или другой способ."
+    )
+
+
 @router.callback_query(F.data.startswith("bill:"))
 async def billing_callback(callback: CallbackQuery) -> None:
     await callback.answer()
@@ -595,6 +671,15 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         text = await BillingService().panel_text(callback.from_user.id)
         await safe_edit(callback.message, text, inline_billing_menu())
         await _track(None, "bot.menu", {"item": "billing"})
+        return
+
+    if action == "referrals":
+        await _open_referrals(
+            callback.message,
+            edit_message=callback.message,
+            telegram_id=callback.from_user.id,
+        )
+        await _track(None, "bot.menu", {"item": "referrals"})
         return
 
     if action == "settings":
@@ -834,6 +919,23 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
 
         if current_state == BotStates.waiting_photo_mode.state:
             await message.answer("Выбери вариант анализа кнопками под последним фото.")
+            return
+
+        if current_state == BotStates.waiting_referral_withdrawal.state:
+            await state.clear()
+            if not text:
+                await message.answer("Напиши реквизиты для вывода одним сообщением.")
+                return
+            try:
+                reply = await ReferralService().request_withdrawal_for_telegram(
+                    message.from_user.id,
+                    payout_details_text=text,
+                )
+            except ValueError as exc:
+                await message.answer(str(exc))
+                return
+            await message.answer(reply, reply_markup=await _user_main_menu(message.from_user.id))
+            await _track(None, "bot.referral_withdraw", {"telegram_id": message.from_user.id})
             return
 
         if current_state == BotStates.waiting_photo_custom_request.state:

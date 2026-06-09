@@ -92,6 +92,7 @@ def inline_main_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="История раскладов", callback_data="nav:history"),
                 InlineKeyboardButton(text="Настройки", callback_data="nav:settings"),
             ],
+            [InlineKeyboardButton(text="Рефералка", callback_data="nav:referrals")],
         ]
     )
 
@@ -195,9 +196,22 @@ def inline_billing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Plus 999 ₽", callback_data="bill:sub:plus"),
                 InlineKeyboardButton(text="Premium 2999 ₽", callback_data="bill:sub:premium"),
             ],
+            [InlineKeyboardButton(text="Рефералка", callback_data="nav:referrals")],
             [_back_button("main")],
         ]
     )
+
+
+def inline_referral_menu(*, can_withdraw: bool) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="Скопировать ссылку", callback_data="ref:share")],
+    ]
+    if can_withdraw:
+        rows.append(
+            [InlineKeyboardButton(text="Запросить вывод", callback_data="ref:withdraw")]
+        )
+    rows.append([_back_button("main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def inline_history_menu(readings: list) -> InlineKeyboardMarkup:

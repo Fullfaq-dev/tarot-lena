@@ -64,7 +64,7 @@ async def stream_to_message(
     chunks: AsyncIterator[str],
     *,
     prefix: str = "",
-    min_edit_interval: float = 0.45,
+    min_edit_interval: float = 1.25,
 ) -> str:
     stop_typing = asyncio.Event()
     typing_task = asyncio.create_task(typing_loop(anchor.bot, anchor.chat.id, stop_typing))
@@ -85,10 +85,15 @@ async def stream_to_message(
             elif now - last_edit >= min_edit_interval:
                 try:
                     await sent.edit_text(truncate_text(body), parse_mode=None)
+                    last_edit = now
                 except TelegramBadRequest as exc:
-                    if "message is not modified" not in str(exc).lower():
-                        pass
-                last_edit = now
+                    err = str(exc).lower()
+                    if "message is not modified" in err:
+                        last_edit = now
+                    elif "too many requests" in err or "retry after" in err:
+                        await asyncio.sleep(2.0)
+                    else:
+                        last_edit = now
     finally:
         stop_typing.set()
         await typing_task
