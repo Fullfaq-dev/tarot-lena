@@ -9,6 +9,12 @@ cd "$APP_DIR"
 git fetch origin main
 git reset --hard origin/main
 
+if [ -f /etc/letsencrypt/live/arcaneai.online/fullchain.pem ]; then
+  cp deploy/nginx.conf deploy/nginx.active.conf
+else
+  cp deploy/nginx.bootstrap.conf deploy/nginx.active.conf
+fi
+
 docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
 docker compose -f "$COMPOSE_FILE" build
 docker compose -f "$COMPOSE_FILE" up -d
