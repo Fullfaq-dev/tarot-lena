@@ -37,7 +37,7 @@ from app.bot.keyboards import (
     profile_field_keyboard,
 )
 from app.bot.states import BotStates
-from app.bot.streaming import chat_action_loop, stream_to_message, typing_loop
+from app.bot.streaming import chat_action_loop, truncate_text, typing_loop
 from app.database.models import Subscription, User
 from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
@@ -124,6 +124,25 @@ async def _with_typing(message: Message, coro):
     return await coro
 
 
+async def _answer_formatted(message: Message, text: str, *, prefix: str = "") -> None:
+    body = f"{prefix}{text}"
+    html = truncate_text(to_telegram_html(body))
+    try:
+        await message.answer(html, parse_mode=ParseMode.HTML)
+    except Exception:
+        await message.answer(truncate_text(body), parse_mode=None)
+
+
+async def _generate_with_typing(message: Message, coro):
+    stop = asyncio.Event()
+    typing_task = asyncio.create_task(typing_loop(message.bot, message.chat.id, stop))
+    try:
+        return await coro
+    finally:
+        stop.set()
+        await typing_task
+
+
 async def _handle_reading_question(message: Message, state: FSMContext, question: str) -> None:
     data = await state.get_data()
     reading_type = data.get("reading_type", "past_present_future")
@@ -152,13 +171,14 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
     if billing_mode == "balance":
         await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
 
-    interpretation = await stream_to_message(
+    interpretation = await _generate_with_typing(
         message,
-        orchestrator.stream_chat(messages or []),
-        prefix=prefix,
+        orchestrator.generate_chat(messages or []),
     )
     if not interpretation or "cannot fulfill" in interpretation.lower():
         interpretation = tarot.interpret_locally(question, cards)
+
+    await _answer_formatted(message, interpretation, prefix=prefix)
 
     usage = await orchestrator.complete_chat(
         user_db_id or user_id,
@@ -362,7 +382,7 @@ async def _get_user_free_used(telegram_id: int) -> int:
         return user.free_messages_used_month if user else 0
 
 
-async def _stream_chat_reply(message: Message, text: str) -> None:
+async def _chat_reply(message: Message, text: str) -> None:
     orchestrator = AIOrchestrator()
     user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
         message.from_user, text
@@ -375,16 +395,17 @@ async def _stream_chat_reply(message: Message, text: str) -> None:
         await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
 
     try:
-        answer = await stream_to_message(
+        answer = await _generate_with_typing(
             message,
-            orchestrator.stream_chat(messages or []),
+            orchestrator.generate_chat(messages or []),
         )
+        await _answer_formatted(message, answer)
     except Exception as exc:
-        logger.exception("Chat stream failed")
+        logger.exception("Chat reply failed")
         await _track(
             user_id,
             "bot.error",
-            {"handler": "chat_stream", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
+            {"handler": "chat_reply", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
         )
         await message.answer("Не удалось получить ответ от модели. Попробуй ещё раз через минуту.")
         return
@@ -405,7 +426,7 @@ async def _stream_chat_reply(message: Message, text: str) -> None:
             reply_markup=await _user_main_menu(message.from_user.id),
         )
     except Exception as exc:
-        logger.exception("Chat billing/memory failed after stream")
+        logger.exception("Chat billing/memory failed")
         await _track(
             user_id,
             "bot.error",
@@ -1009,7 +1030,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             )
             return
 
-        await _stream_chat_reply(message, text)
+        await _chat_reply(message, text)
     except Exception as exc:
         await _track(
             None,

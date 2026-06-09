@@ -281,7 +281,7 @@ class BillingService:
             record.meta = {
                 **(record.meta or {}),
                 "with_infographic": True,
-                "image_model": "gpt-image-2-text-to-image",
+                "image_model": "gpt-image-2-image-to-image",
                 "image_provider_cost_usd": str(image_cost_usd),
                 "image_charged_rub": str(image_charged),
                 "chat_charged_rub": str(chat_charged),

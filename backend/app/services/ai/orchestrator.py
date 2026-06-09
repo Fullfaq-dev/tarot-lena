@@ -53,6 +53,10 @@ class AIOrchestrator:
         async for chunk in self.kie.stream_chat(messages):
             yield chunk
 
+    async def generate_chat(self, messages: list[dict]) -> str:
+        answer = await self.kie.chat_completion(messages)
+        return answer.strip() or "Не удалось получить ответ. Попробуй ещё раз."
+
     async def complete_chat(
         self,
         user_id: str,
@@ -151,10 +155,7 @@ class AIOrchestrator:
         if error:
             return error
 
-        chunks: list[str] = []
-        async for chunk in self.stream_chat(messages or []):
-            chunks.append(chunk)
-        answer = "".join(chunks).strip() or "Не удалось получить ответ. Попробуй ещё раз."
+        answer = await self.generate_chat(messages or [])
         result = await self.complete_chat(
             user_id or "",
             text,
@@ -219,10 +220,7 @@ class AIOrchestrator:
         if error:
             return error
 
-        chunks: list[str] = []
-        async for chunk in self.stream_chat(messages or []):
-            chunks.append(chunk)
-        answer = "".join(chunks).strip()
+        answer = await self.generate_chat(messages or [])
         if not answer or "cannot fulfill" in answer.lower():
             answer = TarotService().interpret_locally(question, cards)
 
