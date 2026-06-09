@@ -21,7 +21,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await ensure_tarot_cards_seeded()
     app.state.bot = create_bot()
     app.state.dispatcher = create_dispatcher()
-    if settings.app_env != "local" and settings.telegram_bot_token != "replace-me":
+    if (
+        settings.app_env != "local"
+        and settings.telegram_bot_token != "replace-me"
+        and settings.public_base_url.startswith("https://")
+    ):
         await app.state.bot.set_webhook(
             settings.webhook_url,
             secret_token=settings.telegram_webhook_secret,
