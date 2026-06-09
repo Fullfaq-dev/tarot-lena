@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -14,7 +15,24 @@ from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.services.tarot.seed import ensure_tarot_cards_seeded
 
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_update_handler(bot, dispatcher, update: Update) -> None:
+    task = asyncio.create_task(dispatcher.feed_update(bot, update))
+    _background_tasks.add(task)
+
+    def _done(done_task: asyncio.Task) -> None:
+        _background_tasks.discard(done_task)
+        try:
+            done_task.result()
+        except Exception:
+            logger.exception("Telegram update handler failed")
+
+    task.add_done_callback(_done)
 
 
 @asynccontextmanager
@@ -33,11 +51,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await app.state.bot.set_webhook(
                 settings.webhook_url,
                 secret_token=settings.telegram_webhook_secret,
-                drop_pending_updates=True,
+                drop_pending_updates=False,
             )
         except Exception as exc:
             logger.warning("Telegram webhook not configured: %s", exc)
     yield
+    if _background_tasks:
+        logger.info("Waiting for %s background telegram tasks", len(_background_tasks))
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
     await app.state.bot.session.close()
 
 
@@ -70,5 +91,5 @@ async def telegram_webhook(
         raise HTTPException(status_code=401, detail="Invalid Telegram secret")
 
     update = Update.model_validate(await request.json(), context={"bot": request.app.state.bot})
-    await request.app.state.dispatcher.feed_update(request.app.state.bot, update)
+    _spawn_update_handler(request.app.state.bot, request.app.state.dispatcher, update)
     return {"ok": True}

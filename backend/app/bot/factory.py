@@ -1,6 +1,4 @@
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
 from redis.asyncio import Redis
 
@@ -10,10 +8,7 @@ from app.core.config import get_settings
 
 def create_bot() -> Bot:
     settings = get_settings()
-    return Bot(
-        token=settings.telegram_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    return Bot(token=settings.telegram_bot_token)
 
 
 def create_dispatcher() -> Dispatcher:

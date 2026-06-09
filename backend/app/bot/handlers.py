@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import select
 
 from app.bot.cards_media import send_drawn_cards
+from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
 from app.core.config import get_settings
 from app.bot.helpers import safe_callback_answer, safe_edit
@@ -325,13 +326,14 @@ async def _process_photo_request(
         caption = "Инфографика готова ✨"
         sent = False
         for url in result.infographic_urls:
-            try:
-                await message.answer_photo(url, caption=caption, reply_markup=menu_markup)
+            if await send_photo_from_url(
+                message,
+                url,
+                caption=caption,
+                reply_markup=menu_markup,
+            ):
                 sent = True
                 break
-            except Exception as exc:
-                logger.warning("Failed to send infographic url=%s: %s", url, exc)
-                continue
         if not sent:
             await message.answer(
                 "Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.",
@@ -372,24 +374,44 @@ async def _stream_chat_reply(message: Message, text: str) -> None:
     if billing_mode == "balance":
         await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
 
-    answer = await stream_to_message(
-        message,
-        orchestrator.stream_chat(messages or []),
-    )
-    usage = await orchestrator.complete_chat(
-        user_id or "",
-        text,
-        answer,
-        user_message_id=user_message_id,
-        context_messages=messages,
-        billing_mode=billing_mode,
-    )
-    await _notify_billing(
-        message,
-        billing_mode,
-        usage,
-        reply_markup=await _user_main_menu(message.from_user.id),
-    )
+    try:
+        answer = await stream_to_message(
+            message,
+            orchestrator.stream_chat(messages or []),
+        )
+    except Exception as exc:
+        logger.exception("Chat stream failed")
+        await _track(
+            user_id,
+            "bot.error",
+            {"handler": "chat_stream", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
+        )
+        await message.answer("Не удалось получить ответ от модели. Попробуй ещё раз через минуту.")
+        return
+
+    try:
+        usage = await orchestrator.complete_chat(
+            user_id or "",
+            text,
+            answer,
+            user_message_id=user_message_id,
+            context_messages=messages,
+            billing_mode=billing_mode,
+        )
+        await _notify_billing(
+            message,
+            billing_mode,
+            usage,
+            reply_markup=await _user_main_menu(message.from_user.id),
+        )
+    except Exception as exc:
+        logger.exception("Chat billing/memory failed after stream")
+        await _track(
+            user_id,
+            "bot.error",
+            {"handler": "chat_complete", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
+        )
+
     await _track(user_id, "bot.chat", {"telegram_id": message.from_user.id, "length": len(text)})
 
 

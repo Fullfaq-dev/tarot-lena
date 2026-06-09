@@ -1,8 +1,9 @@
 import re
 from html import escape
 
-_TELEGRAM_HTML_TAG = re.compile(r"</?(?:b|i|code|u|s|pre|blockquote)>")
+_TELEGRAM_HTML_TAG = re.compile(r"</?(?:b|i|code|u|s|pre|blockquote)>", re.IGNORECASE)
 _MD_TOKEN = re.compile(r"(\*\*.+?\*\*|\*.+?\*|`[^`]+`)", re.DOTALL)
+_LONE_ANGLE = re.compile(r"<(?![/]?(?:b|i|code|u|s|pre|blockquote)\b)", re.IGNORECASE)
 
 
 def to_telegram_html(text: str) -> str:
@@ -12,6 +13,7 @@ def to_telegram_html(text: str) -> str:
 
     # Модель иногда вставляет HTML-теги — убираем, чтобы не ломать парсер Telegram.
     cleaned = _TELEGRAM_HTML_TAG.sub("", text)
+    cleaned = _LONE_ANGLE.sub("&lt;", cleaned)
 
     parts: list[str] = []
     last = 0
