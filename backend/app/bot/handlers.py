@@ -286,21 +286,15 @@ async def _process_photo_request(
         except Exception:
             pass
 
-    interpretation_sent = False
     action_stop = asyncio.Event()
     action_task = asyncio.create_task(
         typing_loop(message.bot, message.chat.id, action_stop)
     )
 
-    async def on_analysis_complete(interpretation: str) -> None:
-        nonlocal interpretation_sent, action_task, action_stop
-        interpretation_sent = True
-        await message.answer(
-            to_telegram_html(interpretation),
-            parse_mode=ParseMode.HTML,
-        )
+    async def on_analysis_complete(_interpretation: str) -> None:
+        nonlocal action_task, action_stop
         try:
-            await waiting_msg.edit_text("Рисую инфографику ✨")
+            await waiting_msg.edit_text("Рисую инфографику ✨ Это может занять пару минут.")
         except Exception:
             pass
         action_stop.set()
@@ -338,30 +332,35 @@ async def _process_photo_request(
         return
 
     menu_markup = await _user_main_menu(actor.id)
-    interpretation_text = to_telegram_html(result.interpretation)
+    interpretation_plain = result.interpretation.strip()
+    interpretation_html = to_telegram_html(interpretation_plain)
 
     if result.infographic_urls:
-        if not interpretation_sent:
-            await message.answer(interpretation_text, parse_mode=ParseMode.HTML)
-        caption = "Инфографика готова ✨"
         sent = False
         for url in result.infographic_urls:
             if await send_photo_from_url(
                 message,
                 url,
-                caption=caption,
+                caption=interpretation_html,
+                caption_plain=interpretation_plain,
+                parse_mode=ParseMode.HTML,
                 reply_markup=menu_markup,
             ):
                 sent = True
                 break
         if not sent:
             await message.answer(
+                interpretation_html,
+                parse_mode=ParseMode.HTML,
+                reply_markup=menu_markup,
+            )
+            await message.answer(
                 "Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.",
                 reply_markup=menu_markup,
             )
-    elif not interpretation_sent:
+    else:
         await message.answer(
-            interpretation_text,
+            interpretation_html,
             parse_mode=ParseMode.HTML,
             reply_markup=menu_markup,
         )
