@@ -31,4 +31,27 @@ bash deploy/deploy.sh
 - API health: `http://<server-ip>/health`
 - Static uploads for KIE: `http://<server-ip>/static/generated/...`
 
-For Telegram webhook and reliable KIE image fetch, add a domain with HTTPS and set `PUBLIC_BASE_URL=https://your-domain`.
+## Domain arcaneai.online
+
+1. At the registrar, set nameservers to Vercel (if the domain is managed in Vercel DNS).
+2. In Vercel DNS add `A` records for `@` and `www` → `147.45.228.92`.
+3. Wait until `dig +short arcaneai.online` returns the VPS IP.
+4. On the server run:
+
+```bash
+cd /opt/arcane-ai
+bash deploy/retry-ssl.sh
+```
+
+Cron (optional, retries SSL every 15 minutes until DNS is live):
+
+```bash
+echo "*/15 * * * * cd /opt/arcane-ai && bash deploy/retry-ssl.sh >> /var/log/arcane-ssl.log 2>&1" | crontab -
+```
+
+Set in `/opt/arcane-ai/.env`:
+
+```env
+APP_ENV=production
+PUBLIC_BASE_URL=https://arcaneai.online
+```
