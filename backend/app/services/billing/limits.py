@@ -21,8 +21,8 @@ CHAT_MEMORY_LIMITS = {
 }
 
 SUBSCRIPTION_PRICES_RUB = {
-    "plus": Decimal("499"),
-    "premium": Decimal("999"),
+    "plus": Decimal("999"),
+    "premium": Decimal("2999"),
 }
 
 TOP_UP_AMOUNTS_RUB = [Decimal("100"), Decimal("300"), Decimal("500")]

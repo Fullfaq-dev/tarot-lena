@@ -260,20 +260,37 @@ class BillingService:
 
         image_cost_usd = image_generation_provider_cost_usd()
         image_charge = image_generation_charge_rub()
-        subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
-        tier = subscription.tier if subscription else "free"
+        chat_charged = Decimal(str(usage["charged_rub"]))
+        chat_cost_usd = Decimal(str(usage["provider_cost_usd"]))
+        image_charged = Decimal("0")
 
         if user.balance_rub >= image_charge:
             user.balance_rub -= image_charge
             session.add(
                 BalanceTransaction(user_id=user.id, amount_rub=-image_charge, reason="vision_infographic")
             )
-            usage["image_charged_rub"] = image_charge
-            usage["charged_rub"] = Decimal(str(usage["charged_rub"])) + image_charge
-        else:
-            usage["image_charged_rub"] = Decimal("0")
+            image_charged = image_charge
 
-        usage["provider_cost_usd"] = Decimal(str(usage["provider_cost_usd"])) + image_cost_usd
+        total_charged = chat_charged + image_charged
+        total_cost_usd = chat_cost_usd + image_cost_usd
+
+        record = await session.get(UsageRecord, usage["usage_record_id"])
+        if record is not None:
+            record.charged_rub = total_charged
+            record.provider_cost_usd = total_cost_usd
+            record.meta = {
+                **(record.meta or {}),
+                "with_infographic": True,
+                "image_model": "gpt-image-2-text-to-image",
+                "image_provider_cost_usd": str(image_cost_usd),
+                "image_charged_rub": str(image_charged),
+                "chat_charged_rub": str(chat_charged),
+                "chat_provider_cost_usd": str(chat_cost_usd),
+            }
+
+        usage["image_charged_rub"] = image_charged
+        usage["charged_rub"] = total_charged
+        usage["provider_cost_usd"] = total_cost_usd
         usage["balance_after"] = user.balance_rub
         usage["with_infographic"] = True
         await session.flush()
@@ -299,8 +316,8 @@ class BillingService:
                 f"Баланс: {format_balance(user.balance_rub)}\n"
                 f"Бесплатных сообщений: {free_left} из {FREE_CHAT_MESSAGES_PER_MONTH}\n"
                 f"Бесплатных раскладов: {readings_left} из 3\n\n"
-                "Plus — безлимитный чат.\n"
-                "Premium — безлимитный чат и голосовые ответы."
+                f"Plus — {format_balance(SUBSCRIPTION_PRICES_RUB['plus'])}/мес, безлимитный чат.\n"
+                f"Premium — {format_balance(SUBSCRIPTION_PRICES_RUB['premium'])}/мес, безлимитный чат и голосовые ответы."
             )
 
     async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> str:

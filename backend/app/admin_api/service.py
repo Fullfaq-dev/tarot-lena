@@ -446,17 +446,27 @@ async def user_billing(session: AsyncSession, user_id: str) -> dict[str, Any]:
         )
     payment_rows.sort(key=lambda row: row["created_at"] or "", reverse=True)
 
-    return {
-        "payments": payment_rows,
-        "usage": [
+    usage_rows: list[dict[str, Any]] = []
+    for u in usage:
+        meta = u.meta or {}
+        with_infographic = bool(meta.get("with_infographic"))
+        feature_label = _FEATURE_LABELS.get(u.feature, u.feature)
+        if with_infographic:
+            feature_label = f"{feature_label} + инфографика"
+
+        image_cost_raw = meta.get("image_provider_cost_usd")
+        image_cost_usd = Decimal(str(image_cost_raw)) if image_cost_raw else Decimal("0")
+        image_charged_raw = meta.get("image_charged_rub")
+
+        usage_rows.append(
             {
                 "id": u.id,
                 "feature": u.feature,
-                "feature_label": _FEATURE_LABELS.get(u.feature, u.feature),
-                "billing_mode": (u.meta or {}).get("billing_mode", "free"),
+                "feature_label": feature_label,
+                "billing_mode": meta.get("billing_mode", "free"),
                 "billing_mode_label": _BILLING_MODE_LABELS.get(
-                    (u.meta or {}).get("billing_mode", "free"),
-                    (u.meta or {}).get("billing_mode", "free"),
+                    meta.get("billing_mode", "free"),
+                    meta.get("billing_mode", "free"),
                 ),
                 "model": u.model,
                 "input_units": u.input_units,
@@ -464,12 +474,29 @@ async def user_billing(session: AsyncSession, user_id: str) -> dict[str, Any]:
                 "total_tokens": u.input_units + u.output_units,
                 "provider_cost_usd": _dec_usd(display_provider_cost_usd(u.provider_cost_usd)),
                 "provider_cost_rub": _dec(display_provider_cost_rub(u.provider_cost_usd)),
-                "kie_credits": (u.meta or {}).get("kie_credits"),
+                "kie_credits": meta.get("kie_credits"),
                 "charged_rub": _dec(u.charged_rub),
+                "with_infographic": with_infographic,
+                "image_model": meta.get("image_model"),
+                "image_provider_cost_usd": _dec_usd(display_provider_cost_usd(image_cost_usd))
+                if with_infographic
+                else None,
+                "image_provider_cost_rub": _dec(display_provider_cost_rub(image_cost_usd))
+                if with_infographic
+                else None,
+                "image_charged_rub": _dec(Decimal(str(image_charged_raw)))
+                if image_charged_raw is not None
+                else None,
+                "chat_charged_rub": _dec(Decimal(str(meta["chat_charged_rub"])))
+                if meta.get("chat_charged_rub") is not None
+                else None,
                 "created_at": _dt(u.created_at),
             }
-            for u in usage
-        ],
+        )
+
+    return {
+        "payments": payment_rows,
+        "usage": usage_rows,
     }
 
 

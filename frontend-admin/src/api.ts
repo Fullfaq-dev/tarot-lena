@@ -149,6 +149,12 @@ export type BillingUsageRow = {
   provider_cost_rub: string;
   kie_credits: string | null;
   charged_rub: string;
+  with_infographic?: boolean;
+  image_model?: string | null;
+  image_provider_cost_usd?: string | null;
+  image_provider_cost_rub?: string | null;
+  image_charged_rub?: string | null;
+  chat_charged_rub?: string | null;
   created_at: string;
 };
 

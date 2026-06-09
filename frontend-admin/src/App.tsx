@@ -765,6 +765,7 @@ type UsageSortKey =
   | "total_tokens"
   | "provider_cost_usd"
   | "provider_cost_rub"
+  | "image_charged_rub"
   | "charged_rub";
 
 function UsageTable({ rows }: { rows: BillingUsageRow[] }) {
@@ -788,8 +789,10 @@ function UsageTable({ rows }: { rows: BillingUsageRow[] }) {
     if (["input_units", "output_units", "total_tokens"].includes(sortKey)) {
       return (Number(a[sortKey]) - Number(b[sortKey])) * dir;
     }
-    if (["provider_cost_usd", "provider_cost_rub", "charged_rub"].includes(sortKey)) {
-      return (Number(a[sortKey]) - Number(b[sortKey])) * dir;
+    if (["provider_cost_usd", "provider_cost_rub", "image_charged_rub", "charged_rub"].includes(sortKey)) {
+      const av = a[sortKey] ?? 0;
+      const bv = b[sortKey] ?? 0;
+      return (Number(av) - Number(bv)) * dir;
     }
     return String(a[sortKey]).localeCompare(String(b[sortKey]), "ru") * dir;
   });
@@ -816,6 +819,7 @@ function UsageTable({ rows }: { rows: BillingUsageRow[] }) {
           {th("total_tokens", "Всего")}
           {th("provider_cost_usd", "Себест. $")}
           {th("provider_cost_rub", "Себест. ₽")}
+          {th("image_charged_rub", "Картинка ₽")}
           {th("charged_rub", "Списано")}
         </tr>
       </thead>
@@ -830,6 +834,7 @@ function UsageTable({ rows }: { rows: BillingUsageRow[] }) {
             <td>{u.total_tokens}</td>
             <td>${u.provider_cost_usd}</td>
             <td>{u.provider_cost_rub} ₽</td>
+            <td>{u.with_infographic ? `${u.image_charged_rub ?? "0"} ₽` : "—"}</td>
             <td>{u.charged_rub} ₽</td>
           </tr>
         ))}

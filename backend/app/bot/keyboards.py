@@ -192,8 +192,8 @@ def inline_billing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="+500 ₽", callback_data="bill:topup:500"),
             ],
             [
-                InlineKeyboardButton(text="Plus 499 ₽", callback_data="bill:sub:plus"),
-                InlineKeyboardButton(text="Premium 999 ₽", callback_data="bill:sub:premium"),
+                InlineKeyboardButton(text="Plus 999 ₽", callback_data="bill:sub:plus"),
+                InlineKeyboardButton(text="Premium 2999 ₽", callback_data="bill:sub:premium"),
             ],
             [_back_button("main")],
         ]
