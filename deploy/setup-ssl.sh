@@ -36,4 +36,10 @@ if ! crontab -l 2>/dev/null | grep -q certbot; then
   (crontab -l 2>/dev/null; echo "0 3 * * * certbot renew --quiet --deploy-hook 'cd ${APP_DIR} && docker compose -f ${COMPOSE_FILE} restart nginx'") | crontab -
 fi
 
+sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
+sed -i 's|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=https://'"${DOMAIN}"'|' .env
+docker compose -f "$COMPOSE_FILE" --profile polling stop bot 2>/dev/null || true
+docker compose -f "$COMPOSE_FILE" rm -f bot 2>/dev/null || true
+docker compose -f "$COMPOSE_FILE" restart api
+
 echo "SSL ready for https://${DOMAIN}"

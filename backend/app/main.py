@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
@@ -13,6 +14,8 @@ from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.services.tarot.seed import ensure_tarot_cards_seeded
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -26,11 +29,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         and settings.telegram_bot_token != "replace-me"
         and settings.public_base_url.startswith("https://")
     ):
-        await app.state.bot.set_webhook(
-            settings.webhook_url,
-            secret_token=settings.telegram_webhook_secret,
-            drop_pending_updates=True,
-        )
+        try:
+            await app.state.bot.set_webhook(
+                settings.webhook_url,
+                secret_token=settings.telegram_webhook_secret,
+                drop_pending_updates=True,
+            )
+        except Exception as exc:
+            logger.warning("Telegram webhook not configured: %s", exc)
     yield
     await app.state.bot.session.close()
 
