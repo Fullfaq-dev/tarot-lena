@@ -52,6 +52,19 @@ def total_tokens(input_tokens: int, output_tokens: int) -> int:
     return max(input_tokens, 0) + max(output_tokens, 0)
 
 
+def merge_api_usage(*usages: dict[str, int] | None) -> dict[str, int] | None:
+    input_tokens = 0
+    output_tokens = 0
+    for usage in usages:
+        if not usage:
+            continue
+        input_tokens += max(int(usage.get("input_tokens", 0)), 0)
+        output_tokens += max(int(usage.get("output_tokens", 0)), 0)
+    if input_tokens == 0 and output_tokens == 0:
+        return None
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens}
+
+
 def provider_cost_credits(input_tokens: int, output_tokens: int) -> Decimal:
     input_cr = Decimal(input_tokens) / Decimal(1_000_000) * _input_credits_per_1m()
     output_cr = Decimal(output_tokens) / Decimal(1_000_000) * _output_credits_per_1m()

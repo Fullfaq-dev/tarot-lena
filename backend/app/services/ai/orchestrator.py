@@ -9,7 +9,7 @@ from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
 from app.services.analytics.tracker import track_event
 from app.services.billing.service import BillingService
-from app.services.billing.tokens import provider_cost_rub
+from app.services.billing.tokens import merge_api_usage, provider_cost_rub
 from app.services.memory.extractor import MemoryExtractor
 from app.services.tarot.service import TarotService
 
@@ -69,6 +69,21 @@ class AIOrchestrator:
             if user is None:
                 return {"answer": answer, "charged_rub": "0", "billing_mode": billing_mode}
 
+            chat_api_usage = dict(self.kie.last_usage) if self.kie.last_usage else None
+            extraction_usage = await self.memory_extractor.extract_from_dialog(
+                session, user, text, answer
+            )
+            combined_usage = merge_api_usage(chat_api_usage, extraction_usage)
+
+            usage_meta: dict = {}
+            if chat_api_usage:
+                usage_meta["chat_input_tokens"] = chat_api_usage.get("input_tokens", 0)
+                usage_meta["chat_output_tokens"] = chat_api_usage.get("output_tokens", 0)
+            if extraction_usage:
+                usage_meta["memory_extraction_ran"] = True
+                usage_meta["memory_extraction_input_tokens"] = extraction_usage.get("input_tokens", 0)
+                usage_meta["memory_extraction_output_tokens"] = extraction_usage.get("output_tokens", 0)
+
             usage = await self.billing.record_chat_usage(
                 session,
                 user,
@@ -76,8 +91,9 @@ class AIOrchestrator:
                 answer,
                 feature=feature,
                 context_messages=context_messages,
-                api_usage=self.kie.last_usage,
+                api_usage=combined_usage,
                 billing_mode=billing_mode,
+                extra_meta=usage_meta,
             )
 
             if user_message_id:
@@ -109,11 +125,11 @@ class AIOrchestrator:
                     "model": usage.get("model", "gemini-3-flash"),
                     "usage_record_id": usage["usage_record_id"],
                     "billing_mode": billing_mode,
-                    "cost_source": "kie_api" if self.kie.last_usage else "estimated",
+                    "cost_source": "kie_api" if combined_usage else "estimated",
+                    "memory_extraction_ran": bool(extraction_usage),
                 },
             )
             session.add(assistant_message)
-            await self.memory_extractor.extract_from_dialog(session, user, text, answer)
             await session.commit()
             await track_event(
                 "bot.ai_response",

@@ -162,6 +162,7 @@ class BillingService:
         context_messages: list[dict] | None = None,
         api_usage: dict[str, int] | None = None,
         billing_mode: str = "free",
+        extra_meta: dict | None = None,
     ) -> dict:
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
@@ -211,6 +212,7 @@ class BillingService:
                 "charge_markup": str(get_settings().charge_markup),
                 "total_tokens": total_tokens(input_tokens, output_tokens),
                 "kie_credits": str(cost_credits),
+                **(extra_meta or {}),
             },
         )
         session.add(usage)
