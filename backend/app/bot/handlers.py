@@ -6,7 +6,7 @@ from aiogram import Dispatcher, F, Router
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User as TelegramUser
 from sqlalchemy import select
 
 from app.bot.cards_media import send_drawn_cards
@@ -147,7 +147,9 @@ async def _notify_billing(
     usage: dict,
     *,
     reply_markup=None,
+    telegram_id: int | None = None,
 ) -> bool:
+    user_telegram_id = telegram_id or (message.from_user.id if message.from_user else 0)
     charged = Decimal(str(usage.get("charged_rub", "0")))
     image_charged = Decimal(str(usage.get("image_charged_rub", "0")))
     if charged > 0:
@@ -158,7 +160,7 @@ async def _notify_billing(
         await message.answer(" ".join(parts), reply_markup=reply_markup)
         return True
     if billing_mode == "free" and free_messages_left(
-        (await _get_user_free_used(message.from_user.id))
+        (await _get_user_free_used(user_telegram_id))
     ) == 0:
         await message.answer(
             f"Это было последнее бесплатное сообщение в этом месяце ({FREE_CHAT_MESSAGES_PER_MONTH}). "
@@ -176,9 +178,15 @@ async def _process_photo_request(
     file_id: str,
     mode: str,
     custom_text: str = "",
+    telegram_user: TelegramUser | None = None,
 ) -> None:
     await state.clear()
-    user_id = await _get_user_id(message.from_user.id)
+    actor = telegram_user or message.from_user
+    if actor is None:
+        await message.answer("Не получилось определить профиль Telegram. Попробуй ещё раз.")
+        return
+
+    user_id = await _get_user_id(actor.id)
     if user_id is None:
         await message.answer("Сначала нажми /start, чтобы я создала твой профиль.")
         return
@@ -196,7 +204,7 @@ async def _process_photo_request(
 
     result, error = await VisionService().process_photo(
         message.bot,
-        message.from_user,
+        actor,
         file_id=file_id,
         mode=mode,
         custom_text=custom_text,
@@ -211,7 +219,7 @@ async def _process_photo_request(
         await message.answer(error)
         return
 
-    menu_markup = await _user_main_menu(message.from_user.id)
+    menu_markup = await _user_main_menu(actor.id)
     interpretation_text = to_telegram_html(result.interpretation)
 
     if result.infographic_urls:
@@ -241,7 +249,8 @@ async def _process_photo_request(
         message,
         result.billing_mode,
         result.usage,
-        reply_markup=await _user_main_menu(message.from_user.id),
+        reply_markup=await _user_main_menu(actor.id),
+        telegram_id=actor.id,
     )
     await _track(user_id, "bot.vision", {"mode": mode, "feature": result.feature})
 
@@ -610,6 +619,7 @@ async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> Non
         state,
         file_id=file_id,
         mode=mode,
+        telegram_user=callback.from_user,
     )
 
 
