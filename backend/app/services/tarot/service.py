@@ -65,7 +65,12 @@ class TarotService:
             )
             if existing:
                 card = await self._card_dict_from_prediction(session, existing)
-                return existing.text, card
+                if card is None:
+                    card = self._resolve_card_from_text(existing.text)
+                if card is not None and not self._is_stale_daily_text(existing.text):
+                    return existing.text, card
+                await session.delete(existing)
+                await session.flush()
 
             messages = await self.context_builder.build(session, user)
             try:
@@ -118,6 +123,20 @@ class TarotService:
             **card,
             "image_path": storage_image_path(card, settings.tarot_cards_dir),
         }
+
+    def _resolve_card_from_text(self, text: str) -> dict | None:
+        normalized = text.strip()
+        if not normalized:
+            return None
+        for deck_card in FULL_DECK:
+            name = str(deck_card["name"])
+            if name in normalized:
+                return self._attach_image_path(dict(deck_card))
+        return None
+
+    @staticmethod
+    def _is_stale_daily_text(text: str) -> bool:
+        return "В эзотерической интерпретации это может означать" in text
 
     async def create_reading(
         self,

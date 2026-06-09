@@ -3,7 +3,7 @@ import logging
 import httpx
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import BufferedInputFile, Message, URLInputFile
+from aiogram.types import BufferedInputFile, Message
 
 logger = logging.getLogger(__name__)
 
@@ -57,20 +57,7 @@ async def send_photo_from_url(
     if caption:
         caption = truncate_caption(caption)
 
-    # Сначала отдаём URL напрямую — Telegram скачает сам, это заметно быстрее,
-    # чем гонять файл через наш сервер.
-    try:
-        return await _try_send(
-            message,
-            URLInputFile(url, timeout=60),
-            caption=caption,
-            caption_plain=caption_plain,
-            parse_mode=parse_mode,
-            reply_markup=reply_markup,
-        )
-    except Exception as exc:
-        logger.info("Direct URL send failed, falling back to download: %s", exc)
-
+    # KIE и другие AI-URL недоступны для Telegram напрямую — скачиваем на сервер.
     try:
         async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
             response = await client.get(url)

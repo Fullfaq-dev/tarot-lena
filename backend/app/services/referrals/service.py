@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import Referral, ReferralWithdrawalRequest, User
 from app.database.session import AsyncSessionLocal
 from app.services.billing.tokens import format_balance
+from app.services.telegram_notify import notify_admins, notify_telegram_message
 
 MIN_WITHDRAWAL_RUB = Decimal("3000")
 DEFAULT_REWARD_PERCENT = 40
@@ -74,10 +75,22 @@ class ReferralService:
             )
             if referrer is None or referred is None:
                 return None
+            already_linked = await session.scalar(
+                select(Referral).where(Referral.referred_user_id == referred.id)
+            )
             referral = await self.attach_referrer(session, referrer, referred)
-            if referral is None:
+            if referral is None or already_linked is not None:
                 return None
             await session.commit()
+
+            referred_name = referred.first_name or referred.username or "новая подруга"
+            notify_telegram_message(
+                referrer.telegram_id,
+                "🎉 По твоей ссылке присоединилась "
+                f"{referred_name}!\n\n"
+                "Как только она пополнит баланс или оформит подписку — "
+                f"тебе начислится {DEFAULT_REWARD_PERCENT}% на реферальный баланс. 💰",
+            )
             return referrer.first_name or referrer.username or "друг"
 
     async def accrue_reward(
@@ -88,7 +101,29 @@ class ReferralService:
         )
         if referral is None:
             return
-        referral.accrued_rub += payment_amount * Decimal(referral.reward_percent) / Decimal("100")
+        reward = payment_amount * Decimal(referral.reward_percent) / Decimal("100")
+        referral.accrued_rub += reward
+        await self._notify_referrer_payment(session, referral, referred_user_id, payment_amount, reward)
+
+    async def _notify_referrer_payment(
+        self,
+        session: AsyncSession,
+        referral: Referral,
+        referred_user_id: str,
+        payment_amount: Decimal,
+        reward: Decimal,
+    ) -> None:
+        referrer = await session.scalar(select(User).where(User.id == referral.referrer_user_id))
+        referred = await session.scalar(select(User).where(User.id == referred_user_id))
+        if referrer is None:
+            return
+        referred_name = (referred.first_name or referred.username or "подруга") if referred else "подруга"
+        notify_telegram_message(
+            referrer.telegram_id,
+            f"💰 {referred_name} пополнила баланс на {format_balance(payment_amount)}!\n"
+            f"Тебе начислено {format_balance(reward)} ({referral.reward_percent}%) "
+            "на реферальный баланс. ✨",
+        )
 
     async def get_stats(self, session: AsyncSession, user: User) -> dict[str, Decimal | int]:
         total_accrued = await session.scalar(
@@ -204,6 +239,15 @@ class ReferralService:
             )
             user.usdt_trc20_wallet = wallet
             await session.commit()
+
+            user_label = user.first_name or user.username or str(telegram_id)
+            await notify_admins(
+                "💸 Новая заявка на вывод рефералки\n\n"
+                f"👤 {user_label} (id {telegram_id})\n"
+                f"💰 Сумма: {format_balance(amount)}\n"
+                f"💼 USDT TRC-20: {wallet}\n\n"
+                "Обработай в админ-дашборде → Рефералы."
+            )
 
             payout_date = next_friday().strftime("%d.%m")
             short_wallet = f"{wallet[:8]}…{wallet[-6:]}"

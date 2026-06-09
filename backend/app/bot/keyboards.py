@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -235,14 +237,22 @@ def inline_billing_menu() -> InlineKeyboardMarkup:
     )
 
 
-def inline_referral_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔗 Моя ссылка-приглашение", callback_data="ref:share")],
-            [InlineKeyboardButton(text="💸 Вывести средства", callback_data="ref:withdraw")],
-            [_home_button()],
-        ]
-    )
+def inline_referral_menu(*, share_link: str | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="🔗 Моя ссылка-приглашение", callback_data="ref:share")],
+    ]
+    if share_link:
+        share_text = "🔮 Попробуй AI-таролога — мне очень нравится!"
+        share_url = (
+            "https://t.me/share/url?"
+            f"url={quote(share_link)}&text={quote(share_text)}"
+        )
+        rows.append(
+            [InlineKeyboardButton(text="📤 Отправить подруге", url=share_url)]
+        )
+    rows.append([InlineKeyboardButton(text="💸 Вывести средства", callback_data="ref:withdraw")])
+    rows.append([_home_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def inline_withdraw_wallet_menu(saved_wallet: str | None) -> InlineKeyboardMarkup:

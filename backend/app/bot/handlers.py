@@ -110,7 +110,8 @@ async def _open_referrals(
         return
     bot_user = await message.bot.get_me()
     text = await ReferralService().panel_text(actor_id, bot_username=bot_user.username)
-    markup = inline_referral_menu()
+    share_link = ReferralService().build_referral_link(bot_user.username, actor_id)
+    markup = inline_referral_menu(share_link=share_link)
     if edit_message is not None:
         await safe_edit(edit_message, text, markup)
     else:
@@ -285,6 +286,14 @@ async def _process_photo_request_safe(
             custom_text=custom_text,
             telegram_user=telegram_user,
         )
+    except asyncio.CancelledError:
+        await _track(None, "bot.error", {"handler": "photo", "error": "cancelled"})
+        try:
+            await message.answer(
+                "Обработка фото прервалась. Попробуй отправить снимок ещё раз — я уже готова ✨"
+            )
+        except Exception:
+            pass
     except Exception as exc:
         await _track(None, "bot.error", {"handler": "photo", "error": str(exc)})
         await message.answer(f"Не удалось обработать фото: {exc}")
@@ -352,7 +361,10 @@ async def _process_photo_request(
         )
     finally:
         action_stop.set()
-        await action_task
+        try:
+            await action_task
+        except asyncio.CancelledError:
+            pass
 
     try:
         await waiting_msg.delete()
@@ -633,6 +645,7 @@ async def referral_share_callback(callback: CallbackQuery) -> None:
     await callback.message.answer(
         f"🔗 Твоя личная ссылка:\n{link}\n\n"
         "Перешли её подруге — с каждой её оплаты тебе будет приходить 40% на реферальный баланс. 💰",
+        reply_markup=inline_referral_menu(share_link=link),
     )
 
 
@@ -978,6 +991,10 @@ async def _process_onboarding_answer(
                 onboarding_reply,
                 reply_markup=await _user_main_menu(telegram_user.id),
             )
+            await source.message.answer(
+                "🌅 А вот твоя первая карта дня — бесплатный подарок за знакомство ✨"
+            )
+            await _send_daily_card(source.message, telegram_user.id)
             await source.message.answer(MAIN_MENU_TEXT, reply_markup=inline_main_menu())
         elif edit:
             await safe_edit(source.message, reply_text, markup)
@@ -986,6 +1003,10 @@ async def _process_onboarding_answer(
     else:
         if completed:
             await source.answer(onboarding_reply, reply_markup=await _user_main_menu(telegram_user.id))
+            await source.answer(
+                "🌅 А вот твоя первая карта дня — бесплатный подарок за знакомство ✨"
+            )
+            await _send_daily_card(source, telegram_user.id)
             await source.answer(MAIN_MENU_TEXT, reply_markup=inline_main_menu())
         else:
             await source.answer(reply_text, reply_markup=markup)

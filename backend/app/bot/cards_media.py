@@ -1,9 +1,25 @@
+from pathlib import Path
+
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, InputMediaPhoto, Message
 
 from app.bot.media import truncate_caption
 from app.core.config import get_settings
+
+
+def _card_image_path(card: dict) -> Path | None:
+    settings = get_settings()
+    candidates: list[Path] = []
+    if card.get("image_file"):
+        candidates.append(settings.tarot_cards_dir / str(card["image_file"]))
+    if card.get("image_path"):
+        candidates.append(Path(str(card["image_path"])))
+        candidates.append(settings.tarot_cards_dir / Path(str(card["image_path"])).name)
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
 
 
 async def send_card_with_caption(
@@ -14,9 +30,8 @@ async def send_card_with_caption(
     caption_plain: str,
     reply_markup=None,
 ) -> bool:
-    settings = get_settings()
-    path = settings.tarot_cards_dir / str(card["image_file"])
-    if not path.exists():
+    path = _card_image_path(card)
+    if path is None:
         return False
 
     photo = FSInputFile(path)
@@ -44,11 +59,10 @@ async def send_card_with_caption(
 
 
 async def send_drawn_cards(message: Message, cards: list[dict]) -> None:
-    settings = get_settings()
     media: list[InputMediaPhoto] = []
     for card in cards:
-        path = settings.tarot_cards_dir / str(card["image_file"])
-        if not path.exists():
+        path = _card_image_path(card)
+        if path is None:
             continue
         media.append(InputMediaPhoto(media=FSInputFile(path), caption=str(card["name"])))
 
