@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.bot.cards_media import send_drawn_cards
 from app.bot.formatting import to_telegram_html
 from app.core.config import get_settings
-from app.bot.helpers import safe_edit
+from app.bot.helpers import safe_callback_answer, safe_edit
 from app.bot.keyboards import (
     MAIN_MENU_TEXT,
     MENU_TEXTS,
@@ -169,6 +169,29 @@ async def _notify_billing(
         )
         return True
     return False
+
+
+async def _process_photo_request_safe(
+    message: Message,
+    state: FSMContext,
+    *,
+    file_id: str,
+    mode: str,
+    custom_text: str = "",
+    telegram_user: TelegramUser | None = None,
+) -> None:
+    try:
+        await _process_photo_request(
+            message,
+            state,
+            file_id=file_id,
+            mode=mode,
+            custom_text=custom_text,
+            telegram_user=telegram_user,
+        )
+    except Exception as exc:
+        await _track(None, "bot.error", {"handler": "photo", "error": str(exc)})
+        await message.answer(f"Не удалось обработать фото: {exc}")
 
 
 async def _process_photo_request(
@@ -590,7 +613,7 @@ async def onboarding_pick(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("photo:mode:"))
 async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
+    await safe_callback_answer(callback)
     onboarding = OnboardingService()
     if not await onboarding.is_onboarded(callback.from_user):
         await callback.message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
@@ -614,12 +637,14 @@ async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.message.answer("Неизвестный режим анализа.")
         return
 
-    await _process_photo_request(
-        callback.message,
-        state,
-        file_id=file_id,
-        mode=mode,
-        telegram_user=callback.from_user,
+    asyncio.create_task(
+        _process_photo_request_safe(
+            callback.message,
+            state,
+            file_id=file_id,
+            mode=mode,
+            telegram_user=callback.from_user,
+        )
     )
 
 
@@ -692,30 +717,36 @@ async def voice_message(message: Message) -> None:
 
 @router.message(F.photo)
 async def photo_message(message: Message, state: FSMContext) -> None:
-    onboarding = OnboardingService()
-    if not await onboarding.is_onboarded(message.from_user):
-        await message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
-        return
+    try:
+        onboarding = OnboardingService()
+        if not await onboarding.is_onboarded(message.from_user):
+            await message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
+            return
 
-    file_id = message.photo[-1].file_id
-    caption = (message.caption or "").strip()
+        file_id = message.photo[-1].file_id
+        caption = (message.caption or "").strip()
 
-    if caption:
-        await _process_photo_request(
-            message,
-            state,
-            file_id=file_id,
-            mode="custom",
-            custom_text=caption,
+        if caption:
+            asyncio.create_task(
+                _process_photo_request_safe(
+                    message,
+                    state,
+                    file_id=file_id,
+                    mode="custom",
+                    custom_text=caption,
+                )
+            )
+            return
+
+        await state.set_state(BotStates.waiting_photo_mode)
+        await state.update_data(photo_file_id=file_id)
+        await message.answer(
+            "Фото получила. Что хочешь узнать по этому снимку?",
+            reply_markup=inline_photo_mode_menu(),
         )
-        return
-
-    await state.set_state(BotStates.waiting_photo_mode)
-    await state.update_data(photo_file_id=file_id)
-    await message.answer(
-        "Фото получила. Что хочешь узнать по этому снимку?",
-        reply_markup=inline_photo_mode_menu(),
-    )
+    except Exception as exc:
+        await _track(None, "bot.error", {"handler": "photo_message", "error": str(exc)})
+        await message.answer("Не удалось принять фото. Попробуй отправить ещё раз.")
 
 
 @router.message()
@@ -768,12 +799,14 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             if not text:
                 await message.answer("Напиши, что хочешь узнать по фото.")
                 return
-            await _process_photo_request(
-                message,
-                state,
-                file_id=file_id,
-                mode="custom",
-                custom_text=text,
+            asyncio.create_task(
+                _process_photo_request_safe(
+                    message,
+                    state,
+                    file_id=file_id,
+                    mode="custom",
+                    custom_text=text,
+                )
             )
             return
 

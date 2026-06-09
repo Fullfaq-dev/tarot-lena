@@ -1,5 +1,14 @@
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+
+
+async def safe_callback_answer(callback: CallbackQuery, text: str | None = None) -> None:
+    try:
+        await callback.answer(text)
+    except TelegramBadRequest as exc:
+        if "query is too old" in str(exc).lower() or "query id is invalid" in str(exc).lower():
+            return
+        raise
 
 
 async def safe_edit(
