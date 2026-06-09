@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User as TelegramUser
 from sqlalchemy import select
 
-from app.bot.cards_media import send_drawn_cards
+from app.bot.cards_media import send_card_with_caption, send_drawn_cards
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
 from app.core.config import get_settings
@@ -141,6 +141,40 @@ async def _generate_with_typing(message: Message, coro):
     finally:
         stop.set()
         await typing_task
+
+
+async def _send_daily_card(message: Message, telegram_id: int) -> None:
+    tarot = TarotService()
+    interpretation, card = await _generate_with_typing(
+        message,
+        tarot.daily_card_for_telegram(telegram_id),
+    )
+    if interpretation.startswith("Сначала нажми /start"):
+        await message.answer(interpretation)
+        return
+
+    menu_markup = await _user_main_menu(telegram_id)
+    interpretation_plain = interpretation.strip()
+    interpretation_html = to_telegram_html(interpretation_plain)
+
+    if card and await send_card_with_caption(
+        message,
+        card,
+        caption_html=interpretation_html,
+        caption_plain=interpretation_plain,
+        reply_markup=menu_markup,
+    ):
+        return
+
+    html = truncate_text(to_telegram_html(interpretation_plain))
+    try:
+        await message.answer(html, parse_mode=ParseMode.HTML, reply_markup=menu_markup)
+    except Exception:
+        await message.answer(
+            truncate_text(interpretation_plain),
+            parse_mode=None,
+            reply_markup=menu_markup,
+        )
 
 
 async def _handle_reading_question(message: Message, state: FSMContext, question: str) -> None:
@@ -683,11 +717,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if action == "daily":
-        await callback.message.bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
-        prediction, card = await tarot.daily_card_for_telegram(callback.from_user.id)
-        if card:
-            await send_drawn_cards(callback.message, [card])
-        await callback.message.answer(prediction, parse_mode=None)
+        await _send_daily_card(callback.message, callback.from_user.id)
         await safe_edit(callback.message, MAIN_MENU_TEXT, inline_main_menu())
         await _track(None, "bot.daily_card", {"telegram_id": callback.from_user.id})
         return
@@ -1044,11 +1074,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     await state.clear()
 
     if text == "Карта дня":
-        await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-        prediction, card = await tarot.daily_card_for_telegram(message.from_user.id)
-        if card:
-            await send_drawn_cards(message, [card])
-        await message.answer(prediction, parse_mode=None)
+        await _send_daily_card(message, message.from_user.id)
         await _track(None, "bot.daily_card", {"telegram_id": message.from_user.id})
         return
 

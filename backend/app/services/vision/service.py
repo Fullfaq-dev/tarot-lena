@@ -9,7 +9,7 @@ from aiogram.types import User as TelegramUser
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.database.models import Message, MessageRole, User
+from app.database.models import Message, MessageRole, SoulProfile, User
 from app.database.session import AsyncSessionLocal
 from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
@@ -45,7 +45,8 @@ _JSON_SYSTEM = (
 _ANALYSIS_PROMPTS = {
     "aura": (
         "Проанализируй фото как символическую ауру (развлекательная интерпретация, "
-        "без медицинских утверждений). Определи цвет ауры, заголовок и краткое описание для инфографики."
+        "без медицинских утверждений). Определи цвет ауры, заголовок и краткое описание для инфографики. "
+        "Учитывай пол пользователя из профиля, если он указан."
     ),
     "palm": (
         "Проанализируй фото ладони (развлекательная хиромантия, без медицинских утверждений). "
@@ -140,6 +141,9 @@ class VisionService:
                 content=question,
                 meta={"vision_mode": mode, "has_image": True},
             )
+            profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
+            subject_gender = profile.gender if profile else None
+
             session.add(user_message)
             await session.flush()
             await session.commit()
@@ -176,6 +180,7 @@ class VisionService:
                 source_image_url=image_url,
                 mode=mode,
                 parsed=parsed,
+                subject_gender=subject_gender,
             )
             usage = await self._finalize_usage(
                 user.id,
@@ -237,7 +242,23 @@ class VisionService:
             raw_retry = await self.kie.chat_completion(retry_messages)
             return self._coerce_structured_response(raw_retry, mode)
 
-    def _build_image_prompt(self, mode: str, parsed: dict) -> str:
+    @staticmethod
+    def _subject_gender_hint(gender: str | None) -> str:
+        normalized = (gender or "").strip().lower()
+        if normalized in {"мужской", "male", "м", "man"}:
+            return (
+                "The silhouette must be clearly masculine male: male body proportions, "
+                "male facial outline, no feminine features, no dress, no makeup, no bun hairstyle."
+            )
+        if normalized in {"женский", "female", "ж", "woman"}:
+            return (
+                "The silhouette must be clearly feminine female: female body proportions "
+                "and feminine outline."
+            )
+        return "Use a neutral androgynous adult silhouette without strong gender markers."
+
+    def _build_image_prompt(self, mode: str, parsed: dict, *, subject_gender: str | None = None) -> str:
+        gender_hint = self._subject_gender_hint(subject_gender)
         if mode == "aura":
             aura_color = parsed.get("aura_color") or _DEFAULT_AURA["aura_color"]
             aura_title = parsed.get("aura_title") or _DEFAULT_AURA["aura_title"]
@@ -247,6 +268,7 @@ class VisionService:
                 "Create an aura reading card from the reference photo. "
                 "Show a soft semi-illustrated human silhouette based on the person's pose in the reference — "
                 "abstracted outline, not photorealistic, no detailed facial skin texture. "
+                f"{gender_hint} "
                 f"Surround the silhouette with a glowing aura in {aura_color} tones. "
                 f'Place Russian golden text on white background: title "{aura_title}", '
                 f'description "{image_summary}". '
@@ -282,9 +304,10 @@ class VisionService:
         source_image_url: str,
         mode: str,
         parsed: dict,
+        subject_gender: str | None = None,
     ) -> list[str]:
         settings = get_settings()
-        prompt = self._build_image_prompt(mode, parsed)
+        prompt = self._build_image_prompt(mode, parsed, subject_gender=subject_gender)
         payload = {
             "prompt": prompt,
             "input_urls": [source_image_url],

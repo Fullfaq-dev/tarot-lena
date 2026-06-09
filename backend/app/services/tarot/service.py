@@ -1,12 +1,16 @@
 import random
 from datetime import date
+from pathlib import Path
 
 from sqlalchemy import select
 
-from app.database.models import DailyPrediction, TarotReading, User
+from app.database.models import DailyPrediction, TarotCard, TarotReading, User
 from app.database.session import AsyncSessionLocal
 from app.core.config import get_settings
+from app.services.ai.context import ContextBuilder
+from app.services.ai.kie_client import KieClient
 from app.services.tarot.cards import FULL_DECK, storage_image_path
+from app.services.tarot.daily_card import pick_daily_card_with_ai
 
 READING_TYPES = {
     "day": 1,
@@ -34,6 +38,10 @@ READING_TYPE_LABELS = {
 
 
 class TarotService:
+    def __init__(self) -> None:
+        self.kie = KieClient()
+        self.context_builder = ContextBuilder()
+
     async def menu_text(self, selected: str) -> str:
         if selected == "История раскладов":
             return "История раскладов уже сохраняется. Скоро здесь будет список прошлых вопросов, карт и толкований."
@@ -56,17 +64,60 @@ class TarotService:
                 )
             )
             if existing:
-                return existing.text, None
+                card = await self._card_dict_from_prediction(session, existing)
+                return existing.text, card
 
-            card = self.draw_cards(1)[0]
-            text = (
-                f"Твоя карта дня — {card['name']}.\n\n"
-                f"В эзотерической интерпретации это может означать: {card['description']}.\n"
-                "Сегодня важно прислушиваться к знакам и не торопить то, что должно раскрыться естественно."
+            messages = await self.context_builder.build(session, user)
+            try:
+                picked, interpretation = await pick_daily_card_with_ai(messages, self.kie)
+            except ValueError:
+                picked = self.draw_cards(1)[0]
+                interpretation = (
+                    f"Сегодня с тобой **{picked['name']}**.\n\n"
+                    f"В эзотерической интерпретации это может означать: {picked['description']}.\n"
+                    "Прислушайся к знакам дня и не торопи то, что должно раскрыться естественно."
+                )
+
+            card = self._attach_image_path(picked)
+            text = interpretation.strip()
+            if card["name"] not in text:
+                text = f"**Карта дня — {card['name']}**\n\n{text}"
+
+            db_card = await session.scalar(select(TarotCard).where(TarotCard.slug == str(card["slug"])))
+            session.add(
+                DailyPrediction(
+                    user_id=user.id,
+                    prediction_date=date.today(),
+                    tarot_card_id=db_card.id if db_card else None,
+                    text=text,
+                )
             )
-            session.add(DailyPrediction(user_id=user.id, prediction_date=date.today(), text=text))
             await session.commit()
             return text, card
+
+    async def _card_dict_from_prediction(
+        self, session, prediction: DailyPrediction
+    ) -> dict | None:
+        if not prediction.tarot_card_id:
+            return None
+        db_card = await session.get(TarotCard, prediction.tarot_card_id)
+        if db_card is None:
+            return None
+        return self._attach_image_path(
+            {
+                "slug": db_card.slug,
+                "name": db_card.name,
+                "description": db_card.description,
+                "image_file": Path(db_card.image_path).name,
+            }
+        )
+
+    def _attach_image_path(self, card: dict) -> dict:
+        settings = get_settings()
+        return {
+            **card,
+            "image_path": storage_image_path(card, settings.tarot_cards_dir),
+        }
 
     async def create_reading(
         self,
