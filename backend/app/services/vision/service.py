@@ -137,7 +137,11 @@ class VisionService:
                 user_id=user.id,
                 role=MessageRole.USER.value,
                 content=question,
-                meta={"vision_mode": mode, "has_image": True},
+                meta={
+                    "vision_mode": mode,
+                    "has_image": True,
+                    "source_image_url": image_url,
+                },
             )
             profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
             subject_gender = profile.gender if profile else None
@@ -157,6 +161,8 @@ class VisionService:
                     context_messages=messages,
                     billing_mode=billing_mode,
                     with_infographic=False,
+                    source_image_url=image_url,
+                    vision_mode=mode,
                 )
                 return (
                     VisionResult(
@@ -188,6 +194,9 @@ class VisionService:
                 context_messages=messages,
                 billing_mode=billing_mode,
                 with_infographic=True,
+                source_image_url=image_url,
+                infographic_urls=infographic_urls,
+                vision_mode=mode,
             )
             return (
                 VisionResult(
@@ -203,42 +212,102 @@ class VisionService:
             return None, f"Не удалось обработать фото: {exc}"
 
     async def _analyze_custom(self, messages: list[dict]) -> str:
-        answer = await self.kie.chat_completion(messages)
+        answer = await self.kie.chat_completion(messages, reasoning_effort="medium")
         return answer.strip() or "Не удалось получить ответ по фото."
 
     async def _analyze_structured(self, messages: list[dict], mode: str) -> dict:
-        raw = await self.kie.chat_completion(messages)
+        raw = await self.kie.chat_completion(messages, reasoning_effort="medium")
         try:
             return self._coerce_structured_response(raw, mode)
         except ValueError:
-            retry_messages = [
-                {
-                    "role": "system",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                f"{_JSON_SYSTEM}\n"
-                                "Повтори ответ строго как JSON. Никакого текста вне JSON."
-                            ),
-                        }
-                    ],
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                f"Предыдущий ответ не удалось разобрать. Верни только JSON для режима {mode}.\n"
-                                f"Предыдущий ответ:\n{raw[:3000]}"
-                            ),
-                        }
-                    ],
-                },
-            ]
-            raw_retry = await self.kie.chat_completion(retry_messages)
+            pass
+
+        retry_messages = [
+            *messages,
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Предыдущий ответ не удалось разобрать. Верни ТОЛЬКО JSON для режима {mode}.\n"
+                            f"Предыдущий ответ:\n{raw[:2000]}"
+                        ),
+                    }
+                ],
+            },
+        ]
+        raw_retry = await self.kie.chat_completion(retry_messages, reasoning_effort="medium")
+        try:
             return self._coerce_structured_response(raw_retry, mode)
+        except ValueError:
+            pass
+
+        strict_messages = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": _JSON_SYSTEM}],
+            },
+            *[
+                m
+                for m in messages
+                if not (m.get("role") == "system" and isinstance(m.get("content"), list))
+            ],
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Верни только JSON-объект. Поле interpretation обязательно. "
+                            "Без markdown-обёртки и без текста вне JSON."
+                        ),
+                    }
+                ],
+            },
+        ]
+        raw_strict = await self.kie.chat_completion(strict_messages, reasoning_effort="medium")
+        try:
+            return self._coerce_structured_response(raw_strict, mode)
+        except ValueError:
+            return await self._fallback_plain_analysis(messages, mode)
+
+    async def _fallback_plain_analysis(self, messages: list[dict], mode: str) -> dict:
+        plain_messages: list[dict] = [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Ты эзотерический таролог в Telegram. "
+                            "Ответь по-русски 2-4 предложения с markdown **жирный** *курсив*. "
+                            "Только эзотерика, без медицины и оценки внешности."
+                        ),
+                    }
+                ],
+            }
+        ]
+        for item in messages:
+            if item.get("role") == "system":
+                continue
+            plain_messages.append(item)
+
+        interpretation = await self.kie.chat_completion(plain_messages, reasoning_effort="medium")
+        interpretation = interpretation.strip()
+        if not interpretation:
+            raise ValueError("Модель вернула неполный ответ")
+
+        if mode == "aura":
+            return {
+                "interpretation": interpretation,
+                **_DEFAULT_AURA,
+            }
+        return {
+            "interpretation": interpretation,
+            "palm_lines": _DEFAULT_PALM_LINES,
+            "image_summary": "Хиромантический разбор ладони",
+        }
 
     @staticmethod
     def _subject_gender_hint(gender: str | None) -> str:
@@ -318,21 +387,29 @@ class VisionService:
             "resolution": "1K",
             "nsfw_checker": False,
         }
-        response = await self.kie.create_media_task(
-            "gpt-image-2-image-to-image",
-            payload,
-            callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
-        )
-        task_id = response.get("data", {}).get("taskId")
-        if not task_id:
-            raise ValueError("Не удалось создать задачу генерации")
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = await self.kie.create_media_task(
+                    "gpt-image-2-image-to-image",
+                    payload,
+                    callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
+                )
+                task_id = response.get("data", {}).get("taskId")
+                if not task_id:
+                    raise ValueError("Не удалось создать задачу генерации")
 
-        await self.jobs.create_job(
-            f"{mode}_infographic",
-            {**payload, "provider_task_id": task_id},
-            user_id=user_id,
-        )
-        return await self._wait_for_result_urls(task_id)
+                await self.jobs.create_job(
+                    f"{mode}_infographic",
+                    {**payload, "provider_task_id": task_id},
+                    user_id=user_id,
+                )
+                return await self._wait_for_result_urls(task_id)
+            except Exception as exc:
+                last_error = exc
+                if attempt == 0:
+                    await asyncio.sleep(2.0)
+        raise last_error or ValueError("Генерация инфографики не удалась")
 
     async def _wait_for_result_urls(
         self,
@@ -378,11 +455,22 @@ class VisionService:
         context_messages: list[dict],
         billing_mode: str,
         with_infographic: bool,
+        source_image_url: str | None = None,
+        infographic_urls: list[str] | None = None,
+        vision_mode: str | None = None,
     ) -> dict:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.id == user_id))
             if user is None:
                 return {"charged_rub": "0", "billing_mode": billing_mode, "balance_after": 0}
+
+            extra_meta: dict = {}
+            if source_image_url:
+                extra_meta["source_image_url"] = source_image_url
+            if infographic_urls:
+                extra_meta["infographic_urls"] = infographic_urls
+            if vision_mode:
+                extra_meta["vision_mode"] = vision_mode
 
             usage = await self.billing.record_vision_usage(
                 session,
@@ -394,6 +482,29 @@ class VisionService:
                 api_usage=self.kie.last_usage,
                 billing_mode=billing_mode,
                 with_infographic=with_infographic,
+                extra_meta=extra_meta or None,
+            )
+
+            assistant_meta = {
+                "feature": feature,
+                "billing_mode": billing_mode,
+                "provider_cost_usd": str(usage.get("provider_cost_usd", 0)),
+                "charged_rub": str(usage.get("charged_rub", 0)),
+                **extra_meta,
+            }
+            if with_infographic:
+                assistant_meta["with_infographic"] = True
+
+            session.add(
+                Message(
+                    user_id=user.id,
+                    role=MessageRole.ASSISTANT.value,
+                    content=answer,
+                    tokens_input=int(usage.get("input_tokens") or 0),
+                    tokens_output=int(usage.get("output_tokens") or 0),
+                    cost_rub=usage.get("charged_rub") or 0,
+                    meta=assistant_meta,
+                )
             )
             await session.commit()
             return usage

@@ -490,6 +490,8 @@ async def user_billing(session: AsyncSession, user_id: str) -> dict[str, Any]:
                 "chat_charged_rub": _dec(Decimal(str(meta["chat_charged_rub"])))
                 if meta.get("chat_charged_rub") is not None
                 else None,
+                "source_image_url": meta.get("source_image_url"),
+                "infographic_urls": meta.get("infographic_urls") or [],
                 "created_at": _dt(u.created_at),
             }
         )

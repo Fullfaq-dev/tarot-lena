@@ -243,6 +243,7 @@ class BillingService:
         api_usage: dict[str, int] | None = None,
         billing_mode: str = "free",
         with_infographic: bool = False,
+        extra_meta: dict | None = None,
     ) -> dict:
         usage = await self.record_chat_usage(
             session,
@@ -253,6 +254,7 @@ class BillingService:
             context_messages=context_messages,
             api_usage=api_usage,
             billing_mode=billing_mode,
+            extra_meta=extra_meta,
         )
 
         if not with_infographic:

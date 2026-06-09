@@ -387,6 +387,27 @@ function UserDetailPage({ id }: { id: string }) {
                 )}
               </div>
               <div>{m.content}</div>
+              {m.meta?.source_image_url && (
+                <div className="vision-links">
+                  <a href={String(m.meta.source_image_url)} target="_blank" rel="noreferrer">
+                    <img
+                      src={String(m.meta.source_image_url)}
+                      alt="Фото пользователя"
+                      style={{ maxWidth: 140, borderRadius: 8, display: "block", marginBottom: 6 }}
+                    />
+                    📷 Открыть фото
+                  </a>
+                </div>
+              )}
+              {Array.isArray(m.meta?.infographic_urls) && m.meta.infographic_urls.length > 0 && (
+                <div className="vision-links">
+                  {(m.meta.infographic_urls as string[]).map((url, idx) => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer">
+                      🖼 Инфографика {idx + 1}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </section>
@@ -826,6 +847,7 @@ function UsageTable({ rows }: { rows: BillingUsageRow[] }) {
           {th("provider_cost_rub", "Себест. ₽")}
           {th("image_charged_rub", "Картинка ₽")}
           {th("charged_rub", "Списано")}
+          <th>Фото</th>
         </tr>
       </thead>
       <tbody>
@@ -841,6 +863,15 @@ function UsageTable({ rows }: { rows: BillingUsageRow[] }) {
             <td>{u.provider_cost_rub} ₽</td>
             <td>{u.with_infographic ? `${u.image_charged_rub ?? "0"} ₽` : "—"}</td>
             <td>{u.charged_rub} ₽</td>
+            <td className="vision-links-cell">
+              {u.source_image_url && (
+                <a href={u.source_image_url} target="_blank" rel="noreferrer">📷</a>
+              )}
+              {(u.infographic_urls ?? []).map((url, idx) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer">🖼{idx + 1}</a>
+              ))}
+              {!u.source_image_url && !(u.infographic_urls ?? []).length && "—"}
+            </td>
           </tr>
         ))}
       </tbody>

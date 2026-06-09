@@ -155,6 +155,8 @@ export type BillingUsageRow = {
   image_provider_cost_rub?: string | null;
   image_charged_rub?: string | null;
   chat_charged_rub?: string | null;
+  source_image_url?: string | null;
+  infographic_urls?: string[];
   created_at: string;
 };
 
