@@ -23,12 +23,10 @@ _MODE_LABELS = {
     "custom": "Фото",
 }
 
-_IMAGE_STYLE = (
-    "Minimal luxury infographic on pure white background. "
-    "Elegant thin golden serif typography for all Russian text labels. "
-    "Generous whitespace, clean editorial layout, soft semi-illustrated style. "
-    "Do NOT copy the reference photo 1:1. Transform and stylize the subject. "
-    "No dark background, no horror uncanny realism, no photographic skin pores."
+_IMAGE_BASE = (
+    "Do NOT copy the reference photo 1:1. Transform and stylize. "
+    "Pure white background, black-on-white design, thin elegant lines, rounded cards, "
+    "luxury minimal aesthetic, lots of whitespace. All text labels in Russian."
 )
 
 _JSON_SYSTEM = (
@@ -44,13 +42,13 @@ _JSON_SYSTEM = (
 
 _ANALYSIS_PROMPTS = {
     "aura": (
-        "Проанализируй фото как символическую ауру (развлекательная интерпретация, "
-        "без медицинских утверждений). Определи цвет ауры, заголовок и краткое описание для инфографики. "
-        "Учитывай пол пользователя из профиля, если он указан."
+        "Проанализируй фото как эзотерическую ауру (развлекательная интерпретация, без медицинских утверждений). "
+        "Определи цвет энергетического поля, заголовок и краткое описание для минималистичной инфографики. "
+        "Учитывай пол пользователя из профиля. Никакой оценки внешности — только эзотерика и символика."
     ),
     "palm": (
-        "Проанализируй фото ладони (развлекательная хиромантия, без медицинских утверждений). "
-        "Опиши линии сердца, ума, жизни и судьбы с краткими пояснениями на русском."
+        "Проанализируй фото ладони как эзотерическую хиромантию (развлекательно, без медицинских утверждений). "
+        "Опиши линии сердца, ума, жизни и судьбы с краткими пояснениями на русском для минималистичного гайда."
     ),
 }
 
@@ -264,15 +262,18 @@ class VisionService:
             aura_title = parsed.get("aura_title") or _DEFAULT_AURA["aura_title"]
             image_summary = parsed.get("image_summary") or _DEFAULT_AURA["image_summary"]
             return (
-                f"{_IMAGE_STYLE} "
-                "Create an aura reading card from the reference photo. "
-                "Show a soft semi-illustrated human silhouette based on the person's pose in the reference — "
-                "abstracted outline, not photorealistic, no detailed facial skin texture. "
+                f"{_IMAGE_BASE} "
+                "Create a clean, minimal, high-end esoteric aura reading report based on this photo. "
+                "Black-on-white design with thin lines, rounded cards, and a luxury aesthetic. "
+                "Include a simple contour line drawing of the person's silhouette from the reference — "
+                "not photorealistic, no detailed skin texture. "
                 f"{gender_hint} "
-                f"Surround the silhouette with a glowing aura in {aura_color} tones. "
-                f'Place Russian golden text on white background: title "{aura_title}", '
-                f'description "{image_summary}". '
-                "Elegant minimal poster, white background only."
+                "Focus on mystical aura reading only (energy field, aura colors, spiritual tone, inner strengths, "
+                "areas for inner growth, symbolic recommendations) — NOT beauty ratings, NOT attractiveness scores, "
+                "NOT medical claims. "
+                f"Show a soft glowing aura in {aura_color} tones around the contour. "
+                f'Russian text on the card: title "{aura_title}", summary "{image_summary}". '
+                "Visually refined, honest symbolic esoteric tone, small piece of art."
             )
 
         lines = parsed.get("palm_lines") or _DEFAULT_PALM_LINES
@@ -285,16 +286,18 @@ class VisionService:
         else:
             line_block = str(lines)
 
-        image_summary = parsed.get("image_summary") or "Хиромантический разбор ладони"
+        image_summary = parsed.get("image_summary") or "Эзотерический разбор ладони"
         return (
-            f"{_IMAGE_STYLE} "
-            "Create a palmistry reading card from the reference hand photo. "
-            "Keep a similar hand pose and proportions from the reference but render as a clean simplified "
-            "semi-illustrated drawing — not a photographic 1:1 copy, no creepy realism. "
-            "Overlay thin golden palmistry lines (heart, head, life, fate) with short Russian annotations: "
-            f"{line_block}. "
-            f'Add a short Russian golden caption: "{image_summary}". '
-            "White background only, educational minimal layout."
+            f"{_IMAGE_BASE} "
+            "Based on the reference hand photo, create a complete esoteric palm reading guide. "
+            "Analyze the palm in a clean minimalistic style: thin lines, rounded map cards, very attractive layout. "
+            "Focus on palmistry reading. Create a simple black and white outline of the main lines "
+            "(heart, head, life, fate) like a small piece of art. "
+            "Keep similar hand pose and proportions from the reference but stylized — "
+            "not a photographic 1:1 copy. "
+            f"Russian annotations for each line: {line_block}. "
+            f'Russian caption: "{image_summary}". '
+            "Entertainment-only esoteric palmistry, refined and elegant."
         )
 
     async def _generate_infographic(
