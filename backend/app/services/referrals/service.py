@@ -1,4 +1,6 @@
-from decimal import Decimal
+import re
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +12,31 @@ from app.services.billing.tokens import format_balance
 MIN_WITHDRAWAL_RUB = Decimal("3000")
 DEFAULT_REWARD_PERCENT = 40
 _RESERVED_WITHDRAWAL_STATUSES = ("pending", "approved")
+
+_TRC20_WALLET_RE = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
+
+
+def is_valid_trc20_wallet(wallet: str) -> bool:
+    return bool(_TRC20_WALLET_RE.match(wallet.strip()))
+
+
+def next_friday() -> date:
+    today = date.today()
+    days_ahead = (4 - today.weekday()) % 7  # 4 = пятница
+    if days_ahead == 0:
+        days_ahead = 7
+    return today + timedelta(days=days_ahead)
+
+
+def parse_withdrawal_amount(text: str) -> Decimal | None:
+    cleaned = text.strip().replace(" ", "").replace("₽", "").replace(",", ".")
+    try:
+        amount = Decimal(cleaned)
+    except (InvalidOperation, ValueError):
+        return None
+    if amount <= 0:
+        return None
+    return amount.quantize(Decimal("0.01"))
 
 
 class ReferralService:
@@ -106,16 +133,17 @@ class ReferralService:
             )
 
             return (
-                "Реферальная программа\n\n"
-                f"Твой баланс: {format_balance(stats['available'])}\n"
-                f"Всего начислено: {format_balance(stats['total_accrued'])}\n"
-                f"Приглашено друзей: {stats['referred_count']}\n"
-                f"Процент с оплат: {DEFAULT_REWARD_PERCENT}%\n\n"
+                "🤝 Реферальная программа\n\n"
+                f"💰 Доступно к выводу: {format_balance(stats['available'])}\n"
+                f"📈 Всего заработано: {format_balance(stats['total_accrued'])}\n"
+                f"👯 Приглашено друзей: {stats['referred_count']}\n\n"
                 "Как это работает:\n"
-                "• отправь ссылку другу\n"
-                "• когда он пополнит баланс или оформит подписку — тебе начисляется 40% от суммы\n"
-                f"• вывод от {format_balance(MIN_WITHDRAWAL_RUB)} — заявка уходит админу\n\n"
-                f"Твоя ссылка:\n{link}"
+                f"1️⃣ Отправь подруге свою ссылку\n"
+                f"2️⃣ Она пополняет баланс или оформляет подписку\n"
+                f"3️⃣ Тебе сразу падает {DEFAULT_REWARD_PERCENT}% от каждой её оплаты\n\n"
+                f"💸 Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} на USDT (сеть TRC-20). "
+                "Выплаты — каждую пятницу.\n\n"
+                f"🔗 Твоя ссылка:\n{link}"
             )
 
     async def request_withdrawal(
@@ -148,29 +176,48 @@ class ReferralService:
         session.add(request)
         return request
 
-    async def request_withdrawal_for_telegram(
+    async def create_withdrawal_for_telegram(
         self,
         telegram_id: int,
         *,
-        payout_details_text: str,
+        amount: Decimal,
+        wallet: str,
     ) -> str:
-        details = {"text": payout_details_text.strip()}
-        if not details["text"]:
-            raise ValueError("Напиши реквизиты для вывода.")
+        wallet = wallet.strip()
+        if not is_valid_trc20_wallet(wallet):
+            raise ValueError(
+                "Это не похоже на USDT-кошелёк сети TRC-20.\n"
+                "Адрес начинается с «T» и состоит из 34 символов, например:\n"
+                "TXk3…\n\nПроверь и пришли ещё раз."
+            )
 
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
                 return "Сначала нажми /start, чтобы я создала твой профиль."
 
-            stats = await self.get_stats(session, user)
-            amount = stats["available"]
-            await self.request_withdrawal(session, user, amount, details)
-            await session.commit()
-            return (
-                f"Заявка на вывод {format_balance(amount)} принята.\n"
-                "Админ обработает её вручную — обычно в течение 1–3 рабочих дней."
+            await self.request_withdrawal(
+                session,
+                user,
+                amount,
+                {"usdt_trc20": wallet, "network": "TRC-20"},
             )
+            user.usdt_trc20_wallet = wallet
+            await session.commit()
+
+            payout_date = next_friday().strftime("%d.%m")
+            short_wallet = f"{wallet[:8]}…{wallet[-6:]}"
+            return (
+                f"✅ Заявка на вывод {format_balance(amount)} принята!\n\n"
+                f"💼 Кошелёк: {short_wallet} (USDT, TRC-20)\n"
+                f"📅 Средства поступят в ближайшую пятницу — {payout_date}.\n\n"
+                "Сумма уже зарезервирована и списана с реферального баланса."
+            )
+
+    async def get_saved_wallet(self, telegram_id: int) -> str | None:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            return user.usdt_trc20_wallet if user else None
 
     @staticmethod
     def _parse_referrer_telegram_id(start_code: str) -> int | None:

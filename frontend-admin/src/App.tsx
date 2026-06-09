@@ -668,14 +668,19 @@ function ReferralsPage() {
       <section className="panel">
         <h2>Заявки на вывод</h2>
         <table>
-          <thead><tr><th>Пользователь</th><th>Сумма</th><th>Статус</th><th>Реквизиты</th><th></th></tr></thead>
+          <thead><tr><th>Пользователь</th><th>Сумма</th><th>Статус</th><th>Кошелёк USDT (TRC-20)</th><th>Дата</th><th></th></tr></thead>
           <tbody>
             {withdrawals.map((w) => (
               <tr key={w.id}>
                 <td>{w.user_name ?? w.telegram_id}</td>
                 <td>{w.amount_rub} ₽</td>
                 <td><span className={`badge ${w.status === "pending" ? "yellow" : w.status === "approved" ? "green" : "gray"}`}>{w.status}</span></td>
-                <td><code>{JSON.stringify(w.payout_details)}</code></td>
+                <td>
+                  {typeof w.payout_details?.usdt_trc20 === "string"
+                    ? <code>{w.payout_details.usdt_trc20 as string}</code>
+                    : <code>{JSON.stringify(w.payout_details)}</code>}
+                </td>
+                <td>{new Date(w.created_at).toLocaleDateString("ru-RU")}</td>
                 <td>
                   {w.status === "pending" && (
                     <>

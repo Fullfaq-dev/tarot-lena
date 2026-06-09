@@ -7,4 +7,5 @@ class BotStates(StatesGroup):
     waiting_profile_field = State()
     waiting_photo_mode = State()
     waiting_photo_custom_request = State()
-    waiting_referral_withdrawal = State()
+    waiting_withdrawal_amount = State()
+    waiting_withdrawal_wallet = State()

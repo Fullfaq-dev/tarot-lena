@@ -339,7 +339,7 @@ class VisionService:
         task_id: str,
         *,
         timeout_sec: int = 300,
-        interval_sec: float = 3.0,
+        interval_sec: float = 2.0,
     ) -> list[str]:
         if task_id.startswith("local_"):
             return []

@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.bot.helpers import safe_callback_answer, safe_edit
 from app.bot.keyboards import (
     MAIN_MENU_TEXT,
+    MENU_ACTIONS,
     MENU_TEXTS,
     ONBOARDING_CHOICES,
     READING_LABEL_TO_TYPE,
@@ -31,6 +32,7 @@ from app.bot.keyboards import (
     inline_readings_menu,
     inline_referral_menu,
     inline_settings_menu,
+    inline_withdraw_wallet_menu,
     is_balance_button,
     main_menu,
     onboarding_keyboard,
@@ -47,7 +49,12 @@ from app.services.billing.tokens import format_balance
 from app.services.billing.service import BillingService
 from app.services.onboarding.service import ONBOARDING_STEPS, OnboardingService
 from app.services.profile.service import ProfileService
-from app.services.referrals.service import MIN_WITHDRAWAL_RUB, ReferralService
+from app.services.referrals.service import (
+    MIN_WITHDRAWAL_RUB,
+    ReferralService,
+    is_valid_trc20_wallet,
+    parse_withdrawal_amount,
+)
 from app.services.settings.service import SettingsService
 from app.services.tarot.service import READING_TYPES, TarotService
 from app.services.vision.service import VisionService
@@ -92,15 +99,6 @@ async def _open_billing(message: Message, *, edit_message: Message | None = None
         await message.answer(text, reply_markup=markup, parse_mode=None)
 
 
-async def _referral_panel_markup(telegram_id: int) -> InlineKeyboardMarkup:
-    async with AsyncSessionLocal() as session:
-        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
-        if user is None:
-            return inline_referral_menu(can_withdraw=False)
-        stats = await ReferralService().get_stats(session, user)
-        return inline_referral_menu(can_withdraw=stats["available"] >= MIN_WITHDRAWAL_RUB)
-
-
 async def _open_referrals(
     message: Message,
     *,
@@ -112,7 +110,7 @@ async def _open_referrals(
         return
     bot_user = await message.bot.get_me()
     text = await ReferralService().panel_text(actor_id, bot_username=bot_user.username)
-    markup = await _referral_panel_markup(actor_id)
+    markup = inline_referral_menu()
     if edit_message is not None:
         await safe_edit(edit_message, text, markup)
     else:
@@ -313,7 +311,7 @@ async def _process_photo_request(
         return
 
     settings = get_settings()
-    waiting_msg = await message.answer("Смотрю на фото и готовлю ответ…")
+    waiting_msg = await message.answer("🔍 Смотрю на фото и готовлю разбор… Обычно это занимает около минуты.")
     if settings.telegram_placeholder_sticker_id:
         try:
             await message.answer_sticker(settings.telegram_placeholder_sticker_id)
@@ -633,33 +631,118 @@ async def referral_share_callback(callback: CallbackQuery) -> None:
     bot_user = await callback.message.bot.get_me()
     link = ReferralService().build_referral_link(bot_user.username, callback.from_user.id)
     await callback.message.answer(
-        f"Твоя реферальная ссылка:\n{link}\n\n"
-        "Перешли её другу — получишь 40% с каждой его оплаты.",
+        f"🔗 Твоя личная ссылка:\n{link}\n\n"
+        "Перешли её подруге — с каждой её оплаты тебе будет приходить 40% на реферальный баланс. 💰",
     )
+
+
+async def _referral_available(telegram_id: int) -> Decimal | None:
+    async with AsyncSessionLocal() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        if user is None:
+            return None
+        stats = await ReferralService().get_stats(session, user)
+        return stats["available"]
 
 
 @router.callback_query(F.data == "ref:withdraw")
 async def referral_withdraw_callback(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
-    available = Decimal("0")
-    async with AsyncSessionLocal() as session:
-        user = await session.scalar(select(User).where(User.telegram_id == callback.from_user.id))
-        if user is None:
-            await callback.message.answer("Сначала нажми /start.")
-            return
-        stats = await ReferralService().get_stats(session, user)
-        available = stats["available"]
-        if available < MIN_WITHDRAWAL_RUB:
-            await callback.message.answer(
-                f"Для вывода нужно минимум {format_balance(MIN_WITHDRAWAL_RUB)}. "
-                f"Сейчас доступно: {format_balance(available)}."
-            )
-            return
+    available = await _referral_available(callback.from_user.id)
+    if available is None:
+        await callback.message.answer("Сначала нажми /start.")
+        return
+    if available < MIN_WITHDRAWAL_RUB:
+        await callback.message.answer(
+            f"💸 Вывод доступен от {format_balance(MIN_WITHDRAWAL_RUB)}.\n"
+            f"Сейчас на балансе: {format_balance(available)}.\n\n"
+            "Приглашай подруг по своей ссылке — 40% с каждой их оплаты твои. ✨"
+        )
+        return
 
-    await state.set_state(BotStates.waiting_referral_withdrawal)
+    await state.set_state(BotStates.waiting_withdrawal_amount)
     await callback.message.answer(
-        f"Доступно к выводу: {format_balance(available)}.\n\n"
-        "Напиши реквизиты одним сообщением: карта, СБП, USDT или другой способ."
+        f"💰 Доступно к выводу: {format_balance(available)}\n\n"
+        f"Напиши сумму в рублях, которую хочешь вывести (от {format_balance(MIN_WITHDRAWAL_RUB)}), "
+        "или нажми кнопку ниже.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"💸 Вывести всё ({format_balance(available)})",
+                        callback_data="ref:amount_all",
+                    )
+                ],
+                [InlineKeyboardButton(text="🏠 На главную", callback_data="nav:back:main")],
+            ]
+        ),
+    )
+
+
+async def _ask_withdrawal_wallet(message: Message, state: FSMContext, telegram_id: int) -> None:
+    saved_wallet = await ReferralService().get_saved_wallet(telegram_id)
+    if saved_wallet:
+        await state.set_state(BotStates.waiting_withdrawal_wallet)
+        await message.answer(
+            "💼 Куда отправить USDT (сеть TRC-20)?\n\n"
+            f"У тебя сохранён кошелёк: {saved_wallet}",
+            reply_markup=inline_withdraw_wallet_menu(saved_wallet),
+        )
+        return
+    await state.set_state(BotStates.waiting_withdrawal_wallet)
+    await message.answer(
+        "💼 Пришли адрес своего USDT-кошелька в сети TRC-20.\n\n"
+        "Он начинается с буквы «T» и состоит из 34 символов. "
+        "Я сохраню его — в следующий раз вводить не придётся."
+    )
+
+
+async def _finish_withdrawal(
+    message: Message, state: FSMContext, telegram_id: int, wallet: str
+) -> None:
+    data = await state.get_data()
+    amount = Decimal(data.get("withdrawal_amount", "0"))
+    try:
+        reply = await ReferralService().create_withdrawal_for_telegram(
+            telegram_id, amount=amount, wallet=wallet
+        )
+    except ValueError as exc:
+        await message.answer(str(exc))
+        return
+    await state.clear()
+    await message.answer(reply, reply_markup=await _user_main_menu(telegram_id))
+    await _track(None, "bot.referral_withdraw", {"telegram_id": telegram_id, "amount": str(amount)})
+
+
+@router.callback_query(F.data == "ref:amount_all")
+async def referral_amount_all_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    available = await _referral_available(callback.from_user.id)
+    if available is None or available < MIN_WITHDRAWAL_RUB:
+        await state.clear()
+        await callback.message.answer("Недостаточно средств для вывода.")
+        return
+    await state.update_data(withdrawal_amount=str(available))
+    await _ask_withdrawal_wallet(callback.message, state, callback.from_user.id)
+
+
+@router.callback_query(F.data == "ref:wallet_saved")
+async def referral_wallet_saved_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    wallet = await ReferralService().get_saved_wallet(callback.from_user.id)
+    if not wallet:
+        await callback.message.answer("Сохранённый кошелёк не найден. Пришли адрес сообщением.")
+        return
+    await _finish_withdrawal(callback.message, state, callback.from_user.id, wallet)
+
+
+@router.callback_query(F.data == "ref:wallet_new")
+async def referral_wallet_new_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.set_state(BotStates.waiting_withdrawal_wallet)
+    await callback.message.answer(
+        "✏️ Пришли новый адрес USDT-кошелька (сеть TRC-20).\n"
+        "Он начинается с «T» и состоит из 34 символов."
     )
 
 
@@ -945,7 +1028,7 @@ async def photo_message(message: Message, state: FSMContext) -> None:
         await state.set_state(BotStates.waiting_photo_mode)
         await state.update_data(photo_file_id=file_id)
         await message.answer(
-            "Фото получила. Что хочешь узнать по этому снимку?",
+            "📸 Фото получила! Что хочешь узнать по этому снимку?",
             reply_markup=inline_photo_mode_menu(),
         )
     except Exception as exc:
@@ -993,21 +1076,37 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             await message.answer("Выбери вариант анализа кнопками под последним фото.")
             return
 
-        if current_state == BotStates.waiting_referral_withdrawal.state:
-            await state.clear()
-            if not text:
-                await message.answer("Напиши реквизиты для вывода одним сообщением.")
+        if current_state == BotStates.waiting_withdrawal_amount.state:
+            amount = parse_withdrawal_amount(text or "")
+            if amount is None:
+                await message.answer("Напиши сумму числом, например: 3500")
                 return
-            try:
-                reply = await ReferralService().request_withdrawal_for_telegram(
-                    message.from_user.id,
-                    payout_details_text=text,
+            if amount < MIN_WITHDRAWAL_RUB:
+                await message.answer(
+                    f"Минимальная сумма вывода — {format_balance(MIN_WITHDRAWAL_RUB)}. "
+                    "Напиши сумму побольше 🙂"
                 )
-            except ValueError as exc:
-                await message.answer(str(exc))
                 return
-            await message.answer(reply, reply_markup=await _user_main_menu(message.from_user.id))
-            await _track(None, "bot.referral_withdraw", {"telegram_id": message.from_user.id})
+            available = await _referral_available(message.from_user.id)
+            if available is None or amount > available:
+                await message.answer(
+                    f"Недостаточно средств. Доступно: {format_balance(available or Decimal('0'))}. "
+                    "Напиши сумму поменьше."
+                )
+                return
+            await state.update_data(withdrawal_amount=str(amount))
+            await _ask_withdrawal_wallet(message, state, message.from_user.id)
+            return
+
+        if current_state == BotStates.waiting_withdrawal_wallet.state:
+            wallet = (text or "").strip()
+            if not is_valid_trc20_wallet(wallet):
+                await message.answer(
+                    "Это не похоже на адрес USDT TRC-20. 🤔\n"
+                    "Он начинается с «T» и состоит из 34 символов. Проверь и пришли ещё раз."
+                )
+                return
+            await _finish_withdrawal(message, state, message.from_user.id, wallet)
             return
 
         if current_state == BotStates.waiting_photo_custom_request.state:
@@ -1072,18 +1171,19 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
 async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> None:
     tarot = TarotService()
     await state.clear()
+    action = MENU_ACTIONS.get(text)
 
-    if text == "Карта дня":
+    if action == "daily":
         await _send_daily_card(message, message.from_user.id)
         await _track(None, "bot.daily_card", {"telegram_id": message.from_user.id})
         return
 
-    if text == "Сделать расклад":
+    if action == "readings":
         await message.answer(READINGS_MENU_TEXT, reply_markup=inline_readings_menu())
         await _track(None, "bot.menu", {"item": text})
         return
 
-    if text == "История раскладов":
+    if action == "history":
         history_text, readings = await tarot.history_entries(message.from_user.id)
         await message.answer(
             history_text,
@@ -1093,17 +1193,17 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         await _track(None, "bot.menu", {"item": text})
         return
 
-    if text == "Мой профиль":
+    if action == "profile":
         await message.answer(await tarot.profile_extended_for_telegram(message.from_user.id), parse_mode=None)
         await _track(None, "bot.menu", {"item": text})
         return
 
-    if text == "Подписка и баланс":
+    if action == "billing":
         await _open_billing(message)
         await _track(None, "bot.menu", {"item": text})
         return
 
-    if text == "Настройки":
+    if action == "settings":
         await message.answer(
             await SettingsService().get_panel_text(message.from_user.id),
             reply_markup=inline_settings_menu(),

@@ -314,15 +314,15 @@ class BillingService:
 
             ref_stats = await ReferralService().get_stats(session, user)
             return (
-                "Подписка и баланс\n\n"
-                f"Тариф: {tier_label}\n"
-                f"Баланс: {format_balance(user.balance_rub)}\n"
-                f"Реферальный баланс: {format_balance(ref_stats['available'])}\n"
-                f"Бесплатных сообщений: {free_left} из {FREE_CHAT_MESSAGES_PER_MONTH}\n"
-                f"Бесплатных раскладов: {readings_left} из 3\n\n"
-                f"Plus — {format_balance(SUBSCRIPTION_PRICES_RUB['plus'])}/мес, безлимитный чат.\n"
-                f"Premium — {format_balance(SUBSCRIPTION_PRICES_RUB['premium'])}/мес, безлимитный чат и голосовые ответы.\n\n"
-                f"Рефералка: 40% с оплат приглашённых. Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} — кнопка «Рефералка»."
+                "💳 Подписка и баланс\n\n"
+                f"⭐ Тариф: {tier_label}\n"
+                f"💰 Баланс: {format_balance(user.balance_rub)}\n"
+                f"🤝 Реферальный баланс: {format_balance(ref_stats['available'])}\n"
+                f"💬 Бесплатных сообщений: {free_left} из {FREE_CHAT_MESSAGES_PER_MONTH}\n"
+                f"🔮 Бесплатных раскладов: {readings_left} из 3\n\n"
+                f"✨ Plus — {format_balance(SUBSCRIPTION_PRICES_RUB['plus'])}/мес: безлимитный чат.\n"
+                f"👑 Premium — {format_balance(SUBSCRIPTION_PRICES_RUB['premium'])}/мес: безлимитный чат и голосовые ответы.\n\n"
+                f"🤝 Приглашай подруг и получай 40% с их оплат. Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} в USDT."
             )
 
     async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> str:

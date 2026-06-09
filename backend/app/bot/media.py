@@ -3,7 +3,7 @@ import logging
 import httpx
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import BufferedInputFile, Message
+from aiogram.types import BufferedInputFile, Message, URLInputFile
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,35 @@ def truncate_caption(text: str, limit: int = TELEGRAM_CAPTION_LIMIT) -> str:
     return text[: limit - 1] + "…"
 
 
+async def _try_send(
+    message: Message,
+    photo,
+    *,
+    caption: str | None,
+    caption_plain: str | None,
+    parse_mode: ParseMode | None,
+    reply_markup,
+) -> bool:
+    try:
+        await message.answer_photo(
+            photo,
+            caption=caption,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+        return True
+    except TelegramBadRequest as exc:
+        if parse_mode and caption_plain and "parse" in str(exc).lower():
+            await message.answer_photo(
+                photo,
+                caption=truncate_caption(caption_plain),
+                parse_mode=None,
+                reply_markup=reply_markup,
+            )
+            return True
+        raise
+
+
 async def send_photo_from_url(
     message: Message,
     url: str,
@@ -25,6 +54,23 @@ async def send_photo_from_url(
     parse_mode: ParseMode | None = None,
     reply_markup=None,
 ) -> bool:
+    if caption:
+        caption = truncate_caption(caption)
+
+    # Сначала отдаём URL напрямую — Telegram скачает сам, это заметно быстрее,
+    # чем гонять файл через наш сервер.
+    try:
+        return await _try_send(
+            message,
+            URLInputFile(url, timeout=60),
+            caption=caption,
+            caption_plain=caption_plain,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
+    except Exception as exc:
+        logger.info("Direct URL send failed, falling back to download: %s", exc)
+
     try:
         async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
             response = await client.get(url)
@@ -32,26 +78,14 @@ async def send_photo_from_url(
             content_type = (response.headers.get("content-type") or "").lower()
             ext = ".png" if "png" in content_type else ".jpg"
             photo = BufferedInputFile(response.content, filename=f"image{ext}")
-            if caption:
-                caption = truncate_caption(caption)
-            try:
-                await message.answer_photo(
-                    photo,
-                    caption=caption,
-                    parse_mode=parse_mode,
-                    reply_markup=reply_markup,
-                )
-            except TelegramBadRequest as exc:
-                if parse_mode and caption_plain:
-                    await message.answer_photo(
-                        photo,
-                        caption=truncate_caption(caption_plain),
-                        parse_mode=None,
-                        reply_markup=reply_markup,
-                    )
-                else:
-                    raise exc
-            return True
+            return await _try_send(
+                message,
+                photo,
+                caption=caption,
+                caption_plain=caption_plain,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+            )
     except Exception as exc:
         logger.warning("Failed to download/send photo url=%s: %s", url, exc)
         return False
