@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import traceback
 from decimal import Decimal
 
@@ -34,7 +35,7 @@ from app.bot.keyboards import (
     profile_field_keyboard,
 )
 from app.bot.states import BotStates
-from app.bot.streaming import stream_to_message
+from app.bot.streaming import chat_action_loop, stream_to_message, typing_loop
 from app.database.models import Subscription, User
 from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
@@ -49,10 +50,23 @@ from app.services.tarot.service import READING_TYPES, TarotService
 from app.services.vision.service import VisionService
 
 router = Router()
+logger = logging.getLogger(__name__)
+
+
+def _fire_and_forget(coro) -> None:
+    task = asyncio.create_task(coro)
+
+    def _log_failure(done_task: asyncio.Task) -> None:
+        try:
+            done_task.result()
+        except Exception:
+            logger.exception("Background bot task failed")
+
+    task.add_done_callback(_log_failure)
 
 
 async def _track(user_id: str | None, event: str, payload: dict | None = None) -> None:
-    asyncio.create_task(track_event(event, user_id=user_id, payload=payload))
+    _fire_and_forget(track_event(event, user_id=user_id, payload=payload))
 
 
 async def _get_user_id(telegram_id: int) -> str | None:
@@ -222,16 +236,47 @@ async def _process_photo_request(
         except Exception:
             pass
 
-    if mode in {"aura", "palm"}:
-        await message.bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_PHOTO)
-
-    result, error = await VisionService().process_photo(
-        message.bot,
-        actor,
-        file_id=file_id,
-        mode=mode,
-        custom_text=custom_text,
+    interpretation_sent = False
+    action_stop = asyncio.Event()
+    action_task = asyncio.create_task(
+        typing_loop(message.bot, message.chat.id, action_stop)
     )
+
+    async def on_analysis_complete(interpretation: str) -> None:
+        nonlocal interpretation_sent, action_task, action_stop
+        interpretation_sent = True
+        await message.answer(
+            to_telegram_html(interpretation),
+            parse_mode=ParseMode.HTML,
+        )
+        try:
+            await waiting_msg.edit_text("Рисую инфографику ✨")
+        except Exception:
+            pass
+        action_stop.set()
+        await action_task
+        action_stop = asyncio.Event()
+        action_task = asyncio.create_task(
+            chat_action_loop(
+                message.bot,
+                message.chat.id,
+                ChatAction.UPLOAD_PHOTO,
+                action_stop,
+            )
+        )
+
+    try:
+        result, error = await VisionService().process_photo(
+            message.bot,
+            actor,
+            file_id=file_id,
+            mode=mode,
+            custom_text=custom_text,
+            on_analysis_complete=on_analysis_complete if mode in {"aura", "palm"} else None,
+        )
+    finally:
+        action_stop.set()
+        await action_task
 
     try:
         await waiting_msg.delete()
@@ -246,7 +291,8 @@ async def _process_photo_request(
     interpretation_text = to_telegram_html(result.interpretation)
 
     if result.infographic_urls:
-        await message.answer(interpretation_text, parse_mode=ParseMode.HTML)
+        if not interpretation_sent:
+            await message.answer(interpretation_text, parse_mode=ParseMode.HTML)
         caption = "Инфографика готова ✨"
         sent = False
         for url in result.infographic_urls:
@@ -254,14 +300,15 @@ async def _process_photo_request(
                 await message.answer_photo(url, caption=caption, reply_markup=menu_markup)
                 sent = True
                 break
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to send infographic url=%s: %s", url, exc)
                 continue
         if not sent:
             await message.answer(
                 "Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.",
                 reply_markup=menu_markup,
             )
-    else:
+    elif not interpretation_sent:
         await message.answer(
             interpretation_text,
             parse_mode=ParseMode.HTML,
@@ -637,7 +684,7 @@ async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.message.answer("Неизвестный режим анализа.")
         return
 
-    asyncio.create_task(
+    _fire_and_forget(
         _process_photo_request_safe(
             callback.message,
             state,
@@ -727,7 +774,7 @@ async def photo_message(message: Message, state: FSMContext) -> None:
         caption = (message.caption or "").strip()
 
         if caption:
-            asyncio.create_task(
+            _fire_and_forget(
                 _process_photo_request_safe(
                     message,
                     state,
@@ -799,7 +846,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             if not text:
                 await message.answer("Напиши, что хочешь узнать по фото.")
                 return
-            asyncio.create_task(
+            _fire_and_forget(
                 _process_photo_request_safe(
                     message,
                     state,

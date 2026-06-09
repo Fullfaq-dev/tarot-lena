@@ -18,13 +18,22 @@ def truncate_text(text: str, limit: int = TELEGRAM_MESSAGE_LIMIT) -> str:
     return text[: limit - 1] + "…"
 
 
-async def typing_loop(bot: Bot, chat_id: int, stop_event: asyncio.Event) -> None:
+async def chat_action_loop(
+    bot: Bot,
+    chat_id: int,
+    action: ChatAction,
+    stop_event: asyncio.Event,
+) -> None:
     while not stop_event.is_set():
-        await bot.send_chat_action(chat_id, ChatAction.TYPING)
+        await bot.send_chat_action(chat_id, action)
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=4.0)
         except TimeoutError:
             continue
+
+
+async def typing_loop(bot: Bot, chat_id: int, stop_event: asyncio.Event) -> None:
+    await chat_action_loop(bot, chat_id, ChatAction.TYPING, stop_event)
 
 
 async def _send_formatted_text(message: Message, text: str, *, edit: bool) -> None:

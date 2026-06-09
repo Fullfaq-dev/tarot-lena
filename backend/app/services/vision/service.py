@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from aiogram import Bot
@@ -82,6 +83,7 @@ class VisionService:
         file_id: str,
         mode: str,
         custom_text: str = "",
+        on_analysis_complete: Callable[[str], Awaitable[None]] | None = None,
     ) -> tuple[VisionResult | None, str | None]:
         if telegram_user is None:
             return None, "Не получилось определить профиль Telegram."
@@ -159,6 +161,8 @@ class VisionService:
 
             parsed = await self._analyze_structured(messages, mode)
             interpretation = parsed["interpretation"]
+            if on_analysis_complete is not None:
+                await on_analysis_complete(interpretation)
             infographic_urls = await self._generate_infographic(
                 user_id=user.id,
                 image_prompt=parsed["image_prompt"],
