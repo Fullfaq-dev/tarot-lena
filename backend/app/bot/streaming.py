@@ -27,18 +27,27 @@ async def typing_loop(bot: Bot, chat_id: int, stop_event: asyncio.Event) -> None
             continue
 
 
-async def _edit_stream_message(message: Message, text: str) -> None:
+async def _send_formatted_text(message: Message, text: str, *, edit: bool) -> None:
     if not text.strip():
         return
     html = to_telegram_html(text)
+    payload = truncate_text(html)
     try:
-        await message.edit_text(truncate_text(html), parse_mode=ParseMode.HTML)
+        if edit:
+            await message.edit_text(payload, parse_mode=ParseMode.HTML)
+        else:
+            await message.answer(payload, parse_mode=ParseMode.HTML)
     except TelegramBadRequest as exc:
-        if "message is not modified" not in str(exc).lower():
-            try:
-                await message.edit_text(truncate_text(text), parse_mode=None)
-            except TelegramBadRequest:
-                pass
+        if edit and "message is not modified" in str(exc).lower():
+            return
+        plain = truncate_text(text)
+        try:
+            if edit:
+                await message.edit_text(plain, parse_mode=None)
+            else:
+                await message.answer(plain, parse_mode=None)
+        except TelegramBadRequest:
+            pass
 
 
 async def stream_to_message(
@@ -62,13 +71,14 @@ async def stream_to_message(
             now = time.monotonic()
             body = f"{prefix}{full}"
             if sent is None:
-                sent = await anchor.answer(
-                    truncate_text(to_telegram_html(body)),
-                    parse_mode=ParseMode.HTML,
-                )
+                sent = await anchor.answer(truncate_text(body), parse_mode=None)
                 last_edit = now
             elif now - last_edit >= min_edit_interval:
-                await _edit_stream_message(sent, body)
+                try:
+                    await sent.edit_text(truncate_text(body), parse_mode=None)
+                except TelegramBadRequest as exc:
+                    if "message is not modified" not in str(exc).lower():
+                        pass
                 last_edit = now
     finally:
         stop_typing.set()
@@ -77,7 +87,7 @@ async def stream_to_message(
     final = full.strip() or "Не удалось получить ответ. Попробуй ещё раз."
     body = f"{prefix}{final}"
     if sent is None:
-        await anchor.answer(truncate_text(to_telegram_html(body)), parse_mode=ParseMode.HTML)
+        await _send_formatted_text(anchor, body, edit=False)
     else:
-        await _edit_stream_message(sent, body)
+        await _send_formatted_text(sent, body, edit=True)
     return final

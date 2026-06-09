@@ -56,7 +56,10 @@ class KieClient:
                             ),
                         }
 
-                    delta = event.get("choices", [{}])[0].get("delta", {}).get("content")
+                    choices = event.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta", {}).get("content")
                     if delta:
                         yield delta
 
@@ -87,7 +90,10 @@ class KieClient:
             "input_tokens": int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
             "output_tokens": int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
         }
-        return data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
+        choices = data.get("choices") or []
+        if not choices:
+            return ""
+        return choices[0].get("message", {}).get("content", "") or ""
 
     async def get_task_record(self, task_id: str) -> dict:
         if self.settings.kie_api_key == "replace-me":

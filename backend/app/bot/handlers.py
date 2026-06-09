@@ -1,14 +1,16 @@
 import asyncio
+import traceback
 from decimal import Decimal
 
 from aiogram import Dispatcher, F, Router
-from aiogram.enums import ChatAction
+from aiogram.enums import ChatAction, ParseMode
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 
 from app.bot.cards_media import send_drawn_cards
+from app.bot.formatting import to_telegram_html
 from app.core.config import get_settings
 from app.bot.helpers import safe_edit
 from app.bot.keyboards import (
@@ -62,13 +64,6 @@ async def _get_user_id(telegram_id: int) -> str | None:
 async def _user_main_menu(telegram_id: int):
     balance = await BillingService().get_balance_label(telegram_id)
     return main_menu(balance)
-
-
-async def _refresh_main_menu(message: Message) -> None:
-    try:
-        await message.answer("\u2063", reply_markup=await _user_main_menu(message.from_user.id))
-    except Exception:
-        pass
 
 
 async def _open_billing(message: Message, *, edit_message: Message | None = None) -> None:
@@ -130,7 +125,12 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
         feature="tarot_reading",
         billing_mode=billing_mode,
     )
-    await _notify_billing(message, billing_mode, usage)
+    await _notify_billing(
+        message,
+        billing_mode,
+        usage,
+        reply_markup=await _user_main_menu(message.from_user.id),
+    )
     await tarot.create_reading(
         user_id,
         reading_type,
@@ -138,11 +138,16 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
         cards=cards,
         interpretation=interpretation,
     )
-    await _refresh_main_menu(message)
     await _track(user_id, "bot.reading", {"reading_type": reading_type})
 
 
-async def _notify_billing(message: Message, billing_mode: str, usage: dict) -> None:
+async def _notify_billing(
+    message: Message,
+    billing_mode: str,
+    usage: dict,
+    *,
+    reply_markup=None,
+) -> bool:
     charged = Decimal(str(usage.get("charged_rub", "0")))
     image_charged = Decimal(str(usage.get("image_charged_rub", "0")))
     if charged > 0:
@@ -150,15 +155,18 @@ async def _notify_billing(message: Message, billing_mode: str, usage: dict) -> N
         if image_charged > 0:
             parts.append(f"включая инфографику {image_charged} ₽")
         parts.append(f"Остаток на балансе: {format_balance(usage.get('balance_after'))}.")
-        await message.answer(" ".join(parts))
-        return
+        await message.answer(" ".join(parts), reply_markup=reply_markup)
+        return True
     if billing_mode == "free" and free_messages_left(
         (await _get_user_free_used(message.from_user.id))
     ) == 0:
         await message.answer(
             f"Это было последнее бесплатное сообщение в этом месяце ({FREE_CHAT_MESSAGES_PER_MONTH}). "
-            "Дальше ответы списываются с баланса — пополни его в разделе «Баланс»."
+            "Дальше ответы списываются с баланса — пополни его в разделе «Баланс».",
+            reply_markup=reply_markup,
         )
+        return True
+    return False
 
 
 async def _process_photo_request(
@@ -203,23 +211,38 @@ async def _process_photo_request(
         await message.answer(error)
         return
 
-    await message.answer(result.interpretation, parse_mode=None)
+    menu_markup = await _user_main_menu(message.from_user.id)
+    interpretation_text = to_telegram_html(result.interpretation)
 
     if result.infographic_urls:
+        await message.answer(interpretation_text, parse_mode=ParseMode.HTML)
         caption = "Инфографика готова ✨"
         sent = False
         for url in result.infographic_urls:
             try:
-                await message.answer_photo(url, caption=caption)
+                await message.answer_photo(url, caption=caption, reply_markup=menu_markup)
                 sent = True
                 break
             except Exception:
                 continue
         if not sent:
-            await message.answer("Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.")
+            await message.answer(
+                "Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.",
+                reply_markup=menu_markup,
+            )
+    else:
+        await message.answer(
+            interpretation_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=menu_markup,
+        )
 
-    await _notify_billing(message, result.billing_mode, result.usage)
-    await _refresh_main_menu(message)
+    await _notify_billing(
+        message,
+        result.billing_mode,
+        result.usage,
+        reply_markup=await _user_main_menu(message.from_user.id),
+    )
     await _track(user_id, "bot.vision", {"mode": mode, "feature": result.feature})
 
 
@@ -241,7 +264,10 @@ async def _stream_chat_reply(message: Message, text: str) -> None:
     if billing_mode == "balance":
         await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
 
-    answer = await stream_to_message(message, orchestrator.stream_chat(messages or []))
+    answer = await stream_to_message(
+        message,
+        orchestrator.stream_chat(messages or []),
+    )
     usage = await orchestrator.complete_chat(
         user_id or "",
         text,
@@ -250,8 +276,12 @@ async def _stream_chat_reply(message: Message, text: str) -> None:
         context_messages=messages,
         billing_mode=billing_mode,
     )
-    await _notify_billing(message, billing_mode, usage)
-    await _refresh_main_menu(message)
+    await _notify_billing(
+        message,
+        billing_mode,
+        usage,
+        reply_markup=await _user_main_menu(message.from_user.id),
+    )
     await _track(user_id, "bot.chat", {"telegram_id": message.from_user.id, "length": len(text)})
 
 
@@ -413,14 +443,12 @@ async def billing_callback(callback: CallbackQuery) -> None:
     _, action, value = parts[0], parts[1], parts[2]
     if action == "topup":
         text = await billing.create_topup_for_telegram(callback.from_user.id, Decimal(value))
-        await callback.message.answer(text)
-        await _refresh_main_menu(callback.message)
+        await callback.message.answer(text, reply_markup=await _user_main_menu(callback.from_user.id))
         return
 
     if action == "sub":
         text = await billing.create_subscription_for_telegram(callback.from_user.id, value)
-        await callback.message.answer(text)
-        await _refresh_main_menu(callback.message)
+        await callback.message.answer(text, reply_markup=await _user_main_menu(callback.from_user.id))
         return
 
 
@@ -769,7 +797,11 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
 
         await _stream_chat_reply(message, text)
     except Exception as exc:
-        await _track(None, "bot.error", {"handler": "message", "error": str(exc)})
+        await _track(
+            None,
+            "bot.error",
+            {"handler": "message", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
+        )
         await message.answer("Не удалось обработать сообщение. Попробуй ещё раз.")
 
 

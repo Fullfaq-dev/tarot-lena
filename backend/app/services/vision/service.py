@@ -27,7 +27,7 @@ _ANALYSIS_PROMPTS = {
         "Ты эзотерический консультант. Проанализируй фото как символическую ауру "
         "(развлекательная интерпретация, без медицинских утверждений).\n"
         "Верни ТОЛЬКО валидный JSON без markdown:\n"
-        '{"interpretation":"2-4 предложения на русском для пользователя",'
+        '{"interpretation":"2-4 предложения на русском, markdown **жирный** *курсив*, без HTML",'
         '"image_prompt":"Detailed English prompt for a premium mystical Russian aura infographic '
         'with readable Russian labels, soft gradients, tarot aesthetics, no medical claims"}'
     ),
@@ -35,7 +35,7 @@ _ANALYSIS_PROMPTS = {
         "Ты эзотерический консультант. Проанализируй фото ладони "
         "(развлекательная хиромантия, без медицинских утверждений).\n"
         "Верни ТОЛЬКО валидный JSON без markdown:\n"
-        '{"interpretation":"2-4 предложения на русском для пользователя",'
+        '{"interpretation":"2-4 предложения на русском, markdown **жирный** *курсив*, без HTML",'
         '"image_prompt":"Detailed English prompt for a premium mystical Russian palmistry infographic '
         'with readable Russian labels, palm line map, tarot aesthetics, no medical claims"}'
     ),
