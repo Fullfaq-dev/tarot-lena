@@ -1,5 +1,8 @@
+import re
+
 from app.core.config import get_settings
 from app.services.ai.kie_client import KieClient
+from app.services.media.kie_tasks import wait_for_media_task
 from app.services.media.service import MediaJobService
 
 VOICE_PRESETS = {
@@ -7,7 +10,18 @@ VOICE_PRESETS = {
     "female_mystical": "Z3R5wn05IrDiVCyEkUrK",
     "male_mentor": "nPczCjzI2devNBz1zQrb",
     "male_calm": "LruHrtVF6PSyGItzMNHS",
+    "neutral_soft": "Z3R5wn05IrDiVCyEkUrK",
 }
+
+
+def plain_text_for_tts(text: str) -> str:
+    cleaned = text.strip()
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"<[^>]+>", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned[:5000]
 
 
 class VoiceService:
@@ -15,14 +29,47 @@ class VoiceService:
         self.kie = KieClient()
         self.jobs = MediaJobService()
 
-    async def transcribe(self, file_url: str) -> str:
-        return f"Текст из голосового будет распознан через Whisper adapter. Файл: {file_url}"
+    async def transcribe(self, audio_url: str, *, user_id: str | None = None) -> str:
+        settings = get_settings()
+        payload = {
+            "audio_url": audio_url,
+            "language_code": "ru",
+            "tag_audio_events": False,
+            "diarize": False,
+        }
+        response = await self.kie.create_media_task(
+            "elevenlabs/speech-to-text",
+            payload,
+            callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
+        )
+        task_id = response.get("data", {}).get("taskId")
+        if not task_id:
+            raise ValueError("Не удалось создать задачу распознавания речи")
 
-    async def synthesize(self, user_id: str, text: str, preset: str = "female_mystical"):
+        await self.jobs.create_job(
+            "voice_stt",
+            {**payload, "provider_task_id": task_id},
+            user_id=user_id,
+        )
+        _, text = await wait_for_media_task(task_id, timeout_sec=120)
+        if not text:
+            raise ValueError("Не удалось распознать голосовое сообщение")
+        return text.strip()
+
+    async def synthesize_audio_url(
+        self,
+        user_id: str,
+        text: str,
+        preset: str = "female_mystical",
+    ) -> str:
         settings = get_settings()
         voice = VOICE_PRESETS.get(preset, VOICE_PRESETS["female_mystical"])
+        spoken_text = plain_text_for_tts(text)
+        if not spoken_text:
+            raise ValueError("Пустой текст для озвучки")
+
         payload = {
-            "text": text[:5000],
+            "text": spoken_text,
             "voice": voice,
             "stability": 0.5,
             "similarity_boost": 0.75,
@@ -36,8 +83,16 @@ class VoiceService:
             payload,
             callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
         )
-        return await self.jobs.create_job(
+        task_id = response.get("data", {}).get("taskId")
+        if not task_id:
+            raise ValueError("Не удалось создать задачу озвучки")
+
+        await self.jobs.create_job(
             "voice_tts",
-            {**payload, "provider_task_id": response.get("data", {}).get("taskId")},
+            {**payload, "provider_task_id": task_id},
             user_id=user_id,
         )
+        urls, _ = await wait_for_media_task(task_id, timeout_sec=180)
+        if not urls:
+            raise ValueError("Генератор не вернул аудиофайл")
+        return urls[0]

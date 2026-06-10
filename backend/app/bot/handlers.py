@@ -40,11 +40,15 @@ from app.bot.keyboards import (
 )
 from app.bot.states import BotStates
 from app.bot.streaming import chat_action_loop, truncate_text, typing_loop
-from app.database.models import Subscription, User
+from app.database.models import Subscription, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
 from app.services.analytics.tracker import track_event
-from app.services.billing.limits import FREE_CHAT_MESSAGES_PER_MONTH, free_messages_left
+from app.services.billing.limits import (
+    FREE_CHAT_MESSAGES_PER_MONTH,
+    can_use_premium_voice,
+    free_messages_left,
+)
 from app.services.billing.tokens import format_balance
 from app.services.billing.service import BillingService
 from app.services.onboarding.service import ONBOARDING_STEPS, OnboardingService
@@ -58,6 +62,9 @@ from app.services.referrals.service import (
 from app.services.settings.service import SettingsService
 from app.services.tarot.service import READING_TYPES, TarotService
 from app.services.vision.service import VisionService
+from app.services.voice.service import VoiceService
+from app.services.media.telegram_audio import store_telegram_voice
+from app.bot.audio_media import send_voice_from_url
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -1015,12 +1022,94 @@ async def _process_onboarding_answer(
     await _track(user_id, event, {"text": answer[:200]})
 
 
+async def _user_voice_settings(telegram_id: int) -> tuple[str, str]:
+    async with AsyncSessionLocal() as session:
+        user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        if user is None:
+            return "free", "female_mystical"
+        subscription = await session.scalar(
+            select(Subscription).where(Subscription.user_id == user.id)
+        )
+        settings = await session.scalar(
+            select(UserSettings).where(UserSettings.user_id == user.id)
+        )
+        tier = subscription.tier if subscription else "free"
+        preset = settings.voice_preset if settings else "female_mystical"
+        return tier, preset
+
+
 @router.message(F.voice)
 async def voice_message(message: Message) -> None:
-    await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-    await message.answer(
-        "Я услышала голосовое. В полной версии я расшифрую его, отвечу текстом и при Premium отправлю голосовой ответ."
-    )
+    if message.voice is None or message.from_user is None:
+        return
+
+    onboarding = OnboardingService()
+    if not await onboarding.is_onboarded(message.from_user):
+        await message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
+        return
+
+    try:
+        await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+        audio_url = await store_telegram_voice(message.bot, message.voice.file_id)
+        voice_service = VoiceService()
+        db_user_id = await _get_user_id(message.from_user.id)
+        transcript = await voice_service.transcribe(audio_url, user_id=db_user_id)
+
+        orchestrator = AIOrchestrator()
+        user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
+            message.from_user, transcript
+        )
+        if error:
+            await message.answer(error)
+            return
+
+        if billing_mode == "balance":
+            await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
+
+        answer = await _generate_with_typing(
+            message,
+            orchestrator.generate_chat(messages or []),
+        )
+        await _answer_formatted(message, answer, prefix=f"🎤 {transcript}\n\n")
+
+        usage = await orchestrator.complete_chat(
+            user_id or "",
+            transcript,
+            answer,
+            user_message_id=user_message_id,
+            context_messages=messages,
+            billing_mode=billing_mode,
+        )
+        await _notify_billing(
+            message,
+            billing_mode,
+            usage,
+            reply_markup=await _user_main_menu(message.from_user.id),
+        )
+
+        tier, voice_preset = await _user_voice_settings(message.from_user.id)
+        if can_use_premium_voice(tier):
+            await message.bot.send_chat_action(message.chat.id, ChatAction.RECORD_VOICE)
+            audio_reply_url = await voice_service.synthesize_audio_url(
+                user_id or "",
+                answer,
+                preset=voice_preset,
+            )
+            if not await send_voice_from_url(message, audio_reply_url):
+                await message.answer("Текст готов, но голосовой файл не удалось отправить.")
+        else:
+            await message.answer(
+                "🎙 Голосовые ответы доступны в Premium. Сейчас отвечаю текстом."
+            )
+
+        await _track(user_id, "bot.voice", {"telegram_id": message.from_user.id})
+    except Exception as exc:
+        await _track(
+            None,
+            "bot.error",
+            {"handler": "voice", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
+        )
+        await message.answer("Не удалось обработать голосовое. Попробуй ещё раз или напиши текстом.")
 
 
 @router.message(F.photo)

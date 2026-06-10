@@ -22,6 +22,7 @@ from app.services.billing.tokens import (
     format_balance,
     image_generation_charge_rub,
     image_generation_provider_cost_usd,
+    vision_infographic_charge_rub,
     provider_cost_credits,
     provider_cost_usd,
     total_tokens,
@@ -98,22 +99,23 @@ class BillingService:
         user: User,
         *,
         with_infographic: bool,
+        vision_mode: str | None = None,
         context_messages: list[dict] | None = None,
     ) -> tuple[bool, str, str]:
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
 
+        image_charge = vision_infographic_charge_rub(vision_mode) if with_infographic else Decimal("0")
+
         if is_unlimited_chat(tier):
-            if not with_infographic or user.balance_rub >= image_generation_charge_rub():
+            if not with_infographic or user.balance_rub >= image_charge:
                 return True, "", "unlimited"
             return (
                 False,
-                f"Для инфографики нужно {format_balance(image_generation_charge_rub())} на балансе. "
+                f"Для инфографики нужно {format_balance(image_charge)} на балансе. "
                 "Пополни баланс — нажми «Баланс».",
                 "blocked",
             )
-
-        image_charge = image_generation_charge_rub() if with_infographic else Decimal("0")
         if with_infographic and user.balance_rub < image_charge:
             return (
                 False,
@@ -243,6 +245,7 @@ class BillingService:
         api_usage: dict[str, int] | None = None,
         billing_mode: str = "free",
         with_infographic: bool = False,
+        vision_mode: str | None = None,
         extra_meta: dict | None = None,
     ) -> dict:
         usage = await self.record_chat_usage(
@@ -261,7 +264,7 @@ class BillingService:
             return usage
 
         image_cost_usd = image_generation_provider_cost_usd()
-        image_charge = image_generation_charge_rub()
+        image_charge = vision_infographic_charge_rub(vision_mode)
         chat_charged = Decimal(str(usage["charged_rub"]))
         chat_cost_usd = Decimal(str(usage["provider_cost_usd"]))
         image_charged = Decimal("0")

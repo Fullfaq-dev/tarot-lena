@@ -72,7 +72,9 @@ class TarotService:
                 await session.delete(existing)
                 await session.flush()
 
-            messages = await self.context_builder.build(session, user)
+            messages = await self.context_builder.build(
+                session, user, user_query="карта дня на сегодня"
+            )
             try:
                 picked, interpretation = await pick_daily_card_with_ai(messages, self.kie)
             except ValueError:

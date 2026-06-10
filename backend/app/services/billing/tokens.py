@@ -114,6 +114,15 @@ def image_generation_charge_rub() -> Decimal:
     return (cost_usd * markup * USD_TO_RUB).quantize(Decimal("0.01"))
 
 
+VISION_INFOGRAPHIC_CHARGE_RUB = Decimal("100")
+
+
+def vision_infographic_charge_rub(mode: str | None = None) -> Decimal:
+    if mode in {"aura", "palm"}:
+        return VISION_INFOGRAPHIC_CHARGE_RUB
+    return image_generation_charge_rub()
+
+
 def format_balance(amount: Decimal | None) -> str:
     value = Decimal(amount or 0).quantize(Decimal("0.01"))
     if value == value.to_integral_value():

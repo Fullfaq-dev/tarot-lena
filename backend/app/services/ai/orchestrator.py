@@ -32,7 +32,7 @@ class AIOrchestrator:
             if user is None:
                 return None, None, "Сначала нажми /start, чтобы я создала твой профиль.", None, "blocked"
 
-            messages = await self.context_builder.build(session, user)
+            messages = await self.context_builder.build(session, user, user_query=text)
             messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
 
             allowed, reason, billing_mode = await self.billing.ensure_can_use_chat(
@@ -190,7 +190,7 @@ class AIOrchestrator:
             if user is None:
                 return None, None, "Сначала нажми /start, чтобы я создала твой профиль.", None, "blocked"
 
-            messages = await self.context_builder.build(session, user)
+            messages = await self.context_builder.build(session, user, user_query=question)
             messages.append({"role": "user", "content": [{"type": "text", "text": reading_prompt}]})
 
             allowed, reason, billing_mode = await self.billing.ensure_can_use_chat(

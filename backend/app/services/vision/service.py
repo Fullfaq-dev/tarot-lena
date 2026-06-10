@@ -103,7 +103,6 @@ class VisionService:
             if user is None:
                 return None, "Сначала нажми /start, чтобы я создала твой профиль."
 
-            messages = await self.context_builder.build(session, user)
             image_url = await store_telegram_photo(bot, file_id)
 
             if mode == "custom":
@@ -114,18 +113,23 @@ class VisionService:
                 ]
             else:
                 question = f"Анализ: {_MODE_LABELS[mode]}"
-                self._append_json_instruction(messages)
                 user_content = [
                     {"type": "text", "text": _ANALYSIS_PROMPTS[mode]},
                     {"type": "image_url", "image_url": {"url": image_url}},
                 ]
 
+            messages = await self.context_builder.build(
+                session, user, user_query=custom_text.strip() or question
+            )
+            if mode != "custom":
+                self._append_json_instruction(messages)
             messages.append({"role": "user", "content": user_content})
 
             allowed, reason, billing_mode = await self.billing.ensure_can_use_vision(
                 session,
                 user,
                 with_infographic=with_infographic,
+                vision_mode=mode if with_infographic else None,
                 context_messages=messages,
             )
             if not allowed:
@@ -482,6 +486,7 @@ class VisionService:
                 api_usage=self.kie.last_usage,
                 billing_mode=billing_mode,
                 with_infographic=with_infographic,
+                vision_mode=vision_mode if with_infographic else None,
                 extra_meta=extra_meta or None,
             )
 

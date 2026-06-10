@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Memory, Message, RelationshipPerson, SoulProfile, Subscription, User
 from app.services.billing.limits import chat_history_limit_for_tier
+from app.services.memory.retrieval import select_relevant_memories, select_relevant_people
 
 _SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[4] / "prompts" / "system_ru.md"
 
@@ -30,8 +31,21 @@ def _compact_text(text: str, limit: int) -> str:
     return cleaned[: limit - 1] + "…"
 
 
+_MEMORY_HINT = (
+    "Память и люди ниже — только справочник. "
+    "Не упоминай их, если пользователь сам не спрашивает об этом или это напрямую нужно для ответа. "
+    "Не вставляй факты из памяти «для уюта» и не повторяй одно и то же в каждом сообщении."
+)
+
+
 class ContextBuilder:
-    async def build(self, session: AsyncSession, user: User) -> list[dict]:
+    async def build(
+        self,
+        session: AsyncSession,
+        user: User,
+        *,
+        user_query: str | None = None,
+    ) -> list[dict]:
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
         history_limit = chat_history_limit_for_tier(tier)
@@ -82,17 +96,29 @@ class ContextBuilder:
                 f"беспокоит={_compact_text(profile.main_concern or '', 80)}; "
                 f"верит в={profile.belief_system or '—'}."
             )
+        relevant_memories = (
+            select_relevant_memories(user_query, list(memories))
+            if user_query
+            else []
+        )
+        relevant_people = (
+            select_relevant_people(user_query, list(people))
+            if user_query
+            else []
+        )
         memory_lines = [
-            f"- {_compact_text(memory.description, 120)}" for memory in memories
+            f"- {_compact_text(memory.description, 120)}" for memory in relevant_memories
         ]
         people_lines = [
             f"- {person.display_name}: {_compact_text(person.notes or person.relationship_type, 80)}"
-            for person in people
+            for person in relevant_people
         ]
+        if memory_lines or people_lines:
+            system.append(_MEMORY_HINT)
         if memory_lines:
-            system.append("Память:\n" + "\n".join(memory_lines))
+            system.append("Релевантная память:\n" + "\n".join(memory_lines))
         if people_lines:
-            system.append("Люди:\n" + "\n".join(people_lines))
+            system.append("Релевантные люди:\n" + "\n".join(people_lines))
 
         history = list(reversed(list(messages)))
         chat_messages: list[dict] = []
