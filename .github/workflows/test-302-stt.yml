@@ -1,0 +1,66 @@
+name: Test 302 STT on VPS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run 302 STT probe on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          AI302_API_KEY: ${{ secrets.AI302_API_KEY }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: AI302_API_KEY
+          script: |
+            set -euo pipefail
+            cd /opt/arcane-ai
+            docker compose -f docker-compose.prod.yml exec -T api python <<'PY'
+            import os, subprocess, httpx
+            from app.core.config import get_settings
+
+            s = get_settings()
+            key = s.ai302_api_key.strip()
+            base = s.ai302_base_url.rstrip("/")
+            url = f"{base}/v1/audio/transcriptions"
+            mp3 = "/tmp/test-302-stt.mp3"
+            if not os.path.exists(mp3) or os.path.getsize(mp3) < 1000:
+                subprocess.run([
+                    "ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                    "-ar", "16000", "-ac", "1", "-q:a", "4", mp3,
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            data_bytes = open(mp3, "rb").read()
+            print(f"key_prefix={key[:8]}... bytes={len(data_bytes)} url={url}")
+
+            auths = [
+                ("Bearer", {"Authorization": f"Bearer {key}", "Accept": "application/json"}),
+                ("Raw", {"Authorization": key, "Accept": "application/json"}),
+                ("302-api-key", {"302-api-key": key, "Accept": "application/json"}),
+            ]
+            models = ["whisper-v3-turbo", "whisper-v3", "whisper-1"]
+
+            for an, headers in auths:
+                for model in models:
+                    multipart = [
+                        ("file", ("test.mp3", data_bytes, "audio/mpeg")),
+                        ("model", (None, model)),
+                    ]
+                    r = httpx.post(url, headers=headers, files=multipart, timeout=60)
+                    print(f"STATUS {r.status_code} auth={an} model={model} body={r.text[:160]}")
+
+            # data+files like curl example
+            headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
+            for model in models:
+                r = httpx.post(
+                    url,
+                    headers=headers,
+                    data={"model": model},
+                    files={"file": ("test.mp3", data_bytes, "audio/mpeg")},
+                    timeout=60,
+                )
+                print(f"STATUS {r.status_code} curl-style model={model} body={r.text[:160]}")
+            PY
