@@ -19,48 +19,36 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/arcane-ai
-            docker compose -f docker-compose.prod.yml exec -T api python <<'PY'
-            import os, subprocess, httpx
-            from app.core.config import get_settings
-
-            s = get_settings()
-            key = s.ai302_api_key.strip()
-            base = s.ai302_base_url.rstrip("/")
-            url = f"{base}/v1/audio/transcriptions"
-            mp3 = "/tmp/test-302-stt.mp3"
-            if not os.path.exists(mp3) or os.path.getsize(mp3) < 1000:
-                subprocess.run([
-                    "ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
-                    "-ar", "16000", "-ac", "1", "-q:a", "4", mp3,
-                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            data_bytes = open(mp3, "rb").read()
-            print(f"key_prefix={key[:8]}... bytes={len(data_bytes)} url={url}")
-
-            auths = [
-                ("Bearer", {"Authorization": f"Bearer {key}", "Accept": "application/json"}),
-                ("Raw", {"Authorization": key, "Accept": "application/json"}),
-                ("302-api-key", {"302-api-key": key, "Accept": "application/json"}),
-            ]
-            models = ["whisper-v3-turbo", "whisper-v3", "whisper-1"]
-
-            for an, headers in auths:
-                for model in models:
-                    multipart = [
-                        ("file", ("test.mp3", data_bytes, "audio/mpeg")),
-                        ("model", (None, model)),
-                    ]
-                    r = httpx.post(url, headers=headers, files=multipart, timeout=60)
-                    print(f"STATUS {r.status_code} auth={an} model={model} body={r.text[:160]}")
-
-            # data+files like curl example
-            headers = {"Authorization": f"Bearer {key}", "Accept": "application/json"}
-            for model in models:
-                r = httpx.post(
-                    url,
-                    headers=headers,
-                    data={"model": model},
-                    files={"file": ("test.mp3", data_bytes, "audio/mpeg")},
-                    timeout=60,
-                )
-                print(f"STATUS {r.status_code} curl-style model={model} body={r.text[:160]}")
-            PY
+            AI302_API_KEY="$(printf '%s' "$AI302_API_KEY" | tr -d '\r\n')"
+            MP3="/tmp/test-302-stt.mp3"
+            ffmpeg -y -f lavfi -i sine=frequency=440:duration=2 -ar 16000 -ac 1 -q:a 4 "$MP3" >/dev/null 2>&1 || true
+            if [ ! -s "$MP3" ]; then
+              echo "Failed to create sample mp3"
+              exit 1
+            fi
+            echo "key_prefix=${AI302_API_KEY:0:8}... mp3_bytes=$(wc -c < "$MP3")"
+            for MODEL in whisper-v3-turbo whisper-v3 whisper-1; do
+              CODE=$(curl -sS -o /tmp/302-resp.txt -w "%{http_code}" \
+                -X POST "https://api.302.ai/v1/audio/transcriptions" \
+                -H "Authorization: Bearer ${AI302_API_KEY}" \
+                -H "Accept: application/json" \
+                -F "file=@${MP3};type=audio/mpeg" \
+                -F "model=${MODEL}")
+              echo "STATUS ${CODE} Bearer multipart model=${MODEL} body=$(head -c 180 /tmp/302-resp.txt)"
+            done
+            for MODEL in whisper-v3-turbo whisper-v3; do
+              CODE=$(curl -sS -o /tmp/302-resp.txt -w "%{http_code}" \
+                -X POST "https://api.302.ai/v1/audio/transcriptions" \
+                -H "Authorization: ${AI302_API_KEY}" \
+                -H "Accept: application/json" \
+                -F "file=@${MP3};type=audio/mpeg" \
+                -F "model=${MODEL}")
+              echo "STATUS ${CODE} RawAuth multipart model=${MODEL} body=$(head -c 180 /tmp/302-resp.txt)"
+            done
+            CODE=$(curl -sS -o /tmp/302-resp.txt -w "%{http_code}" \
+              -X POST "https://api.302.ai/v1/audio/transcriptions" \
+              -H "302-api-key: ${AI302_API_KEY}" \
+              -H "Accept: application/json" \
+              -F "file=@${MP3};type=audio/mpeg" \
+              -F "model=whisper-v3-turbo")
+            echo "STATUS ${CODE} 302-api-key model=whisper-v3-turbo body=$(head -c 180 /tmp/302-resp.txt)"
