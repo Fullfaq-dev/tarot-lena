@@ -24,7 +24,7 @@ jobs:
             LINES="${{ github.event.inputs.lines }}"
             echo "=== api logs (voice/kie/error) ==="
             docker compose -f docker-compose.prod.yml logs api --tail="$LINES" 2>&1 \
-              | grep -iE "voice|KIE|upload|speech|bot\.error|exception|WARNING|ERROR" \
+              | grep -iE "voice|KIE|302|upload|speech|bot\.error|exception|WARNING|ERROR" \
               | tail -80 || true
             echo "=== recent analytics voice errors (if psql available) ==="
             docker compose -f docker-compose.prod.yml exec -T postgres psql -U tarot -d tarot -c \
