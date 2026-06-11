@@ -23,6 +23,7 @@ jobs:
             cd /opt/arcane-ai
             bash deploy/deploy.sh
             if [ -n "${AI302_API_KEY:-}" ]; then
+              AI302_API_KEY="$(printf '%s' "$AI302_API_KEY" | tr -d '\r\n')"
               for kv in \
                 "AI302_API_KEY=${AI302_API_KEY}" \
                 "AI302_BASE_URL=https://api.302.ai" \
@@ -34,5 +35,6 @@ jobs:
                   echo "$kv" >> .env
                 fi
               done
-              docker compose -f docker-compose.prod.yml up -d api
+              docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps api
+              docker compose -f docker-compose.prod.yml exec -T api python -c "from app.core.config import get_settings; k=get_settings().ai302_api_key; print('AI302 configured:', k[:7]+'...' if k and k!='replace-me' else 'MISSING')"
             fi
