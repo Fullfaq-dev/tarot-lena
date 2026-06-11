@@ -286,8 +286,8 @@ def inline_history_menu(readings: list) -> InlineKeyboardMarkup:
 def inline_photo_mode_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🌈 Считать ауру", callback_data="photo:mode:aura")],
-            [InlineKeyboardButton(text="🖐 Линии на ладони", callback_data="photo:mode:palm")],
+            [InlineKeyboardButton(text="🌈 Аура — 100 ₽", callback_data="photo:mode:aura")],
+            [InlineKeyboardButton(text="🖐 Ладонь — 100 ₽", callback_data="photo:mode:palm")],
             [InlineKeyboardButton(text="💬 Свой вопрос по фото", callback_data="photo:mode:other")],
             [_home_button()],
         ]

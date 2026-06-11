@@ -3,7 +3,7 @@ import re
 from app.core.config import get_settings
 from app.services.ai.kie_client import KieClient
 from app.services.media.kie_tasks import wait_for_media_task
-from app.services.media.kie_upload import KieFileUpload
+from app.services.media.kie_upload import KieFileUpload, kie_friendly_filename
 from app.services.media.service import MediaJobService
 from app.services.media.stored_file import StoredFile
 
@@ -37,7 +37,8 @@ class VoiceService:
             local_path=stored.path,
             source_url=stored.public_url,
             upload_path="voice",
-            file_name=stored.path.name,
+            file_name=kie_friendly_filename(stored.path, kind="audio"),
+            kind="audio",
         )
 
     async def transcribe(self, stored: StoredFile, *, user_id: str | None = None) -> str:

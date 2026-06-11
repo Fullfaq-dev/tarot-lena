@@ -111,6 +111,7 @@ class VisionService:
                 source_url=stored.public_url,
                 upload_path="vision",
                 file_name=stored.path.name,
+                kind="image",
             )
 
             if mode == "custom":

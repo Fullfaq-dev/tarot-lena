@@ -944,6 +944,9 @@ async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.message.answer("Неизвестный режим анализа.")
         return
 
+    label = "ауру" if mode == "aura" else "ладонь"
+    await callback.message.answer(f"Запускаю разбор {label} с инфографикой (100 ₽)…")
+
     _fire_and_forget(
         _process_photo_request_safe(
             callback.message,
@@ -1050,10 +1053,16 @@ async def voice_message(message: Message) -> None:
 
     try:
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+        status_msg = await message.answer("🎤 Расшифровываю голосовое…")
         audio_file = await store_telegram_voice(message.bot, message.voice.file_id)
         voice_service = VoiceService()
         db_user_id = await _get_user_id(message.from_user.id)
         transcript = await voice_service.transcribe(audio_file, user_id=db_user_id)
+
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
 
         orchestrator = AIOrchestrator()
         user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
@@ -1097,10 +1106,6 @@ async def voice_message(message: Message) -> None:
             )
             if not await send_voice_from_url(message, audio_reply_url):
                 await message.answer("Текст готов, но голосовой файл не удалось отправить.")
-        else:
-            await message.answer(
-                "🎙 Голосовые ответы доступны в Premium. Сейчас отвечаю текстом."
-            )
 
         await _track(user_id, "bot.voice", {"telegram_id": message.from_user.id})
     except Exception as exc:
@@ -1143,7 +1148,8 @@ async def photo_message(message: Message, state: FSMContext) -> None:
         await state.set_state(BotStates.waiting_photo_mode)
         await state.update_data(photo_file_id=file_id)
         await message.answer(
-            "📸 Фото получила! Что хочешь узнать по этому снимку?",
+            "📸 Фото получила! Что хочешь узнать?\n"
+            "Аура и ладонь — с инфографикой, 100 ₽ с баланса.",
             reply_markup=inline_photo_mode_menu(),
         )
     except Exception as exc:
