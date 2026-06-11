@@ -1051,6 +1051,9 @@ async def voice_message(message: Message) -> None:
         await message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
         return
 
+    tier, voice_preset = await _user_voice_settings(message.from_user.id)
+    voice_reply = can_use_premium_voice(tier)
+
     try:
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
         status_msg = await message.answer("🎤 Расшифровываю голосовое…")
@@ -1079,7 +1082,6 @@ async def voice_message(message: Message) -> None:
             message,
             orchestrator.generate_chat(messages or []),
         )
-        await _answer_formatted(message, answer, prefix=f"🎤 {transcript}\n\n")
 
         usage = await orchestrator.complete_chat(
             user_id or "",
@@ -1089,23 +1091,47 @@ async def voice_message(message: Message) -> None:
             context_messages=messages,
             billing_mode=billing_mode,
         )
-        await _notify_billing(
-            message,
-            billing_mode,
-            usage,
-            reply_markup=await _user_main_menu(message.from_user.id),
-        )
+        menu = await _user_main_menu(message.from_user.id)
 
-        tier, voice_preset = await _user_voice_settings(message.from_user.id)
-        if can_use_premium_voice(tier):
-            await message.bot.send_chat_action(message.chat.id, ChatAction.RECORD_VOICE)
-            audio_reply_url = await voice_service.synthesize_audio_url(
-                user_id or "",
-                answer,
-                preset=voice_preset,
+        if voice_reply:
+            stop_record = asyncio.Event()
+            record_task = asyncio.create_task(
+                chat_action_loop(message.bot, message.chat.id, ChatAction.RECORD_VOICE, stop_record)
             )
-            if not await send_voice_from_url(message, audio_reply_url):
-                await message.answer("Текст готов, но голосовой файл не удалось отправить.")
+            try:
+                audio_reply_url = await voice_service.synthesize_audio_url(
+                    user_id or "",
+                    answer,
+                    preset=voice_preset,
+                )
+            finally:
+                stop_record.set()
+                await record_task
+
+            if await send_voice_from_url(message, audio_reply_url):
+                await _notify_billing(
+                    message,
+                    billing_mode,
+                    usage,
+                    reply_markup=menu,
+                )
+            else:
+                await _answer_formatted(message, answer)
+                await _notify_billing(
+                    message,
+                    billing_mode,
+                    usage,
+                    reply_markup=menu,
+                )
+                await message.answer("Не удалось отправить голосовой файл.")
+        else:
+            await _answer_formatted(message, answer)
+            await _notify_billing(
+                message,
+                billing_mode,
+                usage,
+                reply_markup=menu,
+            )
 
         await _track(user_id, "bot.voice", {"telegram_id": message.from_user.id})
     except Exception as exc:
