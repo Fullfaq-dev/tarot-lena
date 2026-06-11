@@ -1050,10 +1050,10 @@ async def voice_message(message: Message) -> None:
 
     try:
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-        audio_url = await store_telegram_voice(message.bot, message.voice.file_id)
+        audio_file = await store_telegram_voice(message.bot, message.voice.file_id)
         voice_service = VoiceService()
         db_user_id = await _get_user_id(message.from_user.id)
-        transcript = await voice_service.transcribe(audio_url, user_id=db_user_id)
+        transcript = await voice_service.transcribe(audio_file, user_id=db_user_id)
 
         orchestrator = AIOrchestrator()
         user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
@@ -1104,12 +1104,17 @@ async def voice_message(message: Message) -> None:
 
         await _track(user_id, "bot.voice", {"telegram_id": message.from_user.id})
     except Exception as exc:
+        logger.exception("Voice message failed: %s", exc)
         await _track(
             None,
             "bot.error",
             {"handler": "voice", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
         )
-        await message.answer("Не удалось обработать голосовое. Попробуй ещё раз или напиши текстом.")
+        detail = str(exc).strip()
+        if detail and len(detail) < 120:
+            await message.answer(f"Не удалось обработать голосовое: {detail}")
+        else:
+            await message.answer("Не удалось обработать голосовое. Попробуй ещё раз или напиши текстом.")
 
 
 @router.message(F.photo)

@@ -3,7 +3,9 @@ import re
 from app.core.config import get_settings
 from app.services.ai.kie_client import KieClient
 from app.services.media.kie_tasks import wait_for_media_task
+from app.services.media.kie_upload import KieFileUpload
 from app.services.media.service import MediaJobService
+from app.services.media.stored_file import StoredFile
 
 VOICE_PRESETS = {
     "female_soft": "5l5f8iK3YPeGga21rQIX",
@@ -28,12 +30,21 @@ class VoiceService:
     def __init__(self) -> None:
         self.kie = KieClient()
         self.jobs = MediaJobService()
+        self.upload = KieFileUpload()
 
-    async def transcribe(self, audio_url: str, *, user_id: str | None = None) -> str:
+    async def _kie_audio_url(self, stored: StoredFile) -> str:
+        return await self.upload.ensure_kie_url(
+            local_path=stored.path,
+            source_url=stored.public_url,
+            upload_path="voice",
+            file_name=stored.path.name,
+        )
+
+    async def transcribe(self, stored: StoredFile, *, user_id: str | None = None) -> str:
         settings = get_settings()
+        audio_url = await self._kie_audio_url(stored)
         payload = {
             "audio_url": audio_url,
-            "language_code": "ru",
             "tag_audio_events": False,
             "diarize": False,
         }
@@ -73,10 +84,9 @@ class VoiceService:
             "voice": voice,
             "stability": 0.5,
             "similarity_boost": 0.75,
-            "style": 0.15,
-            "speed": 0.95,
+            "style": 0.0,
+            "speed": 1.0,
             "timestamps": False,
-            "language_code": "ru",
         }
         response = await self.kie.create_media_task(
             "elevenlabs/text-to-speech-turbo-2-5",

@@ -16,6 +16,7 @@ from app.services.ai.kie_client import KieClient
 from app.services.billing.service import BillingService
 from app.services.media.service import MediaJobService
 from app.services.media.telegram_photo import store_telegram_photo
+from app.services.media.kie_upload import KieFileUpload
 
 _MODE_LABELS = {
     "aura": "Аура",
@@ -81,6 +82,7 @@ class VisionService:
         self.jobs = MediaJobService()
         self.billing = BillingService()
         self.context_builder = ContextBuilder()
+        self.kie_upload = KieFileUpload()
 
     async def process_photo(
         self,
@@ -103,7 +105,13 @@ class VisionService:
             if user is None:
                 return None, "Сначала нажми /start, чтобы я создала твой профиль."
 
-            image_url = await store_telegram_photo(bot, file_id)
+            stored = await store_telegram_photo(bot, file_id)
+            image_url = await self.kie_upload.ensure_kie_url(
+                local_path=stored.path,
+                source_url=stored.public_url,
+                upload_path="vision",
+                file_name=stored.path.name,
+            )
 
             if mode == "custom":
                 question = custom_text.strip() or "Что ты видишь на этом фото?"
@@ -144,7 +152,8 @@ class VisionService:
                 meta={
                     "vision_mode": mode,
                     "has_image": True,
-                    "source_image_url": image_url,
+                    "source_image_url": stored.public_url,
+                    "kie_image_url": image_url,
                 },
             )
             profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
@@ -165,7 +174,7 @@ class VisionService:
                     context_messages=messages,
                     billing_mode=billing_mode,
                     with_infographic=False,
-                    source_image_url=image_url,
+                    source_image_url=stored.public_url,
                     vision_mode=mode,
                 )
                 return (
@@ -198,7 +207,7 @@ class VisionService:
                 context_messages=messages,
                 billing_mode=billing_mode,
                 with_infographic=True,
-                source_image_url=image_url,
+                source_image_url=stored.public_url,
                 infographic_urls=infographic_urls,
                 vision_mode=mode,
             )

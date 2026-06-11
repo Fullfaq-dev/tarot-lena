@@ -129,7 +129,14 @@ class KieClient:
                 json=payload,
             )
             response.raise_for_status()
-            return response.json()
+            body = response.json()
+
+        code = int(body.get("code") or 200)
+        if code != 200:
+            raise ValueError(body.get("msg") or f"KIE createTask вернул код {code}")
+        if not (body.get("data") or {}).get("taskId"):
+            raise ValueError(body.get("msg") or "KIE не вернул taskId")
+        return body
 
     def _local_fallback(self, messages: list[dict]) -> str:
         user_text = ""

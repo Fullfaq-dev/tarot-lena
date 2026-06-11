@@ -13,6 +13,41 @@ def _parse_result_json(raw: str | dict) -> dict:
         return {}
 
 
+def _extract_transcript(parsed: dict) -> str | None:
+    text = parsed.get("text") or parsed.get("transcript") or parsed.get("result")
+    if isinstance(text, dict):
+        text = text.get("text") or text.get("transcript") or ""
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+
+    result_object = parsed.get("resultObject") or {}
+    if isinstance(result_object, str):
+        try:
+            result_object = json.loads(result_object)
+        except json.JSONDecodeError:
+            result_object = {}
+    if isinstance(result_object, dict):
+        nested = result_object.get("text") or result_object.get("transcript")
+        if isinstance(nested, str) and nested.strip():
+            return nested.strip()
+
+        transcripts = result_object.get("transcripts") or parsed.get("transcripts")
+        if isinstance(transcripts, list) and transcripts:
+            parts: list[str] = []
+            for item in transcripts:
+                if isinstance(item, dict):
+                    chunk = item.get("text") or ""
+                    if chunk:
+                        parts.append(str(chunk).strip())
+                elif isinstance(item, str) and item.strip():
+                    parts.append(item.strip())
+            joined = " ".join(part for part in parts if part)
+            if joined:
+                return joined
+
+    return None
+
+
 def extract_urls_and_text(record: dict) -> tuple[list[str], str | None]:
     data = record.get("data") or {}
     state = str(data.get("state", "")).lower()
@@ -28,16 +63,7 @@ def extract_urls_and_text(record: dict) -> tuple[list[str], str | None]:
     if isinstance(urls, str):
         urls = [urls]
 
-    text = (
-        parsed.get("text")
-        or parsed.get("transcript")
-        or parsed.get("result")
-        or data.get("text")
-        or ""
-    )
-    if isinstance(text, dict):
-        text = text.get("text") or text.get("transcript") or ""
-    text = str(text).strip() or None
+    text = _extract_transcript(parsed) or _extract_transcript(data if isinstance(data, dict) else {})
     return [str(url) for url in urls if url], text
 
 

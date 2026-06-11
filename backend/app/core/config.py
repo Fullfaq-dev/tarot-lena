@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     kie_api_key: str = "replace-me"
     kie_base_url: str = "https://api.kie.ai"
+    kie_file_upload_base_url: str = "https://kieai.redpandaai.co"
     kie_callback_secret: str = "replace-me"
     kie_credit_usd: float = 0.005
     kie_input_credits_per_1m: float = 30
