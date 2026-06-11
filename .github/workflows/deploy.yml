@@ -11,11 +11,28 @@ jobs:
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          AI302_API_KEY: ${{ secrets.AI302_API_KEY }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: AI302_API_KEY
           script: |
             set -euo pipefail
             cd /opt/arcane-ai
             bash deploy/deploy.sh
+            if [ -n "${AI302_API_KEY:-}" ]; then
+              for kv in \
+                "AI302_API_KEY=${AI302_API_KEY}" \
+                "AI302_BASE_URL=https://api.302.ai" \
+                "AI302_STT_MODEL=whisper-v3-turbo"; do
+                key="${kv%%=*}"
+                if grep -q "^${key}=" .env; then
+                  sed -i "s|^${key}=.*|${kv}|" .env
+                else
+                  echo "$kv" >> .env
+                fi
+              done
+              docker compose -f docker-compose.prod.yml up -d api
+            fi

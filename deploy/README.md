@@ -54,4 +54,9 @@ Set in `/opt/arcane-ai/.env`:
 ```env
 APP_ENV=production
 PUBLIC_BASE_URL=https://arcaneai.online
+AI302_API_KEY=your-302ai-key
+AI302_BASE_URL=https://api.302.ai
+AI302_STT_MODEL=whisper-v3-turbo
 ```
+
+On deploy, `AI302_API_KEY` is synced from GitHub secret `AI302_API_KEY` when set.
