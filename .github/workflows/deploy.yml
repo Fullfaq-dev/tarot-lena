@@ -27,7 +27,7 @@ jobs:
               for kv in \
                 "AI302_API_KEY=${AI302_API_KEY}" \
                 "AI302_BASE_URL=https://api.302.ai" \
-                "AI302_STT_MODEL=whisper-v3-turbo"; do
+                "AI302_STT_MODEL=whisper-1"; do
                 key="${kv%%=*}"
                 if grep -q "^${key}=" .env; then
                   sed -i "s|^${key}=.*|${kv}|" .env
