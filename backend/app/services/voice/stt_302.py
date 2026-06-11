@@ -37,44 +37,52 @@ class Stt302Client:
             if model not in models:
                 models.append(model)
 
+        language_attempts = [language, ""] if language else [""]
+
         last_error: Exception | None = None
         for model in models:
-            data: dict[str, str] = {"model": model}
-            if language:
-                data["language"] = language
+            for lang in language_attempts:
+                multipart: list[tuple[str, tuple[str | None, bytes | str, str | None]]] = [
+                    ("file", (path.name, file_bytes, mime)),
+                    ("model", (None, model)),
+                ]
+                if lang:
+                    multipart.append(("language", (None, lang)))
 
-            logger.info(
-                "302.AI STT request model=%s file=%s bytes=%s",
-                model,
-                path.name,
-                len(file_bytes),
-            )
+                logger.info(
+                    "302.AI STT request model=%s lang=%s file=%s bytes=%s",
+                    model,
+                    lang or "auto",
+                    path.name,
+                    len(file_bytes),
+                )
 
-            try:
-                async with httpx.AsyncClient(timeout=120) as client:
-                    response = await client.post(
-                        url,
-                        headers=headers,
-                        data=data,
-                        files={"file": (path.name, file_bytes, mime)},
+                try:
+                    async with httpx.AsyncClient(timeout=120) as client:
+                        response = await client.post(url, headers=headers, files=multipart)
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning("302.AI STT transport error model=%s: %s", model, exc)
+                    continue
+
+                if response.status_code >= 400:
+                    detail = response.text.strip()[:500]
+                    logger.warning(
+                        "302.AI STT failed model=%s lang=%s status=%s body=%s",
+                        model,
+                        lang or "auto",
+                        response.status_code,
+                        detail,
                     )
-            except Exception as exc:
-                last_error = exc
-                logger.warning("302.AI STT transport error model=%s: %s", model, exc)
-                continue
+                    last_error = ValueError(f"302.AI STT: {detail or response.status_code}")
+                    continue
 
-            if response.status_code >= 400:
-                detail = response.text.strip()[:500]
-                logger.warning("302.AI STT failed model=%s status=%s body=%s", model, response.status_code, detail)
-                last_error = ValueError(f"302.AI STT: {detail or response.status_code}")
-                continue
+                body = response.json()
+                text = body.get("text") if isinstance(body, dict) else None
+                if isinstance(text, str) and text.strip():
+                    logger.info("302.AI STT ok model=%s chars=%s", model, len(text.strip()))
+                    return text.strip()
 
-            body = response.json()
-            text = body.get("text") if isinstance(body, dict) else None
-            if isinstance(text, str) and text.strip():
-                logger.info("302.AI STT ok model=%s chars=%s", model, len(text.strip()))
-                return text.strip()
-
-            last_error = ValueError("302.AI не вернул текст расшифровки")
+                last_error = ValueError("302.AI не вернул текст расшифровки")
 
         raise last_error or ValueError("302.AI STT failed")
