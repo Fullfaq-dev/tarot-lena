@@ -114,7 +114,20 @@ class KieClient:
                 params={"taskId": task_id},
             )
             response.raise_for_status()
-            return response.json()
+            body = response.json()
+
+        code = int(body.get("code") or 200)
+        if body.get("data") is None:
+            if code in {422, 404}:
+                return {"code": code, "data": {"state": "waiting", "taskId": task_id}}
+            raise ValueError(body.get("msg") or f"KIE recordInfo без data (code {code})")
+        if code != 200:
+            raise ValueError(body.get("msg") or f"KIE recordInfo code {code}")
+        return body
+
+    @staticmethod
+    def task_id_from_response(response: dict) -> str | None:
+        return (response.get("data") or {}).get("taskId")
 
     async def create_media_task(self, model: str, input_payload: dict, callback_url: str | None = None) -> dict:
         if self.settings.kie_api_key == "replace-me":

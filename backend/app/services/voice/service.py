@@ -61,7 +61,7 @@ class VoiceService:
             )
         except Exception as exc:
             raise ValueError(f"распознавание: {exc}") from exc
-        task_id = response.get("data", {}).get("taskId")
+        task_id = KieClient.task_id_from_response(response)
         if not task_id:
             raise ValueError("Не удалось создать задачу распознавания речи")
 
@@ -101,7 +101,7 @@ class VoiceService:
             payload,
             callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
         )
-        task_id = response.get("data", {}).get("taskId")
+        task_id = KieClient.task_id_from_response(response)
         if not task_id:
             raise ValueError("Не удалось создать задачу озвучки")
 
