@@ -3,11 +3,10 @@ import re
 
 from app.core.config import get_settings
 from app.services.ai.kie_client import KieClient
-from app.services.media.audio_convert import ensure_mp3
 from app.services.media.kie_tasks import wait_for_media_task
-from app.services.media.kie_upload import KieFileUpload, kie_friendly_filename
 from app.services.media.service import MediaJobService
 from app.services.media.stored_file import StoredFile
+from app.services.voice.stt_302 import Stt302Client
 
 logger = logging.getLogger(__name__)
 
@@ -40,52 +39,25 @@ def _normalize_transcript(raw: str) -> str:
 class VoiceService:
     def __init__(self) -> None:
         self.kie = KieClient()
+        self.stt = Stt302Client()
         self.jobs = MediaJobService()
-        self.upload = KieFileUpload()
-
-    async def _kie_audio_url(self, stored: StoredFile) -> str:
-        audio_path = await ensure_mp3(stored.path)
-        return await self.upload.ensure_kie_url(
-            local_path=audio_path,
-            source_url=None,
-            upload_path="voice",
-            file_name=kie_friendly_filename(audio_path, kind="audio"),
-            kind="audio",
-        )
 
     async def transcribe(self, stored: StoredFile, *, user_id: str | None = None) -> str:
         settings = get_settings()
         try:
-            audio_url = await self._kie_audio_url(stored)
-        except Exception as exc:
-            raise ValueError(f"загрузка аудио: {exc}") from exc
-
-        # KIE market exposes only elevenlabs/speech-to-text for STT (no Whisper slug).
-        model = settings.kie_stt_model.strip() or "elevenlabs/speech-to-text"
-        payload = {
-            "audio_url": audio_url,
-            "language_code": "ru",
-        }
-        callback_url = f"{settings.public_base_url.rstrip('/')}/callbacks/kie"
-
-        try:
-            response = await self.kie.create_media_task(model, payload, callback_url=callback_url)
+            raw = await self.stt.transcribe_file(stored.path, language="ru")
         except Exception as exc:
             raise ValueError(f"распознавание: {exc}") from exc
 
-        task_id = KieClient.task_id_from_response(response)
-        if not task_id:
-            raise ValueError("Не удалось создать задачу распознавания речи")
+        normalized = _normalize_transcript(raw)
+        if len(normalized) < 2:
+            raise ValueError("Не удалось распознать голосовое сообщение")
 
         await self.jobs.create_job(
             "voice_stt",
-            {**payload, "provider_task_id": task_id, "engine": model},
+            {"engine": f"302.ai/{settings.ai302_stt_model}", "language": "ru"},
             user_id=user_id,
         )
-        _, text = await wait_for_media_task(task_id, timeout_sec=120)
-        normalized = _normalize_transcript(text or "")
-        if len(normalized) < 2:
-            raise ValueError("Не удалось распознать голосовое сообщение")
         return normalized
 
     async def synthesize_audio_url(

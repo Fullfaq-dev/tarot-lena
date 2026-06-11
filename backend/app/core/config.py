@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     kie_input_credits_per_1m: float = 87.5
     kie_output_credits_per_1m: float = 700
     kie_chat_model: str = "gpt-5-2"
-    kie_stt_model: str = "elevenlabs/speech-to-text"
+
+    ai302_api_key: str = "replace-me"
+    ai302_base_url: str = "https://api.302.ai"
+    ai302_stt_model: str = "whisper-v3-turbo"
     billing_credit_usd: float = 0.007
     charge_markup: float = 50
     provider_cost_display_multiplier: float = 2
