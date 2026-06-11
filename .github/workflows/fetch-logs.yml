@@ -1,0 +1,32 @@
+name: Fetch VPS logs
+
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: Number of log lines
+        required: false
+        default: "200"
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch API logs over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/arcane-ai
+            LINES="${{ github.event.inputs.lines }}"
+            echo "=== api logs (voice/kie/error) ==="
+            docker compose -f docker-compose.prod.yml logs api --tail="$LINES" 2>&1 \
+              | grep -iE "voice|KIE|upload|speech|bot\.error|exception|WARNING|ERROR" \
+              | tail -80 || true
+            echo "=== recent analytics voice errors (if psql available) ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U tarot -d tarot -c \
+              "SELECT created_at, event_name, payload->>'error' AS error FROM analytics_events WHERE event_name='bot.error' AND payload->>'handler'='voice' ORDER BY created_at DESC LIMIT 5;" \
+              2>/dev/null || true

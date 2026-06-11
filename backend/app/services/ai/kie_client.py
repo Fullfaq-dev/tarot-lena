@@ -1,6 +1,7 @@
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 
+import asyncio
 import httpx
 
 from app.core.config import get_settings
@@ -122,21 +123,34 @@ class KieClient:
         payload = {"model": model, "input": input_payload}
         if callback_url:
             payload["callBackUrl"] = callback_url
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                f"{self.settings.kie_base_url.rstrip('/')}/api/v1/jobs/createTask",
-                headers=self.headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            body = response.json()
 
-        code = int(body.get("code") or 200)
-        if code != 200:
-            raise ValueError(body.get("msg") or f"KIE createTask вернул код {code}")
-        if not (body.get("data") or {}).get("taskId"):
-            raise ValueError(body.get("msg") or "KIE не вернул taskId")
-        return body
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=45) as client:
+                    response = await client.post(
+                        f"{self.settings.kie_base_url.rstrip('/')}/api/v1/jobs/createTask",
+                        headers=self.headers,
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+
+                code = int(body.get("code") or 200)
+                if code != 200:
+                    msg = body.get("msg") or f"KIE createTask вернул код {code}"
+                    raise ValueError(msg)
+                if not (body.get("data") or {}).get("taskId"):
+                    raise ValueError(body.get("msg") or "KIE не вернул taskId")
+                return body
+            except Exception as exc:
+                last_error = exc
+                msg = str(exc).lower()
+                retryable = any(x in msg for x in ("server exception", "try again", "timeout", "503", "502"))
+                if attempt >= 2 or not retryable:
+                    raise
+                await asyncio.sleep(1.5 * (attempt + 1))
+        raise last_error or RuntimeError("createTask failed")
 
     def _local_fallback(self, messages: list[dict]) -> str:
         user_text = ""

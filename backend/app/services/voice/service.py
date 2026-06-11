@@ -43,17 +43,24 @@ class VoiceService:
 
     async def transcribe(self, stored: StoredFile, *, user_id: str | None = None) -> str:
         settings = get_settings()
-        audio_url = await self._kie_audio_url(stored)
+        try:
+            audio_url = await self._kie_audio_url(stored)
+        except Exception as exc:
+            raise ValueError(f"загрузка аудио: {exc}") from exc
+
         payload = {
             "audio_url": audio_url,
             "tag_audio_events": False,
             "diarize": False,
         }
-        response = await self.kie.create_media_task(
-            "elevenlabs/speech-to-text",
-            payload,
-            callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
-        )
+        try:
+            response = await self.kie.create_media_task(
+                "elevenlabs/speech-to-text",
+                payload,
+                callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
+            )
+        except Exception as exc:
+            raise ValueError(f"распознавание: {exc}") from exc
         task_id = response.get("data", {}).get("taskId")
         if not task_id:
             raise ValueError("Не удалось создать задачу распознавания речи")
