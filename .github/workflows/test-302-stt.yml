@@ -20,23 +20,26 @@ jobs:
             set -euo pipefail
             cd /opt/arcane-ai
             AI302_API_KEY="$(printf '%s' "$AI302_API_KEY" | tr -d '\r\n')"
-            docker compose -f docker-compose.prod.yml up -d api
-            sleep 8
-            MP3=$(docker compose -f docker-compose.prod.yml exec -T api sh -lc 'ls -1t /app/backend/static/generated/*.mp3 2>/dev/null | head -1')
-            MP3=${MP3//$'\r'/}
-            if [ -z "$MP3" ]; then
-              docker compose -f docker-compose.prod.yml exec -T api ffmpeg -y -f lavfi -i sine=frequency=440:duration=2 -ar 16000 -ac 1 -q:a 4 /tmp/test-302-stt.mp3
-              MP3=/tmp/test-302-stt.mp3
+            HOST_MP3="/tmp/test-302-stt-host.mp3"
+            if [ ! -s "$HOST_MP3" ]; then
+              MP3=$(docker compose -f docker-compose.prod.yml exec -T api sh -lc 'ls -1t /app/backend/static/generated/*.mp3 2>/dev/null | head -1' || true)
+              MP3=${MP3//$'\r'/}
+              if [ -n "$MP3" ]; then
+                docker compose -f docker-compose.prod.yml cp "api:${MP3}" "$HOST_MP3"
+              fi
             fi
-            docker compose -f docker-compose.prod.yml cp "api:${MP3}" /tmp/test-302-stt-host.mp3
-            echo "key_prefix=${AI302_API_KEY:0:8}... mp3_bytes=$(wc -c < /tmp/test-302-stt-host.mp3)"
+            if [ ! -s "$HOST_MP3" ]; then
+              echo "No sample mp3 on VPS; run a voice message first or keep previous probe file"
+              exit 1
+            fi
+            echo "key_prefix=${AI302_API_KEY:0:8}... mp3_bytes=$(wc -c < "$HOST_MP3")"
             CODE=$(curl -sS -o /tmp/302-resp.txt -w "%{http_code}" \
               -X POST "https://api.302.ai/v1/audio/transcriptions" \
               -H "Authorization: Bearer ${AI302_API_KEY}" \
               -H "Accept: application/json" \
-              -F "file=@/tmp/test-302-stt-host.mp3;type=audio/mpeg" \
+              -F "file=@${HOST_MP3};type=audio/mpeg" \
               -F "model=whisper-1")
-            echo "STATUS ${CODE} model=whisper-1 body=$(cat /tmp/302-resp.txt | head -c 200)"
+            echo "STATUS ${CODE} model=whisper-1 body=$(head -c 200 /tmp/302-resp.txt)"
             if [ "$CODE" != "200" ]; then
               echo "302 STT preflight FAILED (expected 200)"
               exit 1
