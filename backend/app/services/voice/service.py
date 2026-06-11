@@ -19,14 +19,6 @@ VOICE_PRESETS = {
     "neutral_soft": "Z3R5wn05IrDiVCyEkUrK",
 }
 
-# Fallback STT models if the configured whisper model is unavailable on KIE.
-_STT_MODEL_FALLBACKS = (
-    "openai/whisper-1",
-    "whisper-1",
-    "gpt-4o-mini-transcribe",
-    "openai/gpt-4o-mini-transcribe",
-)
-
 
 def plain_text_for_tts(text: str) -> str:
     cleaned = text.strip()
@@ -61,64 +53,40 @@ class VoiceService:
             kind="audio",
         )
 
-    def _stt_models(self) -> list[str]:
-        settings = get_settings()
-        primary = settings.kie_stt_model.strip()
-        models: list[str] = []
-        if primary:
-            models.append(primary)
-        for model in _STT_MODEL_FALLBACKS:
-            if model not in models:
-                models.append(model)
-        return models
-
     async def transcribe(self, stored: StoredFile, *, user_id: str | None = None) -> str:
+        settings = get_settings()
         try:
             audio_url = await self._kie_audio_url(stored)
         except Exception as exc:
             raise ValueError(f"загрузка аудио: {exc}") from exc
 
+        # KIE market exposes only elevenlabs/speech-to-text for STT (no Whisper slug).
+        model = settings.kie_stt_model.strip() or "elevenlabs/speech-to-text"
         payload = {
             "audio_url": audio_url,
-            "language": "ru",
             "language_code": "ru",
         }
-        settings = get_settings()
         callback_url = f"{settings.public_base_url.rstrip('/')}/callbacks/kie"
-        last_error: Exception | None = None
 
-        for model in self._stt_models():
-            try:
-                response = await self.kie.create_media_task(model, payload, callback_url=callback_url)
-            except Exception as exc:
-                last_error = exc
-                logger.warning("KIE STT createTask failed for %s: %s", model, exc)
-                continue
+        try:
+            response = await self.kie.create_media_task(model, payload, callback_url=callback_url)
+        except Exception as exc:
+            raise ValueError(f"распознавание: {exc}") from exc
 
-            task_id = KieClient.task_id_from_response(response)
-            if not task_id:
-                last_error = ValueError("Не удалось создать задачу распознавания речи")
-                continue
+        task_id = KieClient.task_id_from_response(response)
+        if not task_id:
+            raise ValueError("Не удалось создать задачу распознавания речи")
 
-            await self.jobs.create_job(
-                "voice_stt",
-                {**payload, "provider_task_id": task_id, "engine": model},
-                user_id=user_id,
-            )
-            try:
-                _, text = await wait_for_media_task(task_id, timeout_sec=120)
-            except Exception as exc:
-                last_error = exc
-                logger.warning("KIE STT polling failed for %s: %s", model, exc)
-                continue
-
-            normalized = _normalize_transcript(text or "")
-            if len(normalized) >= 2:
-                return normalized
-
-            last_error = ValueError("Не удалось распознать голосовое сообщение")
-
-        raise ValueError(f"распознавание: {last_error}") from last_error
+        await self.jobs.create_job(
+            "voice_stt",
+            {**payload, "provider_task_id": task_id, "engine": model},
+            user_id=user_id,
+        )
+        _, text = await wait_for_media_task(task_id, timeout_sec=120)
+        normalized = _normalize_transcript(text or "")
+        if len(normalized) < 2:
+            raise ValueError("Не удалось распознать голосовое сообщение")
+        return normalized
 
     async def synthesize_audio_url(
         self,

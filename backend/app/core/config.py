@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     kie_input_credits_per_1m: float = 87.5
     kie_output_credits_per_1m: float = 700
     kie_chat_model: str = "gpt-5-2"
-    kie_stt_model: str = "openai/whisper-1"
+    kie_stt_model: str = "elevenlabs/speech-to-text"
     billing_credit_usd: float = 0.007
     charge_markup: float = 50
     provider_cost_display_multiplier: float = 2
