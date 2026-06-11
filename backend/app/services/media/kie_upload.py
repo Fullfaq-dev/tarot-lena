@@ -24,8 +24,11 @@ _RETRYABLE_MARKERS = (
 
 def kie_friendly_filename(path: Path, *, kind: str = "file") -> str:
     suffix = path.suffix.lower()
-    if kind == "audio" and suffix in _OGG_ALIASES:
-        return f"{path.stem}.ogg"
+    if kind == "audio":
+        if suffix == ".mp3":
+            return f"{path.stem}.mp3"
+        if suffix in _OGG_ALIASES:
+            return f"{path.stem}.ogg"
     return path.name
 
 
@@ -136,7 +139,8 @@ class KieFileUpload:
 
         mime = "application/octet-stream"
         if kind == "audio":
-            mime = "audio/ogg"
+            suffix = path.suffix.lower()
+            mime = "audio/mpeg" if suffix == ".mp3" else "audio/ogg"
         elif kind == "image":
             suffix = path.suffix.lower()
             mime = "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png"
@@ -171,7 +175,8 @@ class KieFileUpload:
 
         mime = "application/octet-stream"
         if kind == "audio":
-            mime = "audio/ogg"
+            suffix = path.suffix.lower()
+            mime = "audio/mpeg" if suffix == ".mp3" else "audio/ogg"
         elif kind == "image":
             suffix = path.suffix.lower()
             mime = "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png"

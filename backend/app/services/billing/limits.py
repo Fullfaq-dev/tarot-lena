@@ -27,7 +27,7 @@ SUBSCRIPTION_PRICES_RUB = {
 
 TOP_UP_AMOUNTS_RUB = [Decimal("100"), Decimal("300"), Decimal("500")]
 
-AI_MODEL_NAME = "gemini-3-flash"
+AI_MODEL_NAME = "gpt-5-2"
 AI_PROVIDER_NAME = "kie"
 
 

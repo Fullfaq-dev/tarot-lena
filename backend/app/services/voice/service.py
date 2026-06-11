@@ -3,6 +3,7 @@ import re
 
 from app.core.config import get_settings
 from app.services.ai.kie_client import KieClient
+from app.services.media.audio_convert import ensure_mp3
 from app.services.media.kie_tasks import wait_for_media_task
 from app.services.media.kie_upload import KieFileUpload, kie_friendly_filename
 from app.services.media.service import MediaJobService
@@ -18,9 +19,12 @@ VOICE_PRESETS = {
     "neutral_soft": "Z3R5wn05IrDiVCyEkUrK",
 }
 
-_TRANSCRIBE_PROMPT = (
-    "Распознай речь в этом аудиофайле. "
-    "Верни только текст сказанного, без комментариев, кавычек и пояснений."
+# Fallback STT models if the configured whisper model is unavailable on KIE.
+_STT_MODEL_FALLBACKS = (
+    "openai/whisper-1",
+    "whisper-1",
+    "gpt-4o-mini-transcribe",
+    "openai/gpt-4o-mini-transcribe",
 )
 
 
@@ -48,13 +52,25 @@ class VoiceService:
         self.upload = KieFileUpload()
 
     async def _kie_audio_url(self, stored: StoredFile) -> str:
+        audio_path = await ensure_mp3(stored.path)
         return await self.upload.ensure_kie_url(
-            local_path=stored.path,
-            source_url=stored.public_url,
+            local_path=audio_path,
+            source_url=None,
             upload_path="voice",
-            file_name=kie_friendly_filename(stored.path, kind="audio"),
+            file_name=kie_friendly_filename(audio_path, kind="audio"),
             kind="audio",
         )
+
+    def _stt_models(self) -> list[str]:
+        settings = get_settings()
+        primary = settings.kie_stt_model.strip()
+        models: list[str] = []
+        if primary:
+            models.append(primary)
+        for model in _STT_MODEL_FALLBACKS:
+            if model not in models:
+                models.append(model)
+        return models
 
     async def transcribe(self, stored: StoredFile, *, user_id: str | None = None) -> str:
         try:
@@ -62,69 +78,47 @@ class VoiceService:
         except Exception as exc:
             raise ValueError(f"загрузка аудио: {exc}") from exc
 
-        text = await self._transcribe_via_gemini(audio_url)
-        if text:
-            await self.jobs.create_job(
-                "voice_stt",
-                {"audio_url": audio_url, "engine": "gemini-3-flash"},
-                user_id=user_id,
-            )
-            return text
-
-        logger.warning("Gemini STT unavailable, falling back to elevenlabs/speech-to-text")
-        return await self._transcribe_via_elevenlabs(audio_url, user_id=user_id)
-
-    async def _transcribe_via_gemini(self, audio_url: str) -> str | None:
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": _TRANSCRIBE_PROMPT},
-                    {"type": "image_url", "image_url": {"url": audio_url}},
-                ],
-            }
-        ]
-        try:
-            answer = await self.kie.chat_completion(messages, reasoning_effort="low")
-        except Exception as exc:
-            logger.warning("Gemini voice transcription failed: %s", exc)
-            return None
-
-        text = _normalize_transcript(answer)
-        if len(text) < 2:
-            return None
-        return text
-
-    async def _transcribe_via_elevenlabs(self, audio_url: str, *, user_id: str | None) -> str:
-        settings = get_settings()
         payload = {
             "audio_url": audio_url,
-            "language_code": "",
-            "tag_audio_events": True,
-            "diarize": True,
+            "language": "ru",
+            "language_code": "ru",
         }
-        try:
-            response = await self.kie.create_media_task(
-                "elevenlabs/speech-to-text",
-                payload,
-                callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
+        settings = get_settings()
+        callback_url = f"{settings.public_base_url.rstrip('/')}/callbacks/kie"
+        last_error: Exception | None = None
+
+        for model in self._stt_models():
+            try:
+                response = await self.kie.create_media_task(model, payload, callback_url=callback_url)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("KIE STT createTask failed for %s: %s", model, exc)
+                continue
+
+            task_id = KieClient.task_id_from_response(response)
+            if not task_id:
+                last_error = ValueError("Не удалось создать задачу распознавания речи")
+                continue
+
+            await self.jobs.create_job(
+                "voice_stt",
+                {**payload, "provider_task_id": task_id, "engine": model},
+                user_id=user_id,
             )
-        except Exception as exc:
-            raise ValueError(f"распознавание: {exc}") from exc
+            try:
+                _, text = await wait_for_media_task(task_id, timeout_sec=120)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("KIE STT polling failed for %s: %s", model, exc)
+                continue
 
-        task_id = KieClient.task_id_from_response(response)
-        if not task_id:
-            raise ValueError("Не удалось создать задачу распознавания речи")
+            normalized = _normalize_transcript(text or "")
+            if len(normalized) >= 2:
+                return normalized
 
-        await self.jobs.create_job(
-            "voice_stt",
-            {**payload, "provider_task_id": task_id, "engine": "elevenlabs/speech-to-text"},
-            user_id=user_id,
-        )
-        _, text = await wait_for_media_task(task_id, timeout_sec=120)
-        if not text:
-            raise ValueError("Не удалось распознать голосовое сообщение")
-        return _normalize_transcript(text)
+            last_error = ValueError("Не удалось распознать голосовое сообщение")
+
+        raise ValueError(f"распознавание: {last_error}") from last_error
 
     async def synthesize_audio_url(
         self,
@@ -146,6 +140,7 @@ class VoiceService:
             "style": 0.0,
             "speed": 1.0,
             "timestamps": False,
+            "language_code": "ru",
         }
         response = await self.kie.create_media_task(
             "elevenlabs/text-to-speech-turbo-2-5",

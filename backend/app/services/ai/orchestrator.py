@@ -126,7 +126,7 @@ class AIOrchestrator:
                     "provider_cost_rub": str(
                         provider_cost_rub(usage["input_tokens"], usage["output_tokens"])
                     ),
-                    "model": usage.get("model", "gemini-3-flash"),
+                    "model": usage.get("model", "gpt-5-2"),
                     "usage_record_id": usage["usage_record_id"],
                     "billing_mode": billing_mode,
                     "cost_source": "kie_api" if combined_usage else "estimated",

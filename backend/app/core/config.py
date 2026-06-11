@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     kie_file_upload_base_url: str = "https://kieai.redpandaai.co"
     kie_callback_secret: str = "replace-me"
     kie_credit_usd: float = 0.005
-    kie_input_credits_per_1m: float = 30
-    kie_output_credits_per_1m: float = 180
+    kie_input_credits_per_1m: float = 87.5
+    kie_output_credits_per_1m: float = 700
+    kie_chat_model: str = "gpt-5-2"
+    kie_stt_model: str = "openai/whisper-1"
     billing_credit_usd: float = 0.007
     charge_markup: float = 50
     provider_cost_display_multiplier: float = 2

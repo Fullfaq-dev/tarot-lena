@@ -3,7 +3,7 @@ from decimal import Decimal
 from app.core.config import get_settings
 from app.services.billing.limits import USD_TO_RUB
 
-# KIE gemini-3-flash: 30 cr/1M input, 180 cr/1M output
+# KIE gpt-5-2: 87.5 cr/1M input, 700 cr/1M output
 # Себестоимость: 1 credit = $0.005 (kie_credit_usd)
 # Списание с пользователя: credits × $0.007 × markup → ₽
 

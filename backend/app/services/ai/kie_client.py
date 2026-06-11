@@ -1,10 +1,19 @@
 import json
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 
 import asyncio
 import httpx
 
 from app.core.config import get_settings
+
+
+def _map_reasoning_effort(effort: str) -> str:
+    """GPT-5.2 supports only low/high; map legacy medium to high."""
+    if effort == "medium":
+        return "high"
+    if effort in {"low", "high"}:
+        return effort
+    return "low"
 
 
 class KieClient:
@@ -19,21 +28,23 @@ class KieClient:
             "Content-Type": "application/json",
         }
 
+    def _chat_url(self) -> str:
+        model = self.settings.kie_chat_model.strip("/")
+        return f"{self.settings.kie_base_url.rstrip('/')}/{model}/v1/chat/completions"
+
     async def stream_chat(self, messages: list[dict], reasoning_effort: str = "low") -> AsyncIterator[str]:
         self.last_usage = None
         if self.settings.kie_api_key == "replace-me":
             yield self._local_fallback(messages)
             return
 
-        url = f"{self.settings.kie_base_url.rstrip('/')}/gemini-3-flash/v1/chat/completions"
         payload = {
             "messages": messages,
             "stream": True,
-            "include_thoughts": False,
-            "reasoning_effort": reasoning_effort,
+            "reasoning_effort": _map_reasoning_effort(reasoning_effort),
         }
         async with httpx.AsyncClient(timeout=90) as client:
-            async with client.stream("POST", url, headers=self.headers, json=payload) as response:
+            async with client.stream("POST", self._chat_url(), headers=self.headers, json=payload) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
@@ -74,15 +85,13 @@ class KieClient:
         if self.settings.kie_api_key == "replace-me":
             return self._local_fallback(messages)
 
-        url = f"{self.settings.kie_base_url.rstrip('/')}/gemini-3-flash/v1/chat/completions"
         payload = {
             "messages": messages,
             "stream": False,
-            "include_thoughts": False,
-            "reasoning_effort": reasoning_effort,
+            "reasoning_effort": _map_reasoning_effort(reasoning_effort),
         }
         async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(url, headers=self.headers, json=payload)
+            response = await client.post(self._chat_url(), headers=self.headers, json=payload)
             response.raise_for_status()
             data = response.json()
 
