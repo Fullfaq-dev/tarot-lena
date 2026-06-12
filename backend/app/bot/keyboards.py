@@ -7,6 +7,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
+from app.bot.content import LEGAL_URL, support_url
 from app.services.billing.limits import HISTORY_PAGE_SIZE, MEMORY_PAGE_SIZE
 
 BTN_READINGS = "🔮 Сделать расклад"
@@ -16,9 +17,6 @@ BTN_HISTORY = "📜 История раскладов"
 BTN_INFO = "ℹ️ Информация"
 BTN_SUPPORT = "💬 Поддержка"
 BTN_SETTINGS = "⚙️ Настройки"
-
-SUPPORT_URL = "https://t.me/OnePage_support"
-LEGAL_URL = "https://arcaneai.online/legal/"
 
 # Старые подписи оставляем рабочими — у части пользователей в чате осталась старая клавиатура.
 MENU_ACTIONS: dict[str, str] = {
@@ -115,7 +113,7 @@ def main_menu(balance_label: str = "0 ₽") -> ReplyKeyboardMarkup:
 
 
 def _support_button() -> InlineKeyboardButton:
-    return InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_URL)
+    return InlineKeyboardButton(text="💬 Поддержка", url=support_url())
 
 
 def _legal_button() -> InlineKeyboardButton:

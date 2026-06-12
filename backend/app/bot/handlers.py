@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User as TelegramUser
 from sqlalchemy import select
 
-from app.bot.content import info_panel_text
+from app.bot.content import info_panel_text, support_url
 from app.bot.cards_media import send_card_with_caption, send_drawn_cards
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
@@ -1578,9 +1578,9 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
 
     if action == "support":
         await message.answer(
-            "💬 Напиши в поддержку — поможем с оплатой, багами и любыми вопросами по боту.",
+            "💬 Напиши в поддержку Arcana AI — поможем с оплатой, багами и любыми вопросами по боту.",
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="💬 Открыть поддержку", url="https://t.me/OnePage_support")]]
+                inline_keyboard=[[InlineKeyboardButton(text="💬 Открыть поддержку", url=support_url())]]
             ),
         )
         await _track(None, "bot.menu", {"item": text})

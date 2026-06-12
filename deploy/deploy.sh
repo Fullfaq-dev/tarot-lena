@@ -18,7 +18,7 @@ ensure_env() {
 
 ensure_env ADMIN_BOOTSTRAP_EMAIL "admin@arcaneai.online"
 ensure_env ADMIN_BOOTSTRAP_PASSWORD "ArcanaPanel#2026!Km"
-ensure_env LEGAL_PAGE_URL "https://arcaneai.online/legal"
+ensure_env LEGAL_PAGE_URL "https://arcaneai.online/"
 ensure_env SUPPORT_TELEGRAM_URL "https://t.me/OnePage_support"
 if ! grep -q "^JWT_SECRET=" .env 2>/dev/null || grep -q "^JWT_SECRET=replace-me" .env 2>/dev/null; then
   ensure_env JWT_SECRET "$(openssl rand -hex 32)"

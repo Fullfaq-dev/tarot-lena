@@ -1,14 +1,14 @@
 from app.core.config import get_settings
 
-SUPPORT_URL = "https://t.me/OnePage_support"
+LEGAL_URL = "https://arcaneai.online/"
 
 
-def legal_page_url() -> str:
-    return get_settings().legal_page_url.rstrip("/") + "/"
+def support_url() -> str:
+    return get_settings().support_telegram_url
 
 
 def info_panel_text() -> str:
-    legal_url = legal_page_url()
+    legal_url = LEGAL_URL
     return (
         "ℹ️ О боте Arcana AI\n\n"
         "Я — твой духовный наставник в Telegram: таро, поддержка в вопросах "
@@ -30,5 +30,5 @@ def info_panel_text() -> str:
         "Используя бота, ты соглашаешься с публичной офертой, пользовательским "
         "соглашением, политикой персональных данных и согласием на обработку ПДн.\n"
         f"📄 Все документы: {legal_url}\n\n"
-        "💬 Поддержка: @OnePage_support"
+        "💬 Вопросы — кнопка «Поддержка» или футер на сайте arcaneai.online"
     )
