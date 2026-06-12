@@ -305,7 +305,7 @@ class BillingService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль."
+                return "Сначала нажми /start, чтобы создать твой профиль."
 
             subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
             tier = subscription.tier if subscription else "free"
@@ -327,14 +327,14 @@ class BillingService:
                 f"🔮 Бесплатных раскладов: {readings_left} из 3\n\n"
                 f"✨ Plus — {format_balance(SUBSCRIPTION_PRICES_RUB['plus'])}/мес: безлимитный чат.\n"
                 f"👑 Premium — {format_balance(SUBSCRIPTION_PRICES_RUB['premium'])}/мес: безлимитный чат и голосовые ответы.\n\n"
-                f"🤝 Приглашай подруг и получай 40% с их оплат. Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} в USDT."
+                f"🤝 Приглашай друзей и получай 40% с их оплат. Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} в USDT."
             )
 
     async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> str:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль."
+                return "Сначала нажми /start, чтобы создать твой профиль."
             intent = await self.create_topup(session, user, amount)
             return (
                 f"Ссылка на оплату {amount} ₽:\n{intent.payment_url}\n\n"
@@ -349,7 +349,7 @@ class BillingService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль."
+                return "Сначала нажми /start, чтобы создать твой профиль."
 
             intent = await self.provider.create_payment(user.id, amount, f"subscription_{tier}")
             session.add(

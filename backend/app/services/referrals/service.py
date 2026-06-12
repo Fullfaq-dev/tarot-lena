@@ -83,12 +83,12 @@ class ReferralService:
                 return None
             await session.commit()
 
-            referred_name = referred.first_name or referred.username or "новая подруга"
+            referred_name = referred.first_name or referred.username or "новый пользователь"
             notify_telegram_message(
                 referrer.telegram_id,
-                "🎉 По твоей ссылке присоединилась "
+                "🎉 По твоей ссылке присоединился "
                 f"{referred_name}!\n\n"
-                "Как только она пополнит баланс или оформит подписку — "
+                "Как только он или она пополнит баланс или оформит подписку — "
                 f"тебе начислится {DEFAULT_REWARD_PERCENT}% на реферальный баланс. 💰",
             )
             return referrer.first_name or referrer.username or "друг"
@@ -117,10 +117,10 @@ class ReferralService:
         referred = await session.scalar(select(User).where(User.id == referred_user_id))
         if referrer is None:
             return
-        referred_name = (referred.first_name or referred.username or "подруга") if referred else "подруга"
+        referred_name = (referred.first_name or referred.username or "друг") if referred else "друг"
         notify_telegram_message(
             referrer.telegram_id,
-            f"💰 {referred_name} пополнила баланс на {format_balance(payment_amount)}!\n"
+            f"💰 {referred_name} пополнил(а) баланс на {format_balance(payment_amount)}!\n"
             f"Тебе начислено {format_balance(reward)} ({referral.reward_percent}%) "
             "на реферальный баланс. ✨",
         )
@@ -158,7 +158,7 @@ class ReferralService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль."
+                return "Сначала нажми /start, чтобы создать твой профиль."
 
             stats = await self.get_stats(session, user)
             link = (
@@ -173,9 +173,9 @@ class ReferralService:
                 f"📈 Всего заработано: {format_balance(stats['total_accrued'])}\n"
                 f"👯 Приглашено друзей: {stats['referred_count']}\n\n"
                 "Как это работает:\n"
-                f"1️⃣ Отправь подруге свою ссылку\n"
-                f"2️⃣ Она пополняет баланс или оформляет подписку\n"
-                f"3️⃣ Тебе сразу падает {DEFAULT_REWARD_PERCENT}% от каждой её оплаты\n\n"
+                f"1️⃣ Отправь другу свою ссылку\n"
+                f"2️⃣ Он или она пополняет баланс или оформляет подписку\n"
+                f"3️⃣ Тебе сразу падает {DEFAULT_REWARD_PERCENT}% от каждой оплаты\n\n"
                 f"💸 Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} на USDT (сеть TRC-20). "
                 "Выплаты — каждую пятницу.\n\n"
                 f"🔗 Твоя ссылка:\n{link}"
@@ -229,7 +229,7 @@ class ReferralService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль."
+                return "Сначала нажми /start, чтобы создать твой профиль."
 
             await self.request_withdrawal(
                 session,

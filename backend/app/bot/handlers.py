@@ -28,6 +28,7 @@ from app.bot.keyboards import (
     inline_main_menu,
     inline_photo_mode_menu,
     inline_profile_edit_menu,
+    inline_profile_menu,
     inline_reading_prompt,
     inline_readings_menu,
     inline_referral_menu,
@@ -195,7 +196,7 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
 
     user_id = await _get_user_id(message.from_user.id)
     if user_id is None:
-        await message.answer("Сначала нажми /start, чтобы я создала твой профиль.")
+        await message.answer("Сначала нажми /start, чтобы создать твой профиль.")
         return
 
     tarot = TarotService()
@@ -302,7 +303,7 @@ async def _process_photo_request_safe(
         await _track(None, "bot.error", {"handler": "photo", "error": "cancelled"})
         try:
             await message.answer(
-                "Обработка фото прервалась. Попробуй отправить снимок ещё раз — я уже готова ✨"
+                "Обработка фото прервалась. Попробуй отправить снимок ещё раз ✨"
             )
         except Exception:
             pass
@@ -328,7 +329,7 @@ async def _process_photo_request(
 
     user_id = await _get_user_id(actor.id)
     if user_id is None:
-        await message.answer("Сначала нажми /start, чтобы я создала твой профиль.")
+        await message.answer("Сначала нажми /start, чтобы создать твой профиль.")
         return
 
     waiting_msg = await send_processing_placeholder(message, kind="photo")
@@ -647,7 +648,7 @@ async def referral_share_callback(callback: CallbackQuery) -> None:
     link = ReferralService().build_referral_link(bot_user.username, callback.from_user.id)
     await callback.message.answer(
         f"🔗 Твоя личная ссылка:\n{link}\n\n"
-        "Перешли её подруге — с каждой её оплаты тебе будет приходить 40% на реферальный баланс. 💰",
+        "Перешли её другу — с каждой его или её оплаты тебе будет приходить 40% на реферальный баланс. 💰",
         reply_markup=inline_referral_menu(share_link=link),
     )
 
@@ -672,7 +673,7 @@ async def referral_withdraw_callback(callback: CallbackQuery, state: FSMContext)
         await callback.message.answer(
             f"💸 Вывод доступен от {format_balance(MIN_WITHDRAWAL_RUB)}.\n"
             f"Сейчас на балансе: {format_balance(available)}.\n\n"
-            "Приглашай подруг по своей ссылке — 40% с каждой их оплаты твои. ✨"
+            "Приглашай друзей по своей ссылке — 40% с каждой их оплаты твои. ✨"
         )
         return
 
@@ -833,8 +834,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "profile":
         text = await tarot.profile_extended_for_telegram(callback.from_user.id)
-        await callback.message.answer(text, parse_mode=None)
-        await safe_edit(callback.message, MAIN_MENU_TEXT, inline_main_menu())
+        await safe_edit(callback.message, text, inline_profile_menu(), parse_mode=None)
         await _track(None, "bot.menu", {"item": "profile"})
         return
 
@@ -1171,7 +1171,7 @@ async def photo_message(message: Message, state: FSMContext) -> None:
         await state.set_state(BotStates.waiting_photo_mode)
         await state.update_data(photo_file_id=file_id)
         await message.answer(
-            "📸 Фото получила! Что хочешь узнать?\n"
+            "📸 Фото получено! Что хочешь узнать?\n"
             "Аура и ладонь — с инфографикой, 100 ₽ с баланса.",
             reply_markup=inline_photo_mode_menu(),
         )
@@ -1342,7 +1342,11 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         return
 
     if action == "profile":
-        await message.answer(await tarot.profile_extended_for_telegram(message.from_user.id), parse_mode=None)
+        await message.answer(
+            await tarot.profile_extended_for_telegram(message.from_user.id),
+            reply_markup=inline_profile_menu(),
+            parse_mode=None,
+        )
         await _track(None, "bot.menu", {"item": text})
         return
 

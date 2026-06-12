@@ -55,7 +55,7 @@ class TarotService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль.", None
+                return "Сначала нажми /start, чтобы создать твой профиль.", None
 
             existing = await session.scalar(
                 select(DailyPrediction).where(
@@ -180,7 +180,7 @@ class TarotService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль.", []
+                return "Сначала нажми /start, чтобы создать твой профиль.", []
 
             readings = await session.scalars(
                 select(TarotReading)
@@ -229,7 +229,7 @@ class TarotService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль."
+                return "Сначала нажми /start, чтобы создать твой профиль."
 
             profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
             if profile is None:

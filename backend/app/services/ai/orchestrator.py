@@ -30,7 +30,7 @@ class AIOrchestrator:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
             if user is None:
-                return None, None, "Сначала нажми /start, чтобы я создала твой профиль.", None, "blocked"
+                return None, None, "Сначала нажми /start, чтобы создать твой профиль.", None, "blocked"
 
             messages = await self.context_builder.build(session, user, user_query=text)
             messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
@@ -188,7 +188,7 @@ class AIOrchestrator:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
             if user is None:
-                return None, None, "Сначала нажми /start, чтобы я создала твой профиль.", None, "blocked"
+                return None, None, "Сначала нажми /start, чтобы создать твой профиль.", None, "blocked"
 
             messages = await self.context_builder.build(session, user, user_query=question)
             messages.append({"role": "user", "content": [{"type": "text", "text": reading_prompt}]})

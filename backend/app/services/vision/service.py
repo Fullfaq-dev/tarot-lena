@@ -103,7 +103,7 @@ class VisionService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
             if user is None:
-                return None, "Сначала нажми /start, чтобы я создала твой профиль."
+                return None, "Сначала нажми /start, чтобы создать твой профиль."
 
             stored = await store_telegram_photo(bot, file_id)
             image_url = await self.kie_upload.ensure_kie_url(

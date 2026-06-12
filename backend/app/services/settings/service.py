@@ -22,7 +22,7 @@ class SettingsService:
     async def get_panel_text(self, telegram_id: int) -> str:
         settings = await self._load_settings(telegram_id)
         if settings is None:
-            return "Сначала нажми /start, чтобы я создала твой профиль."
+            return "Сначала нажми /start, чтобы создать твой профиль."
         return self._format_panel(settings)
 
     async def toggle_daily_card(self, telegram_id: int) -> str:
@@ -61,7 +61,7 @@ class SettingsService:
         async with AsyncSessionLocal() as session:
             settings = await self._load_settings_in_session(session, telegram_id)
             if settings is None:
-                return "Сначала нажми /start, чтобы я создала твой профиль."
+                return "Сначала нажми /start, чтобы создать твой профиль."
             mutate(settings)
             await session.commit()
             await session.refresh(settings)

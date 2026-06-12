@@ -127,7 +127,7 @@ def inline_main_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📜 История раскладов", callback_data="nav:history"),
                 InlineKeyboardButton(text="⚙️ Настройки", callback_data="nav:settings"),
             ],
-            [InlineKeyboardButton(text="🤝 Пригласить подругу · 40%", callback_data="nav:referrals")],
+            [InlineKeyboardButton(text="🤝 Пригласить друга · 40%", callback_data="nav:referrals")],
         ]
     )
 
@@ -150,6 +150,27 @@ def inline_reading_prompt(reading_type: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [_back_button("readings")],
+            [_home_button()],
+        ]
+    )
+
+
+def inline_profile_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Данные анкеты", callback_data="nav:profile_edit")],
+            [
+                InlineKeyboardButton(text="🔮 Сделать расклад", callback_data="nav:readings"),
+                InlineKeyboardButton(text="🌅 Карта дня", callback_data="nav:daily"),
+            ],
+            [
+                InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="nav:billing"),
+                InlineKeyboardButton(text="⚙️ Настройки", callback_data="nav:settings"),
+            ],
+            [
+                InlineKeyboardButton(text="📜 История раскладов", callback_data="nav:history"),
+                InlineKeyboardButton(text="🤝 Пригласить друга · 40%", callback_data="nav:referrals"),
+            ],
             [_home_button()],
         ]
     )
@@ -248,7 +269,7 @@ def inline_referral_menu(*, share_link: str | None = None) -> InlineKeyboardMark
             f"url={quote(share_link)}&text={quote(share_text)}"
         )
         rows.append(
-            [InlineKeyboardButton(text="📤 Отправить подруге", url=share_url)]
+            [InlineKeyboardButton(text="📤 Отправить другу", url=share_url)]
         )
     rows.append([InlineKeyboardButton(text="💸 Вывести средства", callback_data="ref:withdraw")])
     rows.append([_home_button()])
