@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.bot.cards_media import send_card_with_caption, send_drawn_cards
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
+from app.core.config import get_settings
 from app.bot.helpers import delete_message_safe, safe_callback_answer, safe_edit, send_processing_placeholder
 from app.bot.keyboards import (
     MAIN_MENU_TEXT,
@@ -67,6 +68,11 @@ from app.bot.audio_media import send_voice_from_url
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+def _admin_telegram_ids() -> set[int]:
+    raw = get_settings().telegram_admin_ids
+    return {int(part.strip()) for part in raw.split(",") if part.strip().isdigit()}
 
 
 def _fire_and_forget(coro) -> None:
@@ -1338,6 +1344,28 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         )
         await _track(None, "bot.menu", {"item": text})
         return
+
+
+@router.message(F.sticker)
+async def sticker_file_id_hint(message: Message) -> None:
+    if message.from_user is None or message.sticker is None:
+        return
+
+    sticker = message.sticker
+    logger.info(
+        "Sticker from user %s file_id=%s unique_id=%s",
+        message.from_user.id,
+        sticker.file_id,
+        sticker.file_unique_id,
+    )
+    if message.from_user.id not in _admin_telegram_ids():
+        return
+
+    await message.answer(
+        "Скопируй в TELEGRAM_PLACEHOLDER_STICKER_ID:\n\n"
+        f"<code>{sticker.file_id}</code>",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 def register_handlers(dispatcher: Dispatcher) -> None:

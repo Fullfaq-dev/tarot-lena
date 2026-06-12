@@ -20,6 +20,7 @@ async def send_processing_placeholder(message: Message, *, kind: str) -> Message
             return await message.answer_sticker(sticker_id)
         except Exception as exc:
             logger.warning("Failed to send placeholder sticker: %s", exc)
+            return None
 
     text = _PROCESSING_TEXT.get(kind)
     if not text:
