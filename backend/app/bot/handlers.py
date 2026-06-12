@@ -407,6 +407,9 @@ async def _process_photo_request(
                 reply_markup=menu_markup,
             )
 
+        await clear_processing_placeholder(waiting_msg)
+        waiting_msg = None
+
         await _notify_billing(
             message,
             result.billing_mode,
@@ -1095,6 +1098,8 @@ async def voice_message(message: Message) -> None:
                 await record_task
 
             if await send_voice_from_url(message, audio_reply_url):
+                await clear_processing_placeholder(status_msg)
+                status_msg = None
                 await _notify_billing(
                     message,
                     billing_mode,
@@ -1103,6 +1108,8 @@ async def voice_message(message: Message) -> None:
                 )
             else:
                 await _answer_formatted(message, answer)
+                await clear_processing_placeholder(status_msg)
+                status_msg = None
                 await _notify_billing(
                     message,
                     billing_mode,
@@ -1112,6 +1119,8 @@ async def voice_message(message: Message) -> None:
                 await message.answer("Не удалось отправить голосовой файл.")
         else:
             await _answer_formatted(message, answer)
+            await clear_processing_placeholder(status_msg)
+            status_msg = None
             await _notify_billing(
                 message,
                 billing_mode,
@@ -1293,8 +1302,12 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             )
             return
 
+        if not text:
+            return
+
         await _chat_reply(message, text)
     except Exception as exc:
+        logger.exception("fallback_message failed")
         await _track(
             None,
             "bot.error",
