@@ -1,5 +1,6 @@
 import logging
 
+from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
@@ -41,9 +42,14 @@ async def clear_processing_placeholder(message: Message | None) -> None:
     await delete_message_safe(message)
 
 
-async def safe_callback_answer(callback: CallbackQuery, text: str | None = None) -> None:
+async def safe_callback_answer(
+    callback: CallbackQuery,
+    text: str | None = None,
+    *,
+    show_alert: bool = False,
+) -> None:
     try:
-        await callback.answer(text)
+        await callback.answer(text, show_alert=show_alert)
     except TelegramBadRequest as exc:
         if "query is too old" in str(exc).lower() or "query id is invalid" in str(exc).lower():
             return
@@ -54,10 +60,12 @@ async def safe_edit(
     message: Message,
     text: str,
     reply_markup: InlineKeyboardMarkup | None = None,
+    *,
+    parse_mode: ParseMode | str | None = None,
 ) -> None:
     try:
-        await message.edit_text(text, reply_markup=reply_markup)
+        await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except TelegramBadRequest as exc:
         if "message is not modified" in str(exc).lower():
             return
-        await message.answer(text, reply_markup=reply_markup)
+        await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)

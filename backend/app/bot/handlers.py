@@ -690,9 +690,9 @@ async def profile_field_pick(callback: CallbackQuery, state: FSMContext) -> None
 
 @router.callback_query(F.data.startswith("mem:"))
 async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
     parts = callback.data.split(":")
     if len(parts) < 3:
+        await safe_callback_answer(callback)
         return
 
     action = parts[1]
@@ -700,6 +700,7 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "page":
         page = int(parts[2])
+        await safe_callback_answer(callback)
         await _show_memory_list(
             callback.message,
             callback.from_user.id,
@@ -713,8 +714,9 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
         memory_id, page = parts[2], int(parts[3])
         text = await service.detail_text(callback.from_user.id, memory_id)
         if text is None:
-            await callback.answer("Запись не найдена", show_alert=True)
+            await safe_callback_answer(callback, "Запись не найдена", show_alert=True)
             return
+        await safe_callback_answer(callback)
         await safe_edit(
             callback.message,
             text,
@@ -727,11 +729,13 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "del" and len(parts) >= 4:
         memory_id, page = parts[2], int(parts[3])
         deleted = await service.deactivate(callback.from_user.id, memory_id)
+        await safe_callback_answer(
+            callback,
+            "Запись удалена" if deleted else "Запись не найдена",
+            show_alert=not deleted,
+        )
         if deleted:
-            await callback.answer("Запись удалена")
             await _track(None, "bot.memory", {"action": "delete", "memory_id": memory_id})
-        else:
-            await callback.answer("Запись не найдена", show_alert=True)
         await _show_memory_list(
             callback.message,
             callback.from_user.id,
@@ -742,6 +746,7 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "add":
         page = int(parts[2])
+        await safe_callback_answer(callback)
         await state.set_state(BotStates.waiting_memory_add)
         await state.update_data(memory_return_page=page)
         await callback.message.answer(
@@ -750,6 +755,8 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
         )
         await _track(None, "bot.memory", {"action": "add_start"})
         return
+
+    await safe_callback_answer(callback)
 
 
 @router.callback_query(F.data.startswith("set:"))
