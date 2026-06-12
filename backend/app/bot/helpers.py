@@ -37,6 +37,10 @@ async def delete_message_safe(message: Message | None) -> None:
         pass
 
 
+async def clear_processing_placeholder(message: Message | None) -> None:
+    await delete_message_safe(message)
+
+
 async def safe_callback_answer(callback: CallbackQuery, text: str | None = None) -> None:
     try:
         await callback.answer(text)

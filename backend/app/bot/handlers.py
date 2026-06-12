@@ -14,7 +14,7 @@ from app.bot.cards_media import send_card_with_caption, send_drawn_cards
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
 from app.core.config import get_settings
-from app.bot.helpers import delete_message_safe, safe_callback_answer, safe_edit, send_processing_placeholder
+from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
 from app.bot.keyboards import (
     MAIN_MENU_TEXT,
     MENU_ACTIONS,
@@ -353,69 +353,70 @@ async def _process_photo_request(
         )
 
     try:
-        result, error = await VisionService().process_photo(
-            message.bot,
-            actor,
-            file_id=file_id,
-            mode=mode,
-            custom_text=custom_text,
-            on_analysis_complete=on_analysis_complete if mode in {"aura", "palm"} else None,
-        )
-    finally:
-        action_stop.set()
         try:
-            await action_task
-        except asyncio.CancelledError:
-            pass
+            result, error = await VisionService().process_photo(
+                message.bot,
+                actor,
+                file_id=file_id,
+                mode=mode,
+                custom_text=custom_text,
+                on_analysis_complete=on_analysis_complete if mode in {"aura", "palm"} else None,
+            )
+        finally:
+            action_stop.set()
+            try:
+                await action_task
+            except asyncio.CancelledError:
+                pass
 
-    await delete_message_safe(waiting_msg)
+        if error:
+            await message.answer(error)
+            return
 
-    if error:
-        await message.answer(error)
-        return
+        menu_markup = await _user_main_menu(actor.id)
+        interpretation_plain = result.interpretation.strip()
+        interpretation_html = to_telegram_html(interpretation_plain)
 
-    menu_markup = await _user_main_menu(actor.id)
-    interpretation_plain = result.interpretation.strip()
-    interpretation_html = to_telegram_html(interpretation_plain)
-
-    if result.infographic_urls:
-        sent = False
-        for url in result.infographic_urls:
-            if await send_photo_from_url(
-                message,
-                url,
-                caption=interpretation_html,
-                caption_plain=interpretation_plain,
-                parse_mode=ParseMode.HTML,
-                reply_markup=menu_markup,
-            ):
-                sent = True
-                break
-        if not sent:
+        if result.infographic_urls:
+            sent = False
+            for url in result.infographic_urls:
+                if await send_photo_from_url(
+                    message,
+                    url,
+                    caption=interpretation_html,
+                    caption_plain=interpretation_plain,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=menu_markup,
+                ):
+                    sent = True
+                    break
+            if not sent:
+                await message.answer(
+                    interpretation_html,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=menu_markup,
+                )
+                await message.answer(
+                    "Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.",
+                    reply_markup=menu_markup,
+                )
+        else:
             await message.answer(
                 interpretation_html,
                 parse_mode=ParseMode.HTML,
                 reply_markup=menu_markup,
             )
-            await message.answer(
-                "Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.",
-                reply_markup=menu_markup,
-            )
-    else:
-        await message.answer(
-            interpretation_html,
-            parse_mode=ParseMode.HTML,
-            reply_markup=menu_markup,
-        )
 
-    await _notify_billing(
-        message,
-        result.billing_mode,
-        result.usage,
-        reply_markup=await _user_main_menu(actor.id),
-        telegram_id=actor.id,
-    )
-    await _track(user_id, "bot.vision", {"mode": mode, "feature": result.feature})
+        await _notify_billing(
+            message,
+            result.billing_mode,
+            result.usage,
+            reply_markup=await _user_main_menu(actor.id),
+            telegram_id=actor.id,
+        )
+        await _track(user_id, "bot.vision", {"mode": mode, "feature": result.feature})
+    finally:
+        await clear_processing_placeholder(waiting_msg)
 
 
 async def _get_user_free_used(telegram_id: int) -> int:
@@ -1043,6 +1044,7 @@ async def voice_message(message: Message) -> None:
     tier, voice_preset = await _user_voice_settings(message.from_user.id)
     voice_reply = can_use_premium_voice(tier)
 
+    status_msg = None
     try:
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
         status_msg = await send_processing_placeholder(message, kind="voice")
@@ -1050,8 +1052,6 @@ async def voice_message(message: Message) -> None:
         voice_service = VoiceService()
         db_user_id = await _get_user_id(message.from_user.id)
         transcript = await voice_service.transcribe(audio_file, user_id=db_user_id)
-
-        await delete_message_safe(status_msg)
 
         orchestrator = AIOrchestrator()
         user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
@@ -1132,6 +1132,8 @@ async def voice_message(message: Message) -> None:
             await message.answer(f"Не удалось обработать голосовое: {detail}")
         else:
             await message.answer("Не удалось обработать голосовое. Попробуй ещё раз или напиши текстом.")
+    finally:
+        await clear_processing_placeholder(status_msg)
 
 
 @router.message(F.photo)
