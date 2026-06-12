@@ -8,12 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin_api import service as admin_service
+from app.admin_api.auth import get_current_admin
 from app.core.config import get_settings
 from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, User
 from app.database.session import get_session
 from app.services.billing.service import BillingService
 
-router = APIRouter(tags=["admin"])
+router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin)])
 
 
 @router.get("/dashboard")

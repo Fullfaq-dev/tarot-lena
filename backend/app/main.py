@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.admin_api.router import router as admin_router
+from app.admin_api.auth_router import router as admin_auth_router
+from app.admin_api.auth import ensure_bootstrap_admin
 from app.api.health import router as health_router
 from app.api.kie_callbacks import router as kie_callbacks_router
 from app.bot.factory import create_bot, create_dispatcher
@@ -40,6 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     settings.tarot_cards_dir.mkdir(parents=True, exist_ok=True)
     await ensure_tarot_cards_seeded()
+    await ensure_bootstrap_admin()
     app.state.bot = create_bot()
     app.state.dispatcher = create_dispatcher()
     if (
@@ -73,6 +76,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(kie_callbacks_router)
+app.include_router(admin_auth_router, prefix="/admin-api/auth")
 app.include_router(admin_router, prefix="/admin-api")
 
 settings = get_settings()

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api, BillingData, BillingUsageRow, LogRow, MemoryRow, MessageRow, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
+import { api, getToken, login, setToken, BillingData, BillingUsageRow, LogRow, MemoryRow, MessageRow, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
 
 type Route =
   | { page: "dashboard" }
@@ -24,6 +24,47 @@ function parseRoute(): Route {
   return { page: "dashboard" };
 }
 
+function LoginPage({ onSuccess }: { onSuccess: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const data = await login(email.trim(), password);
+      setToken(data.access_token);
+      onSuccess();
+    } catch {
+      setError("Неверный логин или пароль");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <form className="login-card" onSubmit={submit}>
+        <h1>Arcana AI Panel</h1>
+        <p className="muted">Вход в панель управления</p>
+        <label>
+          Email
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="username" />
+        </label>
+        <label>
+          Пароль
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <button type="submit" disabled={loading}>{loading ? "Вход…" : "Войти"}</button>
+      </form>
+    </div>
+  );
+}
+
 function navigate(route: Route) {
   if (route.page === "dashboard") window.location.hash = "/";
   else if (route.page === "user") window.location.hash = `/users/${route.id}`;
@@ -32,6 +73,7 @@ function navigate(route: Route) {
 }
 
 export function App() {
+  const [authed, setAuthed] = useState(Boolean(getToken()));
   const [route, setRoute] = useState<Route>(parseRoute());
 
   useEffect(() => {
@@ -40,10 +82,14 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
+  if (!authed) {
+    return <LoginPage onSuccess={() => setAuthed(true)} />;
+  }
+
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="brand">AI Tarot Admin</div>
+        <div className="brand">Arcana AI Panel</div>
         <nav>
           <NavItem active={route.page === "dashboard"} onClick={() => navigate({ page: "dashboard" })}>Статистика</NavItem>
           <NavItem active={route.page === "tokens"} onClick={() => navigate({ page: "tokens" })}>Токены</NavItem>
@@ -53,6 +99,9 @@ export function App() {
           <NavItem active={route.page === "referrals"} onClick={() => navigate({ page: "referrals" })}>Рефералка</NavItem>
           <NavItem active={route.page === "tarot"} onClick={() => navigate({ page: "tarot" })}>Карты Таро</NavItem>
         </nav>
+        <button className="logout-btn" type="button" onClick={() => { setToken(null); setAuthed(false); }}>
+          Выйти
+        </button>
       </aside>
       <main className="content">
         {route.page === "dashboard" && <DashboardPage />}

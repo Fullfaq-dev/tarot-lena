@@ -13,7 +13,12 @@ BTN_READINGS = "🔮 Сделать расклад"
 BTN_DAILY = "🌅 Карта дня"
 BTN_PROFILE = "👤 Мой профиль"
 BTN_HISTORY = "📜 История раскладов"
+BTN_INFO = "ℹ️ Информация"
+BTN_SUPPORT = "💬 Поддержка"
 BTN_SETTINGS = "⚙️ Настройки"
+
+SUPPORT_URL = "https://t.me/OnePage_support"
+LEGAL_URL = "https://arcaneai.online/legal/"
 
 # Старые подписи оставляем рабочими — у части пользователей в чате осталась старая клавиатура.
 MENU_ACTIONS: dict[str, str] = {
@@ -21,11 +26,15 @@ MENU_ACTIONS: dict[str, str] = {
     BTN_DAILY: "daily",
     BTN_PROFILE: "profile",
     BTN_HISTORY: "history",
+    BTN_INFO: "info",
+    BTN_SUPPORT: "support",
     BTN_SETTINGS: "settings",
     "Сделать расклад": "readings",
     "Карта дня": "daily",
     "Мой профиль": "profile",
     "История раскладов": "history",
+    "Информация": "info",
+    "Поддержка": "support",
     "Настройки": "settings",
     "Подписка и баланс": "billing",
 }
@@ -98,10 +107,19 @@ def main_menu(balance_label: str = "0 ₽") -> ReplyKeyboardMarkup:
             [KeyboardButton(text=balance_button_text(balance_label))],
             [KeyboardButton(text=BTN_READINGS), KeyboardButton(text=BTN_DAILY)],
             [KeyboardButton(text=BTN_PROFILE), KeyboardButton(text=BTN_HISTORY)],
+            [KeyboardButton(text=BTN_INFO), KeyboardButton(text=BTN_SUPPORT)],
             [KeyboardButton(text=BTN_SETTINGS)],
         ],
         resize_keyboard=True,
     )
+
+
+def _support_button() -> InlineKeyboardButton:
+    return InlineKeyboardButton(text="💬 Поддержка", url=SUPPORT_URL)
+
+
+def _legal_button() -> InlineKeyboardButton:
+    return InlineKeyboardButton(text="📄 Юридическая информация", url=LEGAL_URL)
 
 
 def _home_button() -> InlineKeyboardButton:
@@ -136,7 +154,11 @@ def inline_main_menu() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📜 История раскладов", callback_data="nav:history"),
+                InlineKeyboardButton(text="ℹ️ Информация", callback_data="nav:info"),
+            ],
+            [
                 InlineKeyboardButton(text="⚙️ Настройки", callback_data="nav:settings"),
+                _support_button(),
             ],
             [InlineKeyboardButton(text="🤝 Пригласить друга · 40%", callback_data="nav:referrals")],
         ]
@@ -182,6 +204,16 @@ def inline_profile_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="📜 История раскладов", callback_data="nav:history"),
                 InlineKeyboardButton(text="🤝 Пригласить друга · 40%", callback_data="nav:referrals"),
             ],
+            [_home_button()],
+        ]
+    )
+
+
+def inline_info_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [_legal_button()],
+            [_support_button()],
             [_home_button()],
         ]
     )
@@ -310,6 +342,7 @@ def inline_billing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="👑 Premium · 2999 ₽/мес", callback_data="bill:sub:premium"),
             ],
             [InlineKeyboardButton(text="📋 История трат", callback_data="bill:spend:0")],
+            [_support_button()],
             [InlineKeyboardButton(text="🤝 Реферальная программа", callback_data="nav:referrals")],
             [_home_button()],
         ]

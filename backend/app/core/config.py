@@ -44,8 +44,10 @@ class Settings(BaseSettings):
     image_generation_markup: float = 5
 
     jwt_secret: str = "replace-me"
-    admin_bootstrap_email: str = "admin@example.com"
-    admin_bootstrap_password: str = "change-me"
+    admin_bootstrap_email: str = "admin@arcaneai.online"
+    admin_bootstrap_password: str = "ArcanaPanel#2026!Km"
+    legal_page_url: str = "https://arcaneai.online/legal"
+    support_telegram_url: str = "https://t.me/OnePage_support"
 
     platega_merchant_id: str = Field(default="", alias="PLATEGA_MERCHANT_ID")
     platega_api_key: str = ""

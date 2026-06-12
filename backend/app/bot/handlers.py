@@ -10,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User as TelegramUser
 from sqlalchemy import select
 
+from app.bot.content import info_panel_text
 from app.bot.cards_media import send_card_with_caption, send_drawn_cards
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
@@ -25,6 +26,7 @@ from app.bot.keyboards import (
     READINGS_MENU_TEXT,
     inline_billing_menu,
     inline_history_menu,
+    inline_info_menu,
     inline_main_menu,
     inline_memory_detail_menu,
     inline_memory_empty_menu,
@@ -1045,6 +1047,11 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await _track(None, "bot.menu", {"item": "settings"})
         return
 
+    if action == "info":
+        await safe_edit(callback.message, info_panel_text(), inline_info_menu(), parse_mode=None)
+        await _track(None, "bot.menu", {"item": "info"})
+        return
+
     if action == "profile_edit":
         await _show_profile_edit(callback.message, callback.from_user.id)
         await _track(None, "bot.menu", {"item": "profile_edit"})
@@ -1563,6 +1570,23 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         )
         await _track(None, "bot.menu", {"item": text})
         return
+
+    if action == "info":
+        await message.answer(info_panel_text(), reply_markup=inline_info_menu(), parse_mode=None)
+        await _track(None, "bot.menu", {"item": text})
+        return
+
+    if action == "support":
+        await message.answer(
+            "💬 Напиши в поддержку — поможем с оплатой, багами и любыми вопросами по боту.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="💬 Открыть поддержку", url="https://t.me/OnePage_support")]]
+            ),
+        )
+        await _track(None, "bot.menu", {"item": text})
+        return
+
+    await message.answer(MAIN_MENU_TEXT, reply_markup=inline_main_menu())
 
 
 @router.message(F.sticker)

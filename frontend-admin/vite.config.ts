@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  base: "/panel/",
   server: {
     proxy: {
       "/admin-api": "http://api:8000",

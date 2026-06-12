@@ -1,32 +1,63 @@
 const BASE = "/admin-api";
+const TOKEN_KEY = "arcana_admin_token";
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function authHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    setToken(null);
+    window.location.reload();
+    throw new Error("Unauthorized");
+  }
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { headers: authHeaders() });
+  return handleResponse<T>(res);
 }
 
 async function patch(path: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${BASE}${path}?${qs}`, { method: "PATCH" });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const res = await fetch(`${BASE}${path}?${qs}`, { method: "PATCH", headers: authHeaders() });
+  return handleResponse(res);
 }
 
 async function del(path: string) {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: authHeaders() });
+  return handleResponse(res);
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return handleResponse<T>(res);
+}
+
+export async function login(email: string, password: string) {
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error("Неверный логин или пароль");
+  return res.json() as Promise<{ access_token: string; email: string }>;
 }
 
 export const api = {
@@ -67,9 +98,12 @@ export const api = {
     patch(`/referrals/withdrawals/${id}`, { status, ...(comment ? { admin_comment: comment } : {}) }),
   tarotCards: () => get<TarotCardRow[]>("/tarot-cards"),
   uploadTarotCard: async (form: FormData) => {
-    const res = await fetch(`${BASE}/tarot-cards/upload`, { method: "POST", body: form });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const res = await fetch(`${BASE}/tarot-cards/upload`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: form,
+    });
+    return handleResponse(res);
   },
 };
 
