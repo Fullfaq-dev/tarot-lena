@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import BalanceTransaction, Payment, Subscription, UsageRecord, User
@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.services.billing.limits import (
     AI_MODEL_NAME,
     FREE_CHAT_MESSAGES_PER_MONTH,
+    SPENDING_PAGE_SIZE,
     SUBSCRIPTION_PRICES_RUB,
     free_messages_left,
     is_unlimited_chat,
@@ -329,6 +330,59 @@ class BillingService:
                 f"👑 Premium — {format_balance(SUBSCRIPTION_PRICES_RUB['premium'])}/мес: безлимитный чат и голосовые ответы.\n\n"
                 f"🤝 Приглашай друзей и получай 40% с их оплат. Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} в USDT."
             )
+
+    _SPENDING_FEATURE_LABELS = {
+        "chat": "Чат",
+        "tarot_reading": "Расклад",
+        "vision_aura": "Аура",
+        "vision_palm": "Ладонь",
+        "vision_custom": "Фото",
+    }
+
+    async def spending_history_page(
+        self, telegram_id: int, page: int = 0
+    ) -> tuple[str, int, int]:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return "Сначала нажми /start, чтобы создать твой профиль.", 0, 0
+
+            total = await session.scalar(
+                select(func.count())
+                .select_from(UsageRecord)
+                .where(UsageRecord.user_id == user.id, UsageRecord.charged_rub > 0)
+            )
+            total = int(total or 0)
+            if total == 0:
+                return (
+                    "📋 История трат\n\n"
+                    "Пока списаний с баланса нет — траты появятся после платных ответов в чате, "
+                    "раскладов и генерации инфографики.",
+                    0,
+                    0,
+                )
+
+            total_pages = max(1, (total + SPENDING_PAGE_SIZE - 1) // SPENDING_PAGE_SIZE)
+            page = max(0, min(page, total_pages - 1))
+            offset = page * SPENDING_PAGE_SIZE
+
+            records = await session.scalars(
+                select(UsageRecord)
+                .where(UsageRecord.user_id == user.id, UsageRecord.charged_rub > 0)
+                .order_by(UsageRecord.created_at.desc())
+                .offset(offset)
+                .limit(SPENDING_PAGE_SIZE)
+            )
+
+            lines = [
+                "📋 История трат",
+                f"Страница {page + 1} из {total_pages}\n",
+            ]
+            for record in records:
+                label = self._SPENDING_FEATURE_LABELS.get(record.feature, record.feature)
+                when = record.created_at.strftime("%d.%m %H:%M")
+                lines.append(f"{when} — {label} — {format_balance(record.charged_rub)}")
+            return "\n".join(lines), page, total_pages
 
     async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> str:
         async with AsyncSessionLocal() as session:

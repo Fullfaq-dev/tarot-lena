@@ -33,6 +33,7 @@ from app.bot.keyboards import (
     inline_readings_menu,
     inline_referral_menu,
     inline_settings_menu,
+    inline_spending_menu,
     inline_withdraw_wallet_menu,
     is_balance_button,
     main_menu,
@@ -46,6 +47,7 @@ from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
 from app.services.analytics.tracker import track_event
 from app.services.billing.limits import (
+    DAILY_READINGS_LIMIT,
     FREE_CHAT_MESSAGES_PER_MONTH,
     can_use_premium_voice,
     free_messages_left,
@@ -108,6 +110,30 @@ async def _open_billing(message: Message, *, edit_message: Message | None = None
     markup = inline_billing_menu()
     if edit_message is not None:
         await safe_edit(edit_message, text, markup)
+    else:
+        await message.answer(text, reply_markup=markup, parse_mode=None)
+
+
+async def _readings_menu_text(telegram_id: int) -> str:
+    left = await TarotService().readings_left_today(telegram_id)
+    return (
+        f"{READINGS_MENU_TEXT}\n\n"
+        f"Сегодня осталось раскладов: {left} из {DAILY_READINGS_LIMIT}."
+    )
+
+
+async def _show_reading_history(
+    message: Message,
+    telegram_id: int,
+    page: int = 0,
+    *,
+    edit_message: Message | None = None,
+) -> None:
+    tarot = TarotService()
+    text, readings, page, total_pages = await tarot.history_page(telegram_id, page)
+    markup = inline_history_menu(readings, page, total_pages) if readings else None
+    if edit_message is not None:
+        await safe_edit(edit_message, text, markup, parse_mode=None)
     else:
         await message.answer(text, reply_markup=markup, parse_mode=None)
 
@@ -192,6 +218,14 @@ async def _send_daily_card(message: Message, telegram_id: int) -> None:
 async def _handle_reading_question(message: Message, state: FSMContext, question: str) -> None:
     data = await state.get_data()
     reading_type = data.get("reading_type", "past_present_future")
+
+    tarot = TarotService()
+    ok, limit_error = await tarot.ensure_can_read_today(message.from_user.id)
+    if not ok:
+        await state.clear()
+        await message.answer(limit_error, reply_markup=await _user_main_menu(message.from_user.id))
+        return
+
     await state.clear()
 
     user_id = await _get_user_id(message.from_user.id)
@@ -199,7 +233,6 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
         await message.answer("Сначала нажми /start, чтобы создать твой профиль.")
         return
 
-    tarot = TarotService()
     orchestrator = AIOrchestrator()
     label = READING_TYPE_LABELS.get(reading_type, reading_type)
     cards = tarot.draw_cards(READING_TYPES.get(reading_type, 3))
@@ -539,8 +572,20 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if target == "readings":
-        await safe_edit(callback.message, READINGS_MENU_TEXT, inline_readings_menu())
+        await safe_edit(callback.message, await _readings_menu_text(callback.from_user.id), inline_readings_menu())
         return
+
+
+@router.callback_query(F.data.startswith("hist:page:"))
+async def history_page_callback(callback: CallbackQuery) -> None:
+    await callback.answer()
+    page = int(callback.data.removeprefix("hist:page:"))
+    await _show_reading_history(
+        callback.message,
+        callback.from_user.id,
+        page,
+        edit_message=callback.message,
+    )
 
 
 @router.callback_query(F.data.startswith("hist:open:"))
@@ -772,6 +817,13 @@ async def billing_callback(callback: CallbackQuery) -> None:
         return
 
     _, action, value = parts[0], parts[1], parts[2]
+    if action == "spend":
+        page = int(value)
+        text, page, total_pages = await billing.spending_history_page(callback.from_user.id, page)
+        markup = inline_spending_menu(page, max(total_pages, 1))
+        await safe_edit(callback.message, text, markup, parse_mode=None)
+        return
+
     if action == "topup":
         text = await billing.create_topup_for_telegram(callback.from_user.id, Decimal(value))
         await callback.message.answer(text, reply_markup=await _user_main_menu(callback.from_user.id))
@@ -801,11 +853,19 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "readings":
         await state.clear()
-        await safe_edit(callback.message, READINGS_MENU_TEXT, inline_readings_menu())
+        await safe_edit(
+            callback.message,
+            await _readings_menu_text(callback.from_user.id),
+            inline_readings_menu(),
+        )
         return
 
     if action.startswith("reading:"):
         reading_type = action.removeprefix("reading:")
+        ok, limit_error = await tarot.ensure_can_read_today(callback.from_user.id)
+        if not ok:
+            await callback.message.answer(limit_error)
+            return
         label = READING_TYPE_LABELS.get(reading_type, "расклад")
         await state.set_state(BotStates.waiting_reading_question)
         await state.update_data(reading_type=reading_type)
@@ -823,12 +883,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if action == "history":
-        text, readings = await tarot.history_entries(callback.from_user.id)
-        if readings:
-            await callback.message.answer(text, reply_markup=inline_history_menu(readings), parse_mode=None)
-        else:
-            await callback.message.answer(text, parse_mode=None)
-        await safe_edit(callback.message, MAIN_MENU_TEXT, inline_main_menu())
+        await _show_reading_history(callback.message, callback.from_user.id, edit_message=callback.message)
         await _track(None, "bot.menu", {"item": "history"})
         return
 
@@ -1293,6 +1348,11 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
 
         reading_type = READING_LABEL_TO_TYPE.get(text.lower())
         if reading_type:
+            tarot = TarotService()
+            ok, limit_error = await tarot.ensure_can_read_today(message.from_user.id)
+            if not ok:
+                await message.answer(limit_error, reply_markup=await _user_main_menu(message.from_user.id))
+                return
             label = READING_TYPE_LABELS[reading_type]
             await state.set_state(BotStates.waiting_reading_question)
             await state.update_data(reading_type=reading_type)
@@ -1327,17 +1387,15 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         return
 
     if action == "readings":
-        await message.answer(READINGS_MENU_TEXT, reply_markup=inline_readings_menu())
+        await message.answer(
+            await _readings_menu_text(message.from_user.id),
+            reply_markup=inline_readings_menu(),
+        )
         await _track(None, "bot.menu", {"item": text})
         return
 
     if action == "history":
-        history_text, readings = await tarot.history_entries(message.from_user.id)
-        await message.answer(
-            history_text,
-            reply_markup=inline_history_menu(readings) if readings else None,
-            parse_mode=None,
-        )
+        await _show_reading_history(message, message.from_user.id)
         await _track(None, "bot.menu", {"item": text})
         return
 

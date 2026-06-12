@@ -7,6 +7,8 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
+from app.services.billing.limits import HISTORY_PAGE_SIZE
+
 BTN_READINGS = "🔮 Сделать расклад"
 BTN_DAILY = "🌅 Карта дня"
 BTN_PROFILE = "👤 Мой профиль"
@@ -110,6 +112,15 @@ def _back_button(target: str) -> InlineKeyboardButton:
     if target == "main":
         return _home_button()
     return InlineKeyboardButton(text="← Назад", callback_data=f"nav:back:{target}")
+
+
+def _pagination_buttons(prefix: str, page: int, total_pages: int) -> list[InlineKeyboardButton]:
+    buttons: list[InlineKeyboardButton] = []
+    if page > 0:
+        buttons.append(InlineKeyboardButton(text="← Назад", callback_data=f"{prefix}:{page - 1}"))
+    if page < total_pages - 1:
+        buttons.append(InlineKeyboardButton(text="Вперёд →", callback_data=f"{prefix}:{page + 1}"))
+    return buttons
 
 
 def inline_main_menu() -> InlineKeyboardMarkup:
@@ -252,10 +263,21 @@ def inline_billing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="✨ Plus · 999 ₽/мес", callback_data="bill:sub:plus"),
                 InlineKeyboardButton(text="👑 Premium · 2999 ₽/мес", callback_data="bill:sub:premium"),
             ],
+            [InlineKeyboardButton(text="📋 История трат", callback_data="bill:spend:0")],
             [InlineKeyboardButton(text="🤝 Реферальная программа", callback_data="nav:referrals")],
             [_home_button()],
         ]
     )
+
+
+def inline_spending_menu(page: int, total_pages: int) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    nav = _pagination_buttons("bill:spend", page, total_pages)
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="← Баланс", callback_data="nav:billing")])
+    rows.append([_home_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def inline_referral_menu(*, share_link: str | None = None) -> InlineKeyboardMarkup:
@@ -288,9 +310,10 @@ def inline_withdraw_wallet_menu(saved_wallet: str | None) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def inline_history_menu(readings: list) -> InlineKeyboardMarkup:
+def inline_history_menu(readings: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
-    for index, reading in enumerate(readings, start=1):
+    start = page * HISTORY_PAGE_SIZE
+    for index, reading in enumerate(readings, start=start + 1):
         label = READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type)
         rows.append(
             [
@@ -300,6 +323,9 @@ def inline_history_menu(readings: list) -> InlineKeyboardMarkup:
                 )
             ]
         )
+    nav = _pagination_buttons("hist:page", page, total_pages)
+    if nav:
+        rows.append(nav)
     rows.append([_home_button()])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

@@ -1,12 +1,13 @@
 import random
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database.models import DailyPrediction, TarotCard, TarotReading, User
 from app.database.session import AsyncSessionLocal
 from app.core.config import get_settings
+from app.services.billing.limits import DAILY_READINGS_LIMIT, HISTORY_PAGE_SIZE
 from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
 from app.services.tarot.cards import FULL_DECK, storage_image_path
@@ -140,6 +141,47 @@ class TarotService:
     def _is_stale_daily_text(text: str) -> bool:
         return "В эзотерической интерпретации это может означать" in text
 
+    def _today_start_utc() -> datetime:
+        now = datetime.now(UTC)
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    async def ensure_can_read_today(self, telegram_id: int) -> tuple[bool, str | None]:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return False, "Сначала нажми /start, чтобы создать твой профиль."
+            count = await session.scalar(
+                select(func.count())
+                .select_from(TarotReading)
+                .where(
+                    TarotReading.user_id == user.id,
+                    TarotReading.created_at >= self._today_start_utc(),
+                )
+            )
+            used = int(count or 0)
+            if used >= DAILY_READINGS_LIMIT:
+                return (
+                    False,
+                    f"Сегодня уже {DAILY_READINGS_LIMIT} раскладов — дневной лимит исчерпан. "
+                    "Новые расклады будут доступны завтра.",
+                )
+            return True, None
+
+    async def readings_left_today(self, telegram_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return 0
+            count = await session.scalar(
+                select(func.count())
+                .select_from(TarotReading)
+                .where(
+                    TarotReading.user_id == user.id,
+                    TarotReading.created_at >= self._today_start_utc(),
+                )
+            )
+            return max(0, DAILY_READINGS_LIMIT - int(count or 0))
+
     async def create_reading(
         self,
         user_id: str,
@@ -176,28 +218,55 @@ class TarotService:
             for card in cards
         ]
 
-    async def history_entries(self, telegram_id: int) -> tuple[str, list[TarotReading]]:
+    async def history_page(
+        self, telegram_id: int, page: int = 0
+    ) -> tuple[str, list[TarotReading], int, int]:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль.", []
+                return "Сначала нажми /start, чтобы создать твой профиль.", [], 0, 0
+
+            total = await session.scalar(
+                select(func.count())
+                .select_from(TarotReading)
+                .where(TarotReading.user_id == user.id)
+            )
+            total = int(total or 0)
+            if total == 0:
+                return (
+                    "Пока раскладов нет. Выбери «Сделать расклад» или просто задай вопрос в чате.",
+                    [],
+                    0,
+                    0,
+                )
+
+            total_pages = max(1, (total + HISTORY_PAGE_SIZE - 1) // HISTORY_PAGE_SIZE)
+            page = max(0, min(page, total_pages - 1))
+            offset = page * HISTORY_PAGE_SIZE
 
             readings = await session.scalars(
                 select(TarotReading)
                 .where(TarotReading.user_id == user.id)
                 .order_by(TarotReading.created_at.desc())
-                .limit(5)
+                .offset(offset)
+                .limit(HISTORY_PAGE_SIZE)
             )
             items = list(readings)
-            if not items:
-                return "Пока раскладов нет. Выбери «Сделать расклад» или просто задай вопрос в чате.", []
 
-            lines = ["История раскладов\n", "Нажми на расклад, чтобы открыть полное толкование:\n"]
-            for index, reading in enumerate(items, start=1):
+            lines = [
+                "История раскладов",
+                f"Страница {page + 1} из {total_pages}\n",
+                "Нажми на расклад, чтобы открыть полное толкование:\n",
+            ]
+            for index, reading in enumerate(items, start=offset + 1):
                 label = READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type)
                 question = reading.question[:60] + ("…" if len(reading.question) > 60 else "")
                 lines.append(f"{index}. {label} — «{question}»")
-            return "\n".join(lines), items
+            return "\n".join(lines), items, page, total_pages
+
+    async def history_entries(self, telegram_id: int) -> tuple[str, list[TarotReading]]:
+        text, items, _, _ = await self.history_page(telegram_id, page=0)
+        return text, items
 
     async def history_for_telegram(self, telegram_id: int) -> str:
         text, _ = await self.history_entries(telegram_id)
