@@ -7,7 +7,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-from app.services.billing.limits import HISTORY_PAGE_SIZE
+from app.services.billing.limits import HISTORY_PAGE_SIZE, MEMORY_PAGE_SIZE
 
 BTN_READINGS = "🔮 Сделать расклад"
 BTN_DAILY = "🌅 Карта дня"
@@ -191,6 +191,7 @@ def inline_settings_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📝 Данные анкеты", callback_data="nav:profile_edit")],
+            [InlineKeyboardButton(text="🧠 Память обо мне", callback_data="mem:page:0")],
             [InlineKeyboardButton(text="🎙 Сменить голос", callback_data="set:voice")],
             [InlineKeyboardButton(text="🕐 Сменить часовой пояс", callback_data="set:timezone")],
             [
@@ -205,6 +206,51 @@ def inline_settings_menu() -> InlineKeyboardMarkup:
 def _profile_button_text(label: str, value: str) -> str:
     text = f"{label}: {value}"
     return text if len(text) <= 60 else f"{text[:57]}…"
+
+
+def inline_memory_list_menu(memories: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    start = page * MEMORY_PAGE_SIZE
+    for index, memory in enumerate(memories, start=start + 1):
+        preview = memory.description.strip().replace("\n", " ")
+        if len(preview) > 36:
+            preview = preview[:36] + "…"
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{index}. {preview}",
+                    callback_data=f"mem:open:{memory.id}:{page}",
+                )
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="➕ Добавить запись", callback_data=f"mem:add:{page}")])
+    nav = _pagination_buttons("mem:page", page, total_pages)
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="← Настройки", callback_data="nav:settings")])
+    rows.append([_home_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def inline_memory_empty_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить запись", callback_data="mem:add:0")],
+            [InlineKeyboardButton(text="← Настройки", callback_data="nav:settings")],
+            [_home_button()],
+        ]
+    )
+
+
+def inline_memory_detail_menu(memory_id: str, page: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 Удалить запись", callback_data=f"mem:del:{memory_id}:{page}")],
+            [InlineKeyboardButton(text="← К списку", callback_data=f"mem:page:{page}")],
+            [InlineKeyboardButton(text="← Настройки", callback_data="nav:settings")],
+            [_home_button()],
+        ]
+    )
 
 
 def inline_profile_edit_menu(rows: list[tuple[str, str, str]]) -> InlineKeyboardMarkup:

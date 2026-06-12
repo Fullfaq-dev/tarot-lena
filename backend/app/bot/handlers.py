@@ -26,6 +26,9 @@ from app.bot.keyboards import (
     inline_billing_menu,
     inline_history_menu,
     inline_main_menu,
+    inline_memory_detail_menu,
+    inline_memory_empty_menu,
+    inline_memory_list_menu,
     inline_photo_mode_menu,
     inline_profile_edit_menu,
     inline_profile_menu,
@@ -54,6 +57,7 @@ from app.services.billing.limits import (
 )
 from app.services.billing.tokens import format_balance
 from app.services.billing.service import BillingService
+from app.services.memory.panel import MemoryPanelService
 from app.services.onboarding.service import ONBOARDING_STEPS, OnboardingService
 from app.services.profile.service import ProfileService
 from app.services.referrals.service import (
@@ -132,6 +136,25 @@ async def _show_reading_history(
     tarot = TarotService()
     text, readings, page, total_pages = await tarot.history_page(telegram_id, page)
     markup = inline_history_menu(readings, page, total_pages) if readings else None
+    if edit_message is not None:
+        await safe_edit(edit_message, text, markup, parse_mode=None)
+    else:
+        await message.answer(text, reply_markup=markup, parse_mode=None)
+
+
+async def _show_memory_list(
+    message: Message,
+    telegram_id: int,
+    page: int = 0,
+    *,
+    edit_message: Message | None = None,
+) -> None:
+    service = MemoryPanelService()
+    text, memories, page, total_pages = await service.list_page(telegram_id, page)
+    if memories:
+        markup = inline_memory_list_menu(memories, page, total_pages)
+    else:
+        markup = inline_memory_empty_menu()
     if edit_message is not None:
         await safe_edit(edit_message, text, markup, parse_mode=None)
     else:
@@ -663,6 +686,70 @@ async def profile_field_pick(callback: CallbackQuery, state: FSMContext) -> None
         return
     await _show_profile_edit(callback.message, callback.from_user.id, prefix=f"{result}\n\n")
     await _track(None, "bot.profile_edit", {"field": field_key})
+
+
+@router.callback_query(F.data.startswith("mem:"))
+async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        return
+
+    action = parts[1]
+    service = MemoryPanelService()
+
+    if action == "page":
+        page = int(parts[2])
+        await _show_memory_list(
+            callback.message,
+            callback.from_user.id,
+            page,
+            edit_message=callback.message,
+        )
+        await _track(None, "bot.memory", {"action": "page", "page": page})
+        return
+
+    if action == "open" and len(parts) >= 4:
+        memory_id, page = parts[2], int(parts[3])
+        text = await service.detail_text(callback.from_user.id, memory_id)
+        if text is None:
+            await callback.answer("Запись не найдена", show_alert=True)
+            return
+        await safe_edit(
+            callback.message,
+            text,
+            inline_memory_detail_menu(memory_id, page),
+            parse_mode=None,
+        )
+        await _track(None, "bot.memory", {"action": "open", "memory_id": memory_id})
+        return
+
+    if action == "del" and len(parts) >= 4:
+        memory_id, page = parts[2], int(parts[3])
+        deleted = await service.deactivate(callback.from_user.id, memory_id)
+        if deleted:
+            await callback.answer("Запись удалена")
+            await _track(None, "bot.memory", {"action": "delete", "memory_id": memory_id})
+        else:
+            await callback.answer("Запись не найдена", show_alert=True)
+        await _show_memory_list(
+            callback.message,
+            callback.from_user.id,
+            page,
+            edit_message=callback.message,
+        )
+        return
+
+    if action == "add":
+        page = int(parts[2])
+        await state.set_state(BotStates.waiting_memory_add)
+        await state.update_data(memory_return_page=page)
+        await callback.message.answer(
+            "✏️ Напиши, что запомнить — одним сообщением.\n\n"
+            "Например: «Работаю дизайнером, люблю йогу» или «Не напоминай про бывшего»."
+        )
+        await _track(None, "bot.memory", {"action": "add_start"})
+        return
 
 
 @router.callback_query(F.data.startswith("set:"))
@@ -1262,6 +1349,17 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             await message.answer(result)
             await _show_profile_edit(message, message.from_user.id)
             await _track(None, "bot.profile_edit", {"field": field_key})
+            return
+
+        if current_state == BotStates.waiting_memory_add.state:
+            data = await state.get_data()
+            page = int(data.get("memory_return_page", 0))
+            await state.clear()
+            ok, result_text = await MemoryPanelService().add_manual(message.from_user.id, text)
+            await message.answer(result_text)
+            if ok:
+                await _show_memory_list(message, message.from_user.id, page)
+                await _track(None, "bot.memory", {"action": "add"})
             return
 
         if current_state == BotStates.waiting_reading_question.state:

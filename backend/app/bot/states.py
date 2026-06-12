@@ -9,3 +9,4 @@ class BotStates(StatesGroup):
     waiting_photo_custom_request = State()
     waiting_withdrawal_amount = State()
     waiting_withdrawal_wallet = State()
+    waiting_memory_add = State()
