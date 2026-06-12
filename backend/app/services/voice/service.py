@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 
 VOICE_PRESETS = {
     "female_soft": "5l5f8iK3YPeGga21rQIX",
-    "female_mystical": "Z3R5wn05IrDiVCyEkUrK",
+    "female_mystical": "hLjwV7lYzk15SWLUmhEH",
     "male_mentor": "nPczCjzI2devNBz1zQrb",
     "male_calm": "LruHrtVF6PSyGItzMNHS",
-    "neutral_soft": "Z3R5wn05IrDiVCyEkUrK",
+    "neutral_soft": "hLjwV7lYzk15SWLUmhEH",
 }
 
 
