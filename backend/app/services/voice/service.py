@@ -7,15 +7,26 @@ from app.services.media.kie_tasks import wait_for_media_task
 from app.services.media.service import MediaJobService
 from app.services.media.stored_file import StoredFile
 from app.services.voice.stt_302 import Stt302Client
+from app.services.voice.tts_elevenlabs import synthesize_to_public_url
 
 logger = logging.getLogger(__name__)
 
+# ElevenLabs voice IDs (direct API — any voice from your account).
 VOICE_PRESETS = {
     "female_soft": "5l5f8iK3YPeGga21rQIX",
     "female_mystical": "hLjwV7lYzk15SWLUmhEH",
     "male_mentor": "nPczCjzI2devNBz1zQrb",
     "male_calm": "LruHrtVF6PSyGItzMNHS",
     "neutral_soft": "hLjwV7lYzk15SWLUmhEH",
+}
+
+# KIE elevenlabs/text-to-speech accepts only a fixed subset of voice IDs.
+KIE_VOICE_PRESETS = {
+    "female_soft": "5l5f8iK3YPeGga21rQIX",
+    "female_mystical": "Z3R5wn05IrDiVCyEkUrK",
+    "male_mentor": "nPczCjzI2devNBz1zQrb",
+    "male_calm": "LruHrtVF6PSyGItzMNHS",
+    "neutral_soft": "Z3R5wn05IrDiVCyEkUrK",
 }
 
 
@@ -34,6 +45,18 @@ def _normalize_transcript(raw: str) -> str:
     text = re.sub(r"^(transcript|текст|расшифровка)\s*:\s*", "", text, flags=re.IGNORECASE)
     text = text.strip("`\"' ")
     return text.strip()
+
+
+def _resolve_voice_id(preset: str) -> str:
+    settings = get_settings()
+    if preset == "female_mystical" and settings.elevenlabs_default_voice_id.strip():
+        return settings.elevenlabs_default_voice_id.strip()
+    return VOICE_PRESETS.get(preset, VOICE_PRESETS["female_mystical"])
+
+
+def _elevenlabs_configured() -> bool:
+    key = get_settings().elevenlabs_api_key.strip()
+    return bool(key) and key != "replace-me"
 
 
 class VoiceService:
@@ -67,14 +90,26 @@ class VoiceService:
         preset: str = "female_mystical",
     ) -> str:
         settings = get_settings()
-        voice = VOICE_PRESETS.get(preset, VOICE_PRESETS["female_mystical"])
+        voice_id = _resolve_voice_id(preset)
         spoken_text = plain_text_for_tts(text)
         if not spoken_text:
             raise ValueError("Пустой текст для озвучки")
 
+        if _elevenlabs_configured():
+            url = await synthesize_to_public_url(spoken_text, voice_id)
+            await self.jobs.create_job(
+                "voice_tts",
+                {"engine": "elevenlabs-direct", "voice": voice_id, "model": settings.elevenlabs_tts_model},
+                user_id=user_id,
+            )
+            return url
+
+        kie_voice = KIE_VOICE_PRESETS.get(preset, KIE_VOICE_PRESETS["female_mystical"])
+        logger.info("ElevenLabs key missing, using KIE TTS voice=%s (preset=%s)", kie_voice, preset)
+
         payload = {
             "text": spoken_text,
-            "voice": voice,
+            "voice": kie_voice,
             "stability": 0.5,
             "similarity_boost": 0.75,
             "style": 0.0,
@@ -93,7 +128,7 @@ class VoiceService:
 
         await self.jobs.create_job(
             "voice_tts",
-            {**payload, "provider_task_id": task_id},
+            {**payload, "provider_task_id": task_id, "engine": "kie-elevenlabs"},
             user_id=user_id,
         )
         urls, _ = await wait_for_media_task(task_id, timeout_sec=180)

@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     ai302_api_key: str = "replace-me"
     ai302_base_url: str = "https://api.302.ai"
     ai302_stt_model: str = "whisper-1"
+
+    elevenlabs_api_key: str = "replace-me"
+    elevenlabs_tts_model: str = "eleven_turbo_v2_5"
+    elevenlabs_default_voice_id: str = "hLjwV7lYzk15SWLUmhEH"
+
     billing_credit_usd: float = 0.007
     charge_markup: float = 50
     provider_cost_display_multiplier: float = 2

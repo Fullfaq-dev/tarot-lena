@@ -117,7 +117,14 @@ class VisionService:
             if mode == "custom":
                 question = custom_text.strip() or "Что ты видишь на этом фото?"
                 user_content = [
-                    {"type": "text", "text": question},
+                    {
+                        "type": "text",
+                        "text": (
+                            f"{question}\n\n"
+                            "Ответь по-русски по сути вопроса, опираясь на изображение. "
+                            "2–5 предложений, markdown **жирный** *курсив*, без HTML."
+                        ),
+                    },
                     {"type": "image_url", "image_url": {"url": image_url}},
                 ]
             else:
@@ -226,8 +233,30 @@ class VisionService:
             return None, f"Не удалось обработать фото: {exc}"
 
     async def _analyze_custom(self, messages: list[dict]) -> str:
-        answer = await self.kie.chat_completion(messages, reasoning_effort="medium")
-        return answer.strip() or "Не удалось получить ответ по фото."
+        for effort in ("low", "medium"):
+            answer = await self.kie.chat_completion(messages, reasoning_effort=effort)
+            if answer.strip():
+                return answer.strip()
+
+        simplified: list[dict] = []
+        if messages and messages[0].get("role") == "system":
+            simplified.append(messages[0])
+        for message in reversed(messages):
+            if message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, list) and any(
+                part.get("type") == "image_url" for part in content if isinstance(part, dict)
+            ):
+                simplified.append(message)
+                break
+
+        if len(simplified) >= 2:
+            answer = await self.kie.chat_completion(simplified, reasoning_effort="low")
+            if answer.strip():
+                return answer.strip()
+
+        raise ValueError("Модель не вернула ответ по фото. Попробуй ещё раз через минуту.")
 
     async def _analyze_structured(self, messages: list[dict], mode: str) -> dict:
         raw = await self.kie.chat_completion(messages, reasoning_effort="medium")
