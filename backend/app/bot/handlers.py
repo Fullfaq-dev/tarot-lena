@@ -586,7 +586,7 @@ async def nav_noop(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("nav:back:"))
 async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
+    await safe_callback_answer(callback)
     target = callback.data.removeprefix("nav:back:")
     await state.clear()
 
@@ -595,7 +595,11 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if target == "readings":
-        await safe_edit(callback.message, await _readings_menu_text(callback.from_user.id), inline_readings_menu())
+        await safe_edit(
+            callback.message,
+            await _readings_menu_text(callback.from_user.id),
+            inline_readings_menu(),
+        )
         return
 
 
@@ -929,9 +933,67 @@ async def billing_callback(callback: CallbackQuery) -> None:
         return
 
 
+@router.callback_query(F.data == "nav:readings")
+async def nav_readings_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await _open_readings_menu(callback, state)
+
+
+@router.callback_query(F.data.startswith("nav:reading:"))
+async def nav_reading_type_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await _open_reading_type(callback, state, callback.data.removeprefix("nav:reading:"))
+
+
+async def _open_readings_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    try:
+        onboarding = OnboardingService()
+        if not await onboarding.is_onboarded(callback.from_user):
+            await safe_callback_answer(callback, "Сначала закончи анкету — /start", show_alert=True)
+            return
+        await state.clear()
+        await safe_callback_answer(callback)
+        await safe_edit(
+            callback.message,
+            await _readings_menu_text(callback.from_user.id),
+            inline_readings_menu(),
+        )
+        await _track(None, "bot.menu", {"item": "readings"})
+    except Exception as exc:
+        logger.exception("open_readings_menu failed")
+        await safe_callback_answer(callback, "Не удалось открыть расклады. Попробуй ещё раз.", show_alert=True)
+        await _track(None, "bot.error", {"handler": "nav_readings", "error": str(exc)})
+
+
+async def _open_reading_type(callback: CallbackQuery, state: FSMContext, reading_type: str) -> None:
+    try:
+        onboarding = OnboardingService()
+        if not await onboarding.is_onboarded(callback.from_user):
+            await safe_callback_answer(callback, "Сначала закончи анкету — /start", show_alert=True)
+            return
+
+        tarot = TarotService()
+        ok, limit_error = await tarot.ensure_can_read_today(callback.from_user.id)
+        if not ok:
+            await safe_callback_answer(callback, limit_error or "Лимит раскладов исчерпан", show_alert=True)
+            return
+
+        label = READING_TYPE_LABELS.get(reading_type, "расклад")
+        await state.set_state(BotStates.waiting_reading_question)
+        await state.update_data(reading_type=reading_type)
+        await safe_callback_answer(callback)
+        await safe_edit(
+            callback.message,
+            f"Расклад: {label}\n\nНапиши свой вопрос обычным сообщением в чат — я сделаю расклад и объясню карты.",
+            inline_reading_prompt(reading_type),
+        )
+    except Exception as exc:
+        logger.exception("open_reading_type failed")
+        await safe_callback_answer(callback, "Не удалось выбрать расклад. Попробуй ещё раз.", show_alert=True)
+        await _track(None, "bot.error", {"handler": "nav_reading_type", "error": str(exc)})
+
+
 @router.callback_query(F.data.startswith("nav:"))
 async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.answer()
+    await safe_callback_answer(callback)
     action = callback.data.removeprefix("nav:")
     tarot = TarotService()
     onboarding = OnboardingService()
@@ -943,31 +1005,6 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "main":
         await state.clear()
         await safe_edit(callback.message, MAIN_MENU_TEXT, inline_main_menu())
-        return
-
-    if action == "readings":
-        await state.clear()
-        await safe_edit(
-            callback.message,
-            await _readings_menu_text(callback.from_user.id),
-            inline_readings_menu(),
-        )
-        return
-
-    if action.startswith("reading:"):
-        reading_type = action.removeprefix("reading:")
-        ok, limit_error = await tarot.ensure_can_read_today(callback.from_user.id)
-        if not ok:
-            await callback.message.answer(limit_error)
-            return
-        label = READING_TYPE_LABELS.get(reading_type, "расклад")
-        await state.set_state(BotStates.waiting_reading_question)
-        await state.update_data(reading_type=reading_type)
-        await safe_edit(
-            callback.message,
-            f"Расклад: {label}\n\nНапиши свой вопрос обычным сообщением в чат — я сделаю расклад и объясню карты.",
-            inline_reading_prompt(reading_type),
-        )
         return
 
     if action == "daily":

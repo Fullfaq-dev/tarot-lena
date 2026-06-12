@@ -66,6 +66,16 @@ async def safe_edit(
     try:
         await message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
     except TelegramBadRequest as exc:
-        if "message is not modified" in str(exc).lower():
+        error = str(exc).lower()
+        if "message is not modified" in error:
             return
-        await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        try:
+            await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        except Exception:
+            logger.exception("safe_edit fallback answer failed")
+    except Exception:
+        logger.exception("safe_edit failed")
+        try:
+            await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        except Exception:
+            logger.exception("safe_edit fallback answer failed")

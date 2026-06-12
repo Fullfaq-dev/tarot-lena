@@ -141,6 +141,7 @@ class TarotService:
     def _is_stale_daily_text(text: str) -> bool:
         return "В эзотерической интерпретации это может означать" in text
 
+    @staticmethod
     def _today_start_utc() -> datetime:
         now = datetime.now(UTC)
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
