@@ -22,6 +22,19 @@ jobs:
             set -euo pipefail
             cd /opt/arcane-ai
             LINES="${{ github.event.inputs.lines }}"
+            echo "=== docker compose ps ==="
+            docker compose -f docker-compose.prod.yml ps
+            echo "=== container health / restart counts ==="
+            docker compose -f docker-compose.prod.yml ps -a --format 'table {{.Name}}\t{{.Status}}\t{{.Health}}\t{{.RunningFor}}'
+            echo "=== recent api errors (last 50 lines) ==="
+            docker compose -f docker-compose.prod.yml logs api --tail=50 2>&1 \
+              | grep -iE "ERROR|Exception|startup failed|Traceback" | tail -20 || echo "(no recent api errors)"
+            echo "=== worker errors (last 30 lines) ==="
+            docker compose -f docker-compose.prod.yml logs worker --tail=30 2>&1 \
+              | grep -iE "ERROR|Exception|Traceback" | tail -10 || echo "(no recent worker errors)"
+            echo "=== disk & memory ==="
+            df -h / /var/lib/docker 2>/dev/null | tail -n +2 || df -h /
+            free -h | sed -n '1,2p'
             echo "=== api logs (voice/kie/error) ==="
             docker compose -f docker-compose.prod.yml logs api --tail="$LINES" 2>&1 \
               | grep -iE "voice|KIE|302|upload|speech|bot\.error|exception|WARNING|ERROR" \
