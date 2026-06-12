@@ -21,6 +21,15 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/arcane-ai
+            for kv in \
+              "TELEGRAM_PLACEHOLDER_STICKER_ID=AAMCAgADGQEDNF_kaivgUF7mvhqlQ5dUeyQGm6a1Fz0AAkWbAAL4FmBJ3prL01LOBasBAAdtAAM8BA"; do
+              key="${kv%%=*}"
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${kv}|" .env
+              else
+                echo "$kv" >> .env
+              fi
+            done
             bash deploy/deploy.sh
             if [ -n "${AI302_API_KEY:-}" ]; then
               AI302_API_KEY="$(printf '%s' "$AI302_API_KEY" | tr -d '\r\n')"

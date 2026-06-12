@@ -13,8 +13,7 @@ from sqlalchemy import select
 from app.bot.cards_media import send_card_with_caption, send_drawn_cards
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
-from app.core.config import get_settings
-from app.bot.helpers import safe_callback_answer, safe_edit
+from app.bot.helpers import delete_message_safe, safe_callback_answer, safe_edit, send_processing_placeholder
 from app.bot.keyboards import (
     MAIN_MENU_TEXT,
     MENU_ACTIONS,
@@ -326,13 +325,7 @@ async def _process_photo_request(
         await message.answer("Сначала нажми /start, чтобы я создала твой профиль.")
         return
 
-    settings = get_settings()
-    waiting_msg = await message.answer("🔍 Смотрю на фото и готовлю разбор… Обычно это занимает около минуты.")
-    if settings.telegram_placeholder_sticker_id:
-        try:
-            await message.answer_sticker(settings.telegram_placeholder_sticker_id)
-        except Exception:
-            pass
+    waiting_msg = await send_processing_placeholder(message, kind="photo")
 
     action_stop = asyncio.Event()
     action_task = asyncio.create_task(
@@ -341,10 +334,6 @@ async def _process_photo_request(
 
     async def on_analysis_complete(_interpretation: str) -> None:
         nonlocal action_task, action_stop
-        try:
-            await waiting_msg.edit_text("Рисую инфографику ✨ Это может занять пару минут.")
-        except Exception:
-            pass
         action_stop.set()
         await action_task
         action_stop = asyncio.Event()
@@ -373,10 +362,7 @@ async def _process_photo_request(
         except asyncio.CancelledError:
             pass
 
-    try:
-        await waiting_msg.delete()
-    except Exception:
-        pass
+    await delete_message_safe(waiting_msg)
 
     if error:
         await message.answer(error)
@@ -944,9 +930,6 @@ async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> Non
         await callback.message.answer("Неизвестный режим анализа.")
         return
 
-    label = "ауру" if mode == "aura" else "ладонь"
-    await callback.message.answer(f"Запускаю разбор {label} с инфографикой (100 ₽)…")
-
     _fire_and_forget(
         _process_photo_request_safe(
             callback.message,
@@ -1056,16 +1039,13 @@ async def voice_message(message: Message) -> None:
 
     try:
         await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-        status_msg = await message.answer("🎤 Расшифровываю голосовое…")
+        status_msg = await send_processing_placeholder(message, kind="voice")
         audio_file = await store_telegram_voice(message.bot, message.voice.file_id)
         voice_service = VoiceService()
         db_user_id = await _get_user_id(message.from_user.id)
         transcript = await voice_service.transcribe(audio_file, user_id=db_user_id)
 
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
+        await delete_message_safe(status_msg)
 
         orchestrator = AIOrchestrator()
         user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
