@@ -12,24 +12,8 @@ from app.bot.i18n_ai import (
     pick_stones_user,
 )
 from app.services.ai.kie_client import KieClient
-from app.services.energy.catalog import STONE_BY_SLUG, STONES, Stone
-
-
-def stones_catalog_text() -> str:
-    lines = []
-    for stone in STONES:
-        pairs = ", ".join(stone.pairs_with)
-        lines.append(
-            f'{stone.slug}: {stone.name} — {stone.properties}; '
-            f"energy={stone.energy}; chakra={stone.chakra}; pairs_with={pairs}"
-        )
-    return "\n".join(lines)
-
-
-def runes_catalog_brief() -> str:
-    from app.services.energy.catalog import RUNES
-
-    return "\n".join(f"{r.slug}: {r.name} — {r.meaning}" for r in RUNES)
+from app.services.energy.catalog import STONE_BY_SLUG, Stone
+from app.services.energy.localize import runes_catalog_text, stones_catalog_text
 
 
 def stones_from_slugs(slugs: list[str]) -> list[Stone]:
@@ -97,7 +81,7 @@ async def pick_stones_with_ai(
     lang: str = "ru",
 ) -> tuple[list[Stone], str]:
     lang = normalize_language(lang)
-    catalog = stones_catalog_text()
+    catalog = stones_catalog_text(lang)
     prompt_messages = [
         {
             "role": "system",
@@ -151,8 +135,8 @@ async def pick_bracelet_layout_with_ai(
     from app.services.energy.catalog import RUNE_BY_SLUG
 
     lang = normalize_language(lang)
-    stones_text = stones_catalog_text()
-    runes_text = runes_catalog_brief()
+    stones_text = stones_catalog_text(lang)
+    runes_text = runes_catalog_text(lang)
 
     prompt_messages = [
         {

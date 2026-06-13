@@ -81,13 +81,8 @@ def reading_label(key: str, lang: str = "ru") -> str:
 
 
 def reading_label_to_type(lang: str = "ru") -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    for code in SUPPORTED_LANGUAGES:
-        for key, label in reading_type_labels(code).items():
-            mapping[label.lower()] = key
-            plain = label.split(" ", 1)[1] if " " in label and not label[0].isalnum() else label
-            mapping[plain.lower()] = key
-    return mapping
+    """Map inline reading button labels to types (full label with emoji only)."""
+    return {label.lower(): key for key, label in reading_type_labels(lang).items()}
 
 
 def onboarding_choice_labels(step_key: str, lang: str = "ru") -> list[str]:

@@ -11,7 +11,8 @@ from app.services.energy.catalog import (
     Rune,
     Stone,
 )
-from app.bot.i18n import t
+from app.services.energy.localize import localize_rune, localize_stone
+from app.bot.i18n import normalize_language, t
 
 
 @dataclass
@@ -85,16 +86,22 @@ class EnergyService:
         left = layout["left"]
         right = layout["right"]
         clasp_stone = layout["clasp_stone"]
+        lang = normalize_language(lang)
+        center_loc = localize_stone(center, lang)
+        left_loc = localize_stone(left, lang)
+        right_loc = localize_stone(right, lang)
+        clasp_stone_loc = localize_stone(clasp_stone, lang)
+        clasp_rune_loc = localize_rune(clasp_rune, lang)
         return [
-            BraceletSlot("center", roles["center"], center, None, center.properties),
-            BraceletSlot("left", roles["left"], left, None, left.properties),
-            BraceletSlot("right", roles["right"], right, None, right.properties),
+            BraceletSlot("center", roles["center"], center_loc, None, center_loc.properties),
+            BraceletSlot("left", roles["left"], left_loc, None, left_loc.properties),
+            BraceletSlot("right", roles["right"], right_loc, None, right_loc.properties),
             BraceletSlot(
                 "clasp",
                 roles["clasp"],
-                clasp_stone,
-                clasp_rune,
-                f"{clasp_stone.name} + {clasp_rune.name}",
+                clasp_stone_loc,
+                clasp_rune_loc,
+                f"{clasp_stone_loc.name} + {clasp_rune_loc.name}",
             ),
         ]
 
@@ -106,29 +113,39 @@ class EnergyService:
         right = stones[2] if len(stones) > 2 else STONES[6]
         clasp_rune = self.recommend_rune_for_intent(query)
         clasp_stone = next(s for s in STONES if s.slug == "hematite")
+        lang = normalize_language(lang)
+        center_loc = localize_stone(center, lang)
+        left_loc = localize_stone(left, lang)
+        right_loc = localize_stone(right, lang)
+        clasp_stone_loc = localize_stone(clasp_stone, lang)
+        clasp_rune_loc = localize_rune(clasp_rune, lang)
 
         return [
-            BraceletSlot("center", roles["center"], center, None, center.properties),
-            BraceletSlot("left", roles["left"], left, None, left.properties),
-            BraceletSlot("right", roles["right"], right, None, right.properties),
+            BraceletSlot("center", roles["center"], center_loc, None, center_loc.properties),
+            BraceletSlot("left", roles["left"], left_loc, None, left_loc.properties),
+            BraceletSlot("right", roles["right"], right_loc, None, right_loc.properties),
             BraceletSlot(
                 "clasp",
                 roles["clasp"],
-                clasp_stone,
-                clasp_rune,
-                f"{clasp_stone.name} + {clasp_rune.name}",
+                clasp_stone_loc,
+                clasp_rune_loc,
+                f"{clasp_stone_loc.name} + {clasp_rune_loc.name}",
             ),
         ]
 
     def format_runes_text(self, drawn: list[DrawnRune], lang: str = "ru") -> str:
+        lang = normalize_language(lang)
         lines = []
         for item in drawn:
+            rune = localize_rune(item.rune, lang)
             suffix = t("rune_reversed_suffix", lang) if item.reversed else ""
-            lines.append(f"• {item.rune.name}{suffix} — {item.rune.meaning}")
+            lines.append(f"• {rune.name}{suffix} — {rune.meaning}")
         return "\n".join(lines)
 
     def format_stones_text(self, stones: list[Stone], lang: str = "ru") -> str:
-        return "\n".join(f"• **{s.name}** — {s.properties} ({s.energy})" for s in stones)
+        lang = normalize_language(lang)
+        localized = [localize_stone(s, lang) for s in stones]
+        return "\n".join(f"• **{s.name}** — {s.properties} ({s.energy})" for s in localized)
 
     def format_bracelet_text(self, slots: list[BraceletSlot], lang: str = "ru") -> str:
         lines = []
@@ -142,20 +159,27 @@ class EnergyService:
             lines.append(f"**{slot.role_label}**\n   {content}\n   _{slot.note}_")
         return "\n\n".join(lines)
 
-    def rune_lines_for_ai(self, drawn: list[DrawnRune]) -> str:
-        return "\n".join(
-            f"- {d.rune.name} ({d.rune.slug}){' reversed' if d.reversed else ''}: "
-            f"{d.rune.meaning}; energy={d.rune.energy}; element={d.rune.element}"
-            for d in drawn
-        )
+    def rune_lines_for_ai(self, drawn: list[DrawnRune], lang: str = "ru") -> str:
+        lang = normalize_language(lang)
+        lines = []
+        for item in drawn:
+            rune = localize_rune(item.rune, lang)
+            reversed_note = t("rune_reversed_suffix", lang) if item.reversed else ""
+            lines.append(
+                f"- {rune.name} ({rune.slug}){reversed_note}: "
+                f"{rune.meaning}; energy={rune.energy}; element={rune.element}"
+            )
+        return "\n".join(lines)
 
-    def stone_lines_for_ai(self, stones: list[Stone]) -> str:
+    def stone_lines_for_ai(self, stones: list[Stone], lang: str = "ru") -> str:
+        lang = normalize_language(lang)
+        localized = [localize_stone(s, lang) for s in stones]
         return "\n".join(
             f"- {s.name} ({s.slug}): {s.properties}; energy={s.energy}; chakra={s.chakra}"
-            for s in stones
+            for s in localized
         )
 
-    def bracelet_lines_for_ai(self, slots: list[BraceletSlot]) -> str:
+    def bracelet_lines_for_ai(self, slots: list[BraceletSlot], lang: str = "ru") -> str:
         return "\n".join(
             f"- {slot.position}: "
             f"stone={slot.stone.name if slot.stone else '—'}, "

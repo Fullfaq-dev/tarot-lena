@@ -12,6 +12,7 @@ from app.services.billing.service import BillingService
 from app.services.billing.tokens import merge_api_usage, provider_cost_rub
 from app.services.memory.extractor import MemoryExtractor
 from app.services.energy.service import BraceletSlot, DrawnRune, EnergyService
+from app.services.energy.localize import localize_rune
 from app.services.energy.stone_picker import pick_bracelet_layout_with_ai, pick_stones_with_ai
 from app.services.energy.catalog import RUNE_BY_SLUG, Stone
 from app.services.zen.service import ZenService
@@ -279,8 +280,8 @@ class AIOrchestrator:
     ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
         resolved_lang = await self._resolve_lang(telegram_user, lang)
         energy = EnergyService()
-        rune_lines = energy.rune_lines_for_ai(drawn)
-        names = ", ".join(d.rune.name for d in drawn)
+        rune_lines = energy.rune_lines_for_ai(drawn, resolved_lang)
+        names = ", ".join(localize_rune(d.rune, resolved_lang).name for d in drawn)
         return await self._prepare_billed_exchange(
             telegram_user,
             user_query=question,
@@ -325,7 +326,7 @@ class AIOrchestrator:
                 stones = EnergyService().recommend_stones(query)
 
             energy = EnergyService()
-            stone_lines = energy.stone_lines_for_ai(stones)
+            stone_lines = energy.stone_lines_for_ai(stones, lang)
             ai_prompt = stone_ai_prompt(lang, query, stone_lines, pick_reason)
 
             messages = list(base_messages)
@@ -386,7 +387,7 @@ class AIOrchestrator:
             except (ValueError, KeyError):
                 slots = energy.build_bracelet(query, lang)
 
-            layout_lines = energy.bracelet_lines_for_ai(slots)
+            layout_lines = energy.bracelet_lines_for_ai(slots, lang)
             ai_prompt = bracelet_ai_prompt(lang, query, layout_lines, pick_reason)
 
             messages = list(base_messages)
