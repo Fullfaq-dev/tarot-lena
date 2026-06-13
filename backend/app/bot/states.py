@@ -10,3 +10,7 @@ class BotStates(StatesGroup):
     waiting_withdrawal_amount = State()
     waiting_withdrawal_wallet = State()
     waiting_memory_add = State()
+    waiting_zen_question = State()
+    waiting_rune_question = State()
+    waiting_stone_query = State()
+    waiting_bracelet_query = State()

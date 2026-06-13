@@ -16,17 +16,13 @@ from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
 from app.core.config import get_settings
 from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
+from app.bot.i18n import all_menu_texts, main_menu_text, menu_actions, normalize_language, reading_label, t
 from app.bot.keyboards import (
-    MAIN_MENU_TEXT,
     MENU_ACTIONS,
-    MENU_TEXTS,
-    ONBOARDING_CHOICES,
-    READING_LABEL_TO_TYPE,
-    READING_TYPE_LABELS,
-    READINGS_MENU_TEXT,
     inline_billing_menu,
     inline_history_menu,
     inline_info_menu,
+    inline_language_menu,
     inline_main_menu,
     inline_memory_detail_menu,
     inline_memory_empty_menu,
@@ -44,9 +40,11 @@ from app.bot.keyboards import (
     main_menu,
     onboarding_keyboard,
     profile_field_keyboard,
+    READING_LABEL_TO_TYPE,
+    READINGS_MENU_TEXT,
 )
 from app.bot.states import BotStates
-from app.bot.streaming import chat_action_loop, truncate_text, typing_loop
+from app.bot.streaming import chat_action_loop, stream_to_message, truncate_text, typing_loop
 from app.database.models import Subscription, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
@@ -73,7 +71,13 @@ from app.services.tarot.service import READING_TYPES, TarotService
 from app.services.vision.service import VisionService
 from app.services.voice.service import VoiceService
 from app.services.media.telegram_audio import store_telegram_voice
-from app.bot.audio_media import send_voice_from_url
+from app.bot.feature_handlers import (
+    handle_bracelet_query,
+    handle_rune_question,
+    handle_stone_query,
+    handle_zen_question,
+    router as feature_router,
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -106,14 +110,25 @@ async def _get_user_id(telegram_id: int) -> str | None:
         return user.id if user else None
 
 
+async def _user_language(telegram_id: int) -> str:
+    return await SettingsService().get_ui_language(telegram_id)
+
+
 async def _user_main_menu(telegram_id: int):
     balance = await BillingService().get_balance_label(telegram_id)
-    return main_menu(balance)
+    lang = await _user_language(telegram_id)
+    return main_menu(balance, lang)
+
+
+async def _main_menu_inline(telegram_id: int):
+    lang = await _user_language(telegram_id)
+    return main_menu_text(lang), inline_main_menu(lang)
 
 
 async def _open_billing(message: Message, *, edit_message: Message | None = None) -> None:
+    lang = await _user_language(message.from_user.id)
     text = await BillingService().panel_text(message.from_user.id)
-    markup = inline_billing_menu()
+    markup = inline_billing_menu(lang)
     if edit_message is not None:
         await safe_edit(edit_message, text, markup)
     else:
@@ -121,10 +136,11 @@ async def _open_billing(message: Message, *, edit_message: Message | None = None
 
 
 async def _readings_menu_text(telegram_id: int) -> str:
+    lang = await _user_language(telegram_id)
     left = await TarotService().readings_left_today(telegram_id)
     return (
-        f"{READINGS_MENU_TEXT}\n\n"
-        f"Сегодня осталось раскладов: {left} из {DAILY_READINGS_LIMIT}."
+        f"{t('readings_menu_text', lang)}\n\n"
+        f"{t('readings_left_today', lang).format(left=left, limit=DAILY_READINGS_LIMIT)}"
     )
 
 
@@ -135,9 +151,10 @@ async def _show_reading_history(
     *,
     edit_message: Message | None = None,
 ) -> None:
+    lang = await _user_language(telegram_id)
     tarot = TarotService()
-    text, readings, page, total_pages = await tarot.history_page(telegram_id, page)
-    markup = inline_history_menu(readings, page, total_pages) if readings else None
+    text, readings, page, total_pages = await tarot.history_page(telegram_id, page, lang=lang)
+    markup = inline_history_menu(readings, page, total_pages, lang) if readings else None
     if edit_message is not None:
         await safe_edit(edit_message, text, markup, parse_mode=None)
     else:
@@ -154,9 +171,9 @@ async def _show_memory_list(
     service = MemoryPanelService()
     text, memories, page, total_pages = await service.list_page(telegram_id, page)
     if memories:
-        markup = inline_memory_list_menu(memories, page, total_pages)
+        markup = inline_memory_list_menu(memories, page, total_pages, lang)
     else:
-        markup = inline_memory_empty_menu()
+        markup = inline_memory_empty_menu(lang)
     if edit_message is not None:
         await safe_edit(edit_message, text, markup, parse_mode=None)
     else:
@@ -175,7 +192,7 @@ async def _open_referrals(
     bot_user = await message.bot.get_me()
     text = await ReferralService().panel_text(actor_id, bot_username=bot_user.username)
     share_link = ReferralService().build_referral_link(bot_user.username, actor_id)
-    markup = inline_referral_menu(share_link=share_link)
+    markup = inline_referral_menu(share_link=share_link, lang=lang)
     if edit_message is not None:
         await safe_edit(edit_message, text, markup)
     else:
@@ -207,12 +224,13 @@ async def _generate_with_typing(message: Message, coro):
 
 
 async def _send_daily_card(message: Message, telegram_id: int) -> None:
+    lang = await _user_language(message.from_user.id)
     tarot = TarotService()
     interpretation, card = await _generate_with_typing(
         message,
         tarot.daily_card_for_telegram(telegram_id),
     )
-    if interpretation.startswith("Сначала нажми /start"):
+    if card is None:
         await message.answer(interpretation)
         return
 
@@ -227,6 +245,11 @@ async def _send_daily_card(message: Message, telegram_id: int) -> None:
         caption_plain=interpretation_plain,
         reply_markup=menu_markup,
     ):
+        await tarot.record_daily_card_context(
+            telegram_id,
+            interpretation_plain,
+            card_name=str(card.get("name", "")),
+        )
         return
 
     html = truncate_text(to_telegram_html(interpretation_plain))
@@ -238,9 +261,15 @@ async def _send_daily_card(message: Message, telegram_id: int) -> None:
             parse_mode=None,
             reply_markup=menu_markup,
         )
+    await tarot.record_daily_card_context(
+        telegram_id,
+        interpretation_plain,
+        card_name=str(card.get("name", "")) if card else "",
+    )
 
 
 async def _handle_reading_question(message: Message, state: FSMContext, question: str) -> None:
+    lang = await _user_language(message.from_user.id)
     data = await state.get_data()
     reading_type = data.get("reading_type", "past_present_future")
 
@@ -255,15 +284,15 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
 
     user_id = await _get_user_id(message.from_user.id)
     if user_id is None:
-        await message.answer("Сначала нажми /start, чтобы создать твой профиль.")
+        await message.answer(t("error_need_start", lang))
         return
 
     orchestrator = AIOrchestrator()
-    label = READING_TYPE_LABELS.get(reading_type, reading_type)
+    label = reading_label(reading_type, lang)
     cards = tarot.draw_cards(READING_TYPES.get(reading_type, 3))
     await send_drawn_cards(message, cards)
     card_lines = "\n".join(f"• {card['name']}" for card in cards)
-    prefix = f"Расклад: {label}\nВопрос: {question}\n\nКарты:\n{card_lines}\n\n"
+    prefix = t("reading_prefix", lang, label=label, question=question, cards=card_lines)
 
     user_db_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_tarot_reading(
         message.from_user, question, cards, reading_type
@@ -273,7 +302,7 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
         return
 
     if billing_mode == "balance":
-        await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
+        await message.answer(t("error_free_messages_ended", lang))
 
     interpretation = await _generate_with_typing(
         message,
@@ -284,10 +313,11 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
 
     await _answer_formatted(message, interpretation, prefix=prefix)
 
+    stored_answer = f"{prefix}{interpretation}".strip()
     usage = await orchestrator.complete_chat(
         user_db_id or user_id,
         question,
-        interpretation,
+        stored_answer,
         user_message_id=user_message_id,
         context_messages=messages,
         feature="tarot_reading",
@@ -382,12 +412,12 @@ async def _process_photo_request(
     await state.clear()
     actor = telegram_user or message.from_user
     if actor is None:
-        await message.answer("Не получилось определить профиль Telegram. Попробуй ещё раз.")
+        await message.answer(t("error_telegram_profile", lang))
         return
 
     user_id = await _get_user_id(actor.id)
     if user_id is None:
-        await message.answer("Сначала нажми /start, чтобы создать твой профиль.")
+        await message.answer(t("error_need_start", lang))
         return
 
     waiting_msg = await send_processing_placeholder(message, kind="photo")
@@ -488,6 +518,7 @@ async def _get_user_free_used(telegram_id: int) -> int:
 
 
 async def _chat_reply(message: Message, text: str) -> None:
+    lang = await _user_language(message.from_user.id)
     orchestrator = AIOrchestrator()
     user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
         message.from_user, text
@@ -497,14 +528,13 @@ async def _chat_reply(message: Message, text: str) -> None:
         return
 
     if billing_mode == "balance":
-        await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
+        await message.answer(t("error_free_messages_ended", lang))
 
     try:
-        answer = await _generate_with_typing(
+        answer = await stream_to_message(
             message,
-            orchestrator.generate_chat(messages or []),
+            orchestrator.stream_chat(messages or []),
         )
-        await _answer_formatted(message, answer)
     except Exception as exc:
         logger.exception("Chat reply failed")
         await _track(
@@ -512,7 +542,7 @@ async def _chat_reply(message: Message, text: str) -> None:
             "bot.error",
             {"handler": "chat_reply", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
         )
-        await message.answer("Не удалось получить ответ от модели. Попробуй ещё раз через минуту.")
+        await message.answer(t("error_no_model_response", lang))
         return
 
     try:
@@ -543,6 +573,7 @@ async def _chat_reply(message: Message, text: str) -> None:
 
 @router.message(CommandStart())
 async def start(message: Message, command: CommandObject, state: FSMContext) -> None:
+    lang = await _user_language(message.from_user.id)
     await state.clear()
     try:
         service = OnboardingService()
@@ -555,20 +586,18 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
                 command.args,
             )
             if referrer_name:
-                text = (
-                    f"{text}\n\n"
-                    f"Тебя пригласил(а) {referrer_name}. Спасибо, что пришёл по рекомендации ✨"
-                )
+                text = f"{text}\n\n{t('referral_invited', lang, name=referrer_name)}"
 
         if onboarded:
             await message.answer(text, reply_markup=await _user_main_menu(message.from_user.id))
-            await message.answer(MAIN_MENU_TEXT, reply_markup=inline_main_menu())
+            menu_text, menu_markup = await _main_menu_inline(message.from_user.id)
+            await message.answer(menu_text, reply_markup=menu_markup)
         else:
             step_key = await service.get_current_step_key(message.from_user) or ONBOARDING_STEPS[0][0]
-            markup = onboarding_keyboard(step_key)
+            markup = onboarding_keyboard(step_key, lang)
             hint = ""
             if markup is None:
-                hint = "\n\nНапиши ответ обычным сообщением в чат."
+                hint = f"\n\n{t('onboarding_type_hint', lang)}"
             await message.answer(f"{text}{hint}", reply_markup=markup)
 
         await _track(
@@ -578,7 +607,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
         )
     except Exception as exc:
         await _track(None, "bot.error", {"handler": "start", "error": str(exc)})
-        await message.answer("Что-то пошло не так. Попробуй ещё раз через минуту.")
+        await message.answer(t("error_generic", lang))
 
 
 @router.callback_query(F.data == "nav:noop")
@@ -588,20 +617,36 @@ async def nav_noop(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("nav:back:"))
 async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await safe_callback_answer(callback)
     target = callback.data.removeprefix("nav:back:")
     await state.clear()
 
     if target == "main":
-        await safe_edit(callback.message, MAIN_MENU_TEXT, inline_main_menu())
+        menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
+        await safe_edit(callback.message, menu_text, menu_markup)
         return
 
     if target == "readings":
         await safe_edit(
             callback.message,
             await _readings_menu_text(callback.from_user.id),
-            inline_readings_menu(),
+            inline_readings_menu(lang),
         )
+        return
+
+    if target == "zen":
+        lang = await _user_language(callback.from_user.id)
+        from app.bot.keyboards import inline_zen_menu
+
+        await safe_edit(callback.message, t("zen_menu_text", lang), inline_zen_menu(lang))
+        return
+
+    if target == "energy":
+        lang = await _user_language(callback.from_user.id)
+        from app.bot.keyboards import inline_energy_menu
+
+        await safe_edit(callback.message, t("energy_menu_text", lang), inline_energy_menu(lang))
         return
 
 
@@ -619,12 +664,13 @@ async def history_page_callback(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("hist:open:"))
 async def history_open(callback: CallbackQuery) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     reading_id = callback.data.removeprefix("hist:open:")
     tarot = TarotService()
     detail = await tarot.reading_detail_for_telegram(callback.from_user.id, reading_id)
     if detail is None:
-        await callback.message.answer("Расклад не найден.")
+        await callback.message.answer(t("error_reading_not_found", lang))
         return
     await callback.message.answer(detail, parse_mode=None)
 
@@ -639,7 +685,7 @@ async def _show_profile_edit(target: Message, telegram_id: int, *, prefix: str =
         f"{prefix}Данные анкеты\n\n"
         "Нажми поле, которое хочешь изменить. Новое значение сразу попадёт в профиль и в контекст ИИ."
     )
-    await safe_edit(target, text, inline_profile_edit_menu(rows))
+    await safe_edit(target, text, inline_profile_edit_menu(rows, lang))
 
 
 @router.callback_query(F.data.startswith("set:prof:"))
@@ -654,7 +700,7 @@ async def profile_field_edit_start(callback: CallbackQuery, state: FSMContext) -
         await safe_edit(
             callback.message,
             f"Выбери новое значение.\n{prompt}",
-            profile_field_keyboard(field_key),
+            profile_field_keyboard(field_key, lang),
         )
         return
 
@@ -663,12 +709,13 @@ async def profile_field_edit_start(callback: CallbackQuery, state: FSMContext) -
     await safe_edit(
         callback.message,
         f"{prompt}\n\nНапиши новое значение обычным сообщением в чат.",
-        profile_field_keyboard(field_key),
+        profile_field_keyboard(field_key, lang),
     )
 
 
 @router.callback_query(F.data.startswith("prof:pick:"))
 async def profile_field_pick(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     payload = callback.data.removeprefix("prof:pick:")
     field_key, _, value = payload.partition(":")
@@ -681,14 +728,18 @@ async def profile_field_pick(callback: CallbackQuery, state: FSMContext) -> None
         await safe_edit(
             callback.message,
             "Напиши своими словами, что сейчас беспокоит больше всего.",
-            profile_field_keyboard(field_key),
+            InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="← Назад", callback_data="nav:profile_edit")]
+                ]
+            ),
         )
         return
 
     service = ProfileService()
     result = await service.update_field(callback.from_user.id, field_key, value)
     if result is None:
-        await callback.message.answer("Не удалось обновить поле.")
+        await callback.message.answer(t("error_update_field", lang))
         return
     await _show_profile_edit(callback.message, callback.from_user.id, prefix=f"{result}\n\n")
     await _track(None, "bot.profile_edit", {"field": field_key})
@@ -696,6 +747,7 @@ async def profile_field_pick(callback: CallbackQuery, state: FSMContext) -> None
 
 @router.callback_query(F.data.startswith("mem:"))
 async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     parts = callback.data.split(":")
     if len(parts) < 3:
         await safe_callback_answer(callback)
@@ -726,7 +778,7 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await safe_edit(
             callback.message,
             text,
-            inline_memory_detail_menu(memory_id, page),
+            inline_memory_detail_menu(memory_id, page, lang),
             parse_mode=None,
         )
         await _track(None, "bot.memory", {"action": "open", "memory_id": memory_id})
@@ -779,10 +831,23 @@ async def settings_callback(callback: CallbackQuery) -> None:
         text = await service.toggle_daily_card(callback.from_user.id)
     elif action == "toggle:proactive":
         text = await service.toggle_proactive(callback.from_user.id)
+    elif action.startswith("lang:"):
+        lang = action.removeprefix("lang:")
+        text = await service.set_ui_language(callback.from_user.id, lang)
+        await callback.message.answer(
+            text,
+            reply_markup=await _user_main_menu(callback.from_user.id),
+            parse_mode=None,
+        )
+        lang = await service.get_ui_language(callback.from_user.id)
+        await safe_edit(callback.message, t("choose_language", lang), inline_language_menu(lang))
+        await _track(None, "bot.settings", {"action": "language", "lang": lang})
+        return
     else:
         text = await service.get_panel_text(callback.from_user.id)
 
-    await safe_edit(callback.message, text, inline_settings_menu())
+    lang = await service.get_ui_language(callback.from_user.id)
+    await safe_edit(callback.message, text, inline_settings_menu(lang))
     await _track(None, "bot.settings", {"action": action})
 
 
@@ -794,7 +859,7 @@ async def referral_share_callback(callback: CallbackQuery) -> None:
     await callback.message.answer(
         f"🔗 Твоя личная ссылка:\n{link}\n\n"
         "Перешли её другу — с каждой его или её оплаты тебе будет приходить 40% на реферальный баланс. 💰",
-        reply_markup=inline_referral_menu(share_link=link),
+        reply_markup=inline_referral_menu(share_link=link, lang=lang),
     )
 
 
@@ -809,10 +874,11 @@ async def _referral_available(telegram_id: int) -> Decimal | None:
 
 @router.callback_query(F.data == "ref:withdraw")
 async def referral_withdraw_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     available = await _referral_available(callback.from_user.id)
     if available is None:
-        await callback.message.answer("Сначала нажми /start.")
+        await callback.message.answer(t("error_need_start_short", lang))
         return
     if available < MIN_WITHDRAWAL_RUB:
         await callback.message.answer(
@@ -848,7 +914,7 @@ async def _ask_withdrawal_wallet(message: Message, state: FSMContext, telegram_i
         await message.answer(
             "💼 Куда отправить USDT (сеть TRC-20)?\n\n"
             f"У тебя сохранён кошелёк: {saved_wallet}",
-            reply_markup=inline_withdraw_wallet_menu(saved_wallet),
+            reply_markup=inline_withdraw_wallet_menu(saved_wallet, lang),
         )
         return
     await state.set_state(BotStates.waiting_withdrawal_wallet)
@@ -910,6 +976,7 @@ async def referral_wallet_new_callback(callback: CallbackQuery, state: FSMContex
 
 @router.callback_query(F.data.startswith("bill:"))
 async def billing_callback(callback: CallbackQuery) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     billing = BillingService()
     parts = callback.data.split(":")
@@ -920,7 +987,7 @@ async def billing_callback(callback: CallbackQuery) -> None:
     if action == "spend":
         page = int(value)
         text, page, total_pages = await billing.spending_history_page(callback.from_user.id, page)
-        markup = inline_spending_menu(page, max(total_pages, 1))
+        markup = inline_spending_menu(page, max(total_pages, 1), lang)
         await safe_edit(callback.message, text, markup, parse_mode=None)
         return
 
@@ -946,72 +1013,77 @@ async def nav_reading_type_callback(callback: CallbackQuery, state: FSMContext) 
 
 
 async def _open_readings_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     try:
         onboarding = OnboardingService()
         if not await onboarding.is_onboarded(callback.from_user):
-            await safe_callback_answer(callback, "Сначала закончи анкету — /start", show_alert=True)
+            await safe_callback_answer(callback, t("error_finish_onboarding_alert", lang), show_alert=True)
             return
         await state.clear()
         await safe_callback_answer(callback)
         await safe_edit(
             callback.message,
             await _readings_menu_text(callback.from_user.id),
-            inline_readings_menu(),
+            inline_readings_menu(lang),
         )
         await _track(None, "bot.menu", {"item": "readings"})
     except Exception as exc:
         logger.exception("open_readings_menu failed")
-        await safe_callback_answer(callback, "Не удалось открыть расклады. Попробуй ещё раз.", show_alert=True)
+        await safe_callback_answer(callback, t("error_open_readings", lang), show_alert=True)
         await _track(None, "bot.error", {"handler": "nav_readings", "error": str(exc)})
 
 
 async def _open_reading_type(callback: CallbackQuery, state: FSMContext, reading_type: str) -> None:
+    lang = await _user_language(callback.from_user.id)
     try:
         onboarding = OnboardingService()
         if not await onboarding.is_onboarded(callback.from_user):
-            await safe_callback_answer(callback, "Сначала закончи анкету — /start", show_alert=True)
+            await safe_callback_answer(callback, t("error_finish_onboarding_alert", lang), show_alert=True)
             return
 
         tarot = TarotService()
         ok, limit_error = await tarot.ensure_can_read_today(callback.from_user.id)
         if not ok:
-            await safe_callback_answer(callback, limit_error or "Лимит раскладов исчерпан", show_alert=True)
+            await safe_callback_answer(callback, limit_error or t("error_reading_limit", lang), show_alert=True)
             return
 
-        label = READING_TYPE_LABELS.get(reading_type, "расклад")
+        label = reading_label(reading_type, lang)
         await state.set_state(BotStates.waiting_reading_question)
         await state.update_data(reading_type=reading_type)
         await safe_callback_answer(callback)
         await safe_edit(
             callback.message,
-            f"Расклад: {label}\n\nНапиши свой вопрос обычным сообщением в чат — я сделаю расклад и объясню карты.",
-            inline_reading_prompt(reading_type),
+            t("reading_ask_question", lang, label=label),
+            inline_reading_prompt(reading_type, lang),
         )
     except Exception as exc:
         logger.exception("open_reading_type failed")
-        await safe_callback_answer(callback, "Не удалось выбрать расклад. Попробуй ещё раз.", show_alert=True)
+        await safe_callback_answer(callback, t("error_pick_reading", lang), show_alert=True)
         await _track(None, "bot.error", {"handler": "nav_reading_type", "error": str(exc)})
 
 
 @router.callback_query(F.data.startswith("nav:"))
 async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await safe_callback_answer(callback)
     action = callback.data.removeprefix("nav:")
     tarot = TarotService()
     onboarding = OnboardingService()
 
     if not await onboarding.is_onboarded(callback.from_user):
-        await callback.message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
+        await callback.message.answer(t("error_finish_onboarding", lang))
         return
 
     if action == "main":
         await state.clear()
-        await safe_edit(callback.message, MAIN_MENU_TEXT, inline_main_menu())
+        menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
+        await safe_edit(callback.message, menu_text, menu_markup)
         return
 
     if action == "daily":
         await _send_daily_card(callback.message, callback.from_user.id)
-        await safe_edit(callback.message, MAIN_MENU_TEXT, inline_main_menu())
+        menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
+        await safe_edit(callback.message, menu_text, menu_markup)
         await _track(None, "bot.daily_card", {"telegram_id": callback.from_user.id})
         return
 
@@ -1028,7 +1100,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "billing":
         text = await BillingService().panel_text(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_billing_menu())
+        await safe_edit(callback.message, text, inline_billing_menu(lang))
         await _track(None, "bot.menu", {"item": "billing"})
         return
 
@@ -1042,13 +1114,20 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if action == "settings":
+        lang = await SettingsService().get_ui_language(callback.from_user.id)
         text = await SettingsService().get_panel_text(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_settings_menu())
+        await safe_edit(callback.message, text, inline_settings_menu(lang))
         await _track(None, "bot.menu", {"item": "settings"})
         return
 
+    if action == "language":
+        lang = await SettingsService().get_ui_language(callback.from_user.id)
+        await safe_edit(callback.message, t("choose_language", lang), inline_language_menu(lang))
+        await _track(None, "bot.menu", {"item": "language"})
+        return
+
     if action == "info":
-        await safe_edit(callback.message, info_panel_text(), inline_info_menu(), parse_mode=None)
+        await safe_edit(callback.message, info_panel_text(lang), inline_info_menu(lang), parse_mode=None)
         await _track(None, "bot.menu", {"item": "info"})
         return
 
@@ -1081,44 +1160,35 @@ async def onboarding_back(callback: CallbackQuery, state: FSMContext) -> None:
         )
         step_key = onboarding.current_step if onboarding else ONBOARDING_STEPS[0][0]
 
-    await safe_edit(callback.message, prompt, onboarding_keyboard(step_key))
+    await safe_edit(callback.message, prompt, onboarding_keyboard(step_key, lang))
     await _track(user_id, "bot.onboarding_back", {"step": step_key})
 
 
 @router.callback_query(F.data.startswith("onb:pick:"))
 async def onboarding_pick(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     parts = callback.data.split(":", 3)
     if len(parts) < 4:
         return
 
-    _, _, step_key, value = parts
-    if value == "другое" and step_key == "main_concern":
-        await state.set_state(BotStates.waiting_custom_concern)
-        await safe_edit(
-            callback.message,
-            "Напиши своими словами, что сейчас беспокоит больше всего.",
-            InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="onb:back")]]
-            ),
-        )
-        return
-
+    _, _, _step_key, value = parts
     await _process_onboarding_answer(callback, value, edit=True)
 
 
 @router.callback_query(F.data.startswith("photo:mode:"))
 async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await safe_callback_answer(callback)
     onboarding = OnboardingService()
     if not await onboarding.is_onboarded(callback.from_user):
-        await callback.message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
+        await callback.message.answer(t("error_finish_onboarding", lang))
         return
 
     data = await state.get_data()
     file_id = data.get("photo_file_id")
     if not file_id:
-        await callback.message.answer("Фото не найдено. Пришли его ещё раз.")
+        await callback.message.answer(t("error_photo_not_found", lang))
         await state.clear()
         return
 
@@ -1126,11 +1196,11 @@ async def photo_mode_callback(callback: CallbackQuery, state: FSMContext) -> Non
     if mode == "other":
         await state.set_state(BotStates.waiting_photo_custom_request)
         await state.update_data(photo_file_id=file_id)
-        await callback.message.answer("Напиши, что хочешь узнать по этому фото.")
+        await callback.message.answer(t("error_photo_ask", lang))
         return
 
     if mode not in {"aura", "palm"}:
-        await callback.message.answer("Неизвестный режим анализа.")
+        await callback.message.answer(t("error_unknown_photo_mode", lang))
         return
 
     _fire_and_forget(
@@ -1176,10 +1246,10 @@ async def _process_onboarding_answer(
                 )
                 next_step_key = onboarding.current_step if onboarding else None
 
-    markup = onboarding_keyboard(next_step_key) if next_step_key else None
+    markup = onboarding_keyboard(next_step_key, lang) if next_step_key else None
     reply_text = onboarding_reply
     if markup is None and not completed:
-        reply_text = f"{onboarding_reply}\n\nНапиши ответ обычным сообщением в чат."
+        reply_text = f"{onboarding_reply}\n\n{t('onboarding_type_hint', await _user_language(telegram_user.id))}"
 
     if isinstance(source, CallbackQuery):
         if completed:
@@ -1187,11 +1257,10 @@ async def _process_onboarding_answer(
                 onboarding_reply,
                 reply_markup=await _user_main_menu(telegram_user.id),
             )
-            await source.message.answer(
-                "🌅 А вот твоя первая карта дня — бесплатный подарок за знакомство ✨"
-            )
+            await source.message.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
             await _send_daily_card(source.message, telegram_user.id)
-            await source.message.answer(MAIN_MENU_TEXT, reply_markup=inline_main_menu())
+            menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
+            await source.message.answer(menu_text, reply_markup=menu_markup)
         elif edit:
             await safe_edit(source.message, reply_text, markup)
         else:
@@ -1199,11 +1268,10 @@ async def _process_onboarding_answer(
     else:
         if completed:
             await source.answer(onboarding_reply, reply_markup=await _user_main_menu(telegram_user.id))
-            await source.answer(
-                "🌅 А вот твоя первая карта дня — бесплатный подарок за знакомство ✨"
-            )
+            await source.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
             await _send_daily_card(source, telegram_user.id)
-            await source.answer(MAIN_MENU_TEXT, reply_markup=inline_main_menu())
+            menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
+            await source.answer(menu_text, reply_markup=menu_markup)
         else:
             await source.answer(reply_text, reply_markup=markup)
 
@@ -1229,12 +1297,13 @@ async def _user_voice_settings(telegram_id: int) -> tuple[str, str]:
 
 @router.message(F.voice)
 async def voice_message(message: Message) -> None:
+    lang = await _user_language(message.from_user.id)
     if message.voice is None or message.from_user is None:
         return
 
     onboarding = OnboardingService()
     if not await onboarding.is_onboarded(message.from_user):
-        await message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
+        await message.answer(t("error_finish_onboarding", lang))
         return
 
     tier, voice_preset = await _user_voice_settings(message.from_user.id)
@@ -1258,7 +1327,7 @@ async def voice_message(message: Message) -> None:
             return
 
         if billing_mode == "balance":
-            await message.answer("Бесплатные сообщения закончились. Ответ спишется с баланса.")
+            await message.answer(t("error_free_messages_ended", lang))
 
         answer = await _generate_with_typing(
             message,
@@ -1309,7 +1378,7 @@ async def voice_message(message: Message) -> None:
                     usage,
                     reply_markup=menu,
                 )
-                await message.answer("Не удалось отправить голосовой файл.")
+                await message.answer(t("error_voice_send", lang))
         else:
             await _answer_formatted(message, answer)
             await clear_processing_placeholder(status_msg)
@@ -1333,17 +1402,18 @@ async def voice_message(message: Message) -> None:
         if detail and len(detail) < 120:
             await message.answer(f"Не удалось обработать голосовое: {detail}")
         else:
-            await message.answer("Не удалось обработать голосовое. Попробуй ещё раз или напиши текстом.")
+            await message.answer(t("error_voice_process_generic", lang))
     finally:
         await clear_processing_placeholder(status_msg)
 
 
 @router.message(F.photo)
 async def photo_message(message: Message, state: FSMContext) -> None:
+    lang = await _user_language(message.from_user.id)
     try:
         onboarding = OnboardingService()
         if not await onboarding.is_onboarded(message.from_user):
-            await message.answer("Сначала давай закончим анкету — ответь на последний вопрос или нажми /start.")
+            await message.answer(t("error_finish_onboarding", lang))
             return
 
         file_id = message.photo[-1].file_id
@@ -1366,23 +1436,35 @@ async def photo_message(message: Message, state: FSMContext) -> None:
         await message.answer(
             "📸 Фото получено! Что хочешь узнать?\n"
             "Аура и ладонь — с инфографикой, 100 ₽ с баланса.",
-            reply_markup=inline_photo_mode_menu(),
+            reply_markup=inline_photo_mode_menu(lang),
         )
     except Exception as exc:
         await _track(None, "bot.error", {"handler": "photo_message", "error": str(exc)})
-        await message.answer("Не удалось принять фото. Попробуй отправить ещё раз.")
+        await message.answer(t("error_photo_accept", lang))
 
 
 @router.message()
 async def fallback_message(message: Message, state: FSMContext) -> None:
+    lang = await _user_language(message.from_user.id)
     try:
         text = (message.text or "").strip()
         onboarding = OnboardingService()
 
         current_state = await state.get_state()
-        if current_state == BotStates.waiting_custom_concern.state:
-            await state.clear()
-            await _process_onboarding_answer(message, text, edit=False)
+        if current_state == BotStates.waiting_zen_question.state:
+            await handle_zen_question(message, text, state)
+            return
+
+        if current_state == BotStates.waiting_rune_question.state:
+            await handle_rune_question(message, text, state)
+            return
+
+        if current_state == BotStates.waiting_stone_query.state:
+            await handle_stone_query(message, text, state)
+            return
+
+        if current_state == BotStates.waiting_bracelet_query.state:
+            await handle_bracelet_query(message, text, state)
             return
 
         if current_state == BotStates.waiting_profile_field.state:
@@ -1390,12 +1472,12 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             field_key = data.get("profile_field")
             await state.clear()
             if not field_key:
-                await message.answer("Не удалось определить поле. Открой настройки и попробуй снова.")
+                await message.answer(t("error_field_unknown", lang))
                 return
             service = ProfileService()
             result = await service.update_field(message.from_user.id, field_key, text)
             if result is None:
-                await message.answer("Не удалось обновить поле.")
+                await message.answer(t("error_update_field", lang))
                 return
             await message.answer(result)
             await _show_profile_edit(message, message.from_user.id)
@@ -1415,13 +1497,13 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
 
         if current_state == BotStates.waiting_reading_question.state:
             if not text:
-                await message.answer("Напиши вопрос для расклада обычным сообщением.")
+                await message.answer(t("reading_ask_question_text", lang))
                 return
             await _handle_reading_question(message, state, text)
             return
 
         if current_state == BotStates.waiting_photo_mode.state:
-            await message.answer("Выбери вариант анализа кнопками под последним фото.")
+            await message.answer(t("choose_photo_mode", lang))
             return
 
         if current_state == BotStates.waiting_withdrawal_amount.state:
@@ -1462,7 +1544,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             file_id = data.get("photo_file_id")
             if not file_id:
                 await state.clear()
-                await message.answer("Фото не найдено. Пришли его ещё раз.")
+                await message.answer(t("error_photo_not_found", lang))
                 return
             if not text:
                 await message.answer("Напиши, что хочешь узнать по фото.")
@@ -1479,8 +1561,8 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             return
 
         if not await onboarding.is_onboarded(message.from_user):
-            if text in MENU_TEXTS:
-                await message.answer("Сначала давай закончим анкету. Ответь на вопрос выше или нажми кнопку, если она есть.")
+            if text in all_menu_texts():
+                await message.answer(t("error_finish_onboarding_step", lang))
                 return
 
             if text:
@@ -1491,7 +1573,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             await _open_billing(message)
             return
 
-        if text in MENU_TEXTS:
+        if text in all_menu_texts():
             await _handle_menu_text(message, state, text)
             return
 
@@ -1502,12 +1584,12 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             if not ok:
                 await message.answer(limit_error, reply_markup=await _user_main_menu(message.from_user.id))
                 return
-            label = READING_TYPE_LABELS[reading_type]
+            label = reading_label(reading_type, lang)
             await state.set_state(BotStates.waiting_reading_question)
             await state.update_data(reading_type=reading_type)
             await message.answer(
-                f"Расклад: {label}\n\nНапиши свой вопрос обычным сообщением — я сделаю расклад и объясню карты.",
-                reply_markup=inline_reading_prompt(reading_type),
+                t("reading_ask_question", lang, label=label),
+                reply_markup=inline_reading_prompt(reading_type, lang),
             )
             return
 
@@ -1522,13 +1604,28 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             "bot.error",
             {"handler": "message", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
         )
-        await message.answer("Не удалось обработать сообщение. Попробуй ещё раз.")
+        await message.answer(t("error_process_message", lang))
 
 
 async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> None:
     tarot = TarotService()
     await state.clear()
-    action = MENU_ACTIONS.get(text)
+    lang = await _user_language(message.from_user.id)
+    action = menu_actions(lang).get(text) or MENU_ACTIONS.get(text)
+
+    if action == "zen":
+        from app.bot.keyboards import inline_zen_menu
+
+        await message.answer(t("zen_menu_text", lang), reply_markup=inline_zen_menu(lang))
+        await _track(None, "bot.menu", {"item": "zen"})
+        return
+
+    if action == "energy":
+        from app.bot.keyboards import inline_energy_menu
+
+        await message.answer(t("energy_menu_text", lang), reply_markup=inline_energy_menu(lang))
+        await _track(None, "bot.menu", {"item": "energy"})
+        return
 
     if action == "daily":
         await _send_daily_card(message, message.from_user.id)
@@ -1538,7 +1635,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     if action == "readings":
         await message.answer(
             await _readings_menu_text(message.from_user.id),
-            reply_markup=inline_readings_menu(),
+            reply_markup=inline_readings_menu(lang),
         )
         await _track(None, "bot.menu", {"item": text})
         return
@@ -1565,14 +1662,19 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     if action == "settings":
         await message.answer(
             await SettingsService().get_panel_text(message.from_user.id),
-            reply_markup=inline_settings_menu(),
+            reply_markup=inline_settings_menu(lang),
             parse_mode=None,
         )
         await _track(None, "bot.menu", {"item": text})
         return
 
+    if action == "language":
+        await message.answer(t("choose_language", lang), reply_markup=inline_language_menu(lang))
+        await _track(None, "bot.menu", {"item": "language"})
+        return
+
     if action == "info":
-        await message.answer(info_panel_text(), reply_markup=inline_info_menu(), parse_mode=None)
+        await message.answer(info_panel_text(lang), reply_markup=inline_info_menu(lang), parse_mode=None)
         await _track(None, "bot.menu", {"item": text})
         return
 
@@ -1586,7 +1688,8 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         await _track(None, "bot.menu", {"item": text})
         return
 
-    await message.answer(MAIN_MENU_TEXT, reply_markup=inline_main_menu())
+    menu_text, menu_markup = await _main_menu_inline(message.from_user.id)
+    await message.answer(menu_text, reply_markup=menu_markup)
 
 
 @router.message(F.sticker)
@@ -1612,4 +1715,5 @@ async def sticker_file_id_hint(message: Message) -> None:
 
 
 def register_handlers(dispatcher: Dispatcher) -> None:
+    dispatcher.include_router(feature_router)
     dispatcher.include_router(router)

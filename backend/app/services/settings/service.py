@@ -2,6 +2,8 @@ from sqlalchemy import select
 
 from app.database.models import User, UserSettings
 from app.database.session import AsyncSessionLocal
+from app.bot.i18n import LANGUAGE_LABELS, normalize_language, t
+from app.services.locale.service import LocaleService
 
 VOICE_PRESETS = [
     ("female_mystical", "Мистический женский"),
@@ -22,8 +24,18 @@ class SettingsService:
     async def get_panel_text(self, telegram_id: int) -> str:
         settings = await self._load_settings(telegram_id)
         if settings is None:
-            return "Сначала нажми /start, чтобы создать твой профиль."
+            lang = await LocaleService().get_language(telegram_id)
+            return t("error_need_start", lang)
         return self._format_panel(settings)
+
+    async def get_ui_language(self, telegram_id: int) -> str:
+        return await LocaleService().get_language(telegram_id)
+
+    async def set_ui_language(self, telegram_id: int, language: str) -> str:
+        lang = await LocaleService().lock_language(telegram_id, language)
+        panel = await self.get_panel_text(telegram_id)
+        label = LANGUAGE_LABELS.get(lang, lang)
+        return f"{t('language_changed', lang).format(label=label)}\n\n{panel}"
 
     async def toggle_daily_card(self, telegram_id: int) -> str:
         return await self._mutate(telegram_id, lambda settings: setattr(
@@ -61,7 +73,8 @@ class SettingsService:
         async with AsyncSessionLocal() as session:
             settings = await self._load_settings_in_session(session, telegram_id)
             if settings is None:
-                return "Сначала нажми /start, чтобы создать твой профиль."
+                lang = await LocaleService().get_language(telegram_id)
+                return t("error_need_start", lang)
             mutate(settings)
             await session.commit()
             await session.refresh(settings)
@@ -83,12 +96,48 @@ class SettingsService:
         return settings
 
     def _format_panel(self, settings: UserSettings) -> str:
+        lang = normalize_language(settings.ui_language)
         voice_label = dict(VOICE_PRESETS).get(settings.voice_preset, settings.voice_preset)
         tz_label = dict(TIMEZONE_OPTIONS).get(settings.timezone, settings.timezone)
         daily = "вкл" if settings.daily_card_enabled else "выкл"
         proactive = "вкл" if settings.proactive_messages_enabled else "выкл"
+        language_label = LANGUAGE_LABELS.get(lang, lang)
+        if lang == "en":
+            return (
+                "Settings\n\n"
+                f"Language: {language_label}\n"
+                f"Voice: {voice_label}\n"
+                f"Timezone: {tz_label}\n"
+                f"Quiet hours: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"
+                f"Morning daily card: {'on' if settings.daily_card_enabled else 'off'}\n"
+                f"Proactive messages: {'on' if settings.proactive_messages_enabled else 'off'}\n\n"
+                "Tap a button below to change a setting or profile data."
+            )
+        if lang == "es":
+            return (
+                "Ajustes\n\n"
+                f"Idioma: {language_label}\n"
+                f"Voz: {voice_label}\n"
+                f"Zona horaria: {tz_label}\n"
+                f"Horas silenciosas: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"
+                f"Carta del día por la mañana: {'sí' if settings.daily_card_enabled else 'no'}\n"
+                f"Mensajes proactivos: {'sí' if settings.proactive_messages_enabled else 'no'}\n\n"
+                "Toca un botón abajo para cambiar un ajuste o los datos del perfil."
+            )
+        if lang == "pt":
+            return (
+                "Configurações\n\n"
+                f"Idioma: {language_label}\n"
+                f"Voz: {voice_label}\n"
+                f"Fuso horário: {tz_label}\n"
+                f"Horário silencioso: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"
+                f"Carta do dia de manhã: {'sim' if settings.daily_card_enabled else 'não'}\n"
+                f"Mensagens proativas: {'sim' if settings.proactive_messages_enabled else 'não'}\n\n"
+                "Toque um botão abaixo para alterar uma configuração ou os dados do perfil."
+            )
         return (
             "Настройки\n\n"
+            f"Язык: {language_label}\n"
             f"Голос ответов: {voice_label}\n"
             f"Часовой пояс: {tz_label}\n"
             f"Тихие часы: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"

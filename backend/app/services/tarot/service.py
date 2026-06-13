@@ -4,7 +4,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 
-from app.database.models import DailyPrediction, TarotCard, TarotReading, User
+from app.database.models import DailyPrediction, Message, MessageRole, TarotCard, TarotReading, User
 from app.database.session import AsyncSessionLocal
 from app.core.config import get_settings
 from app.services.billing.limits import DAILY_READINGS_LIMIT, HISTORY_PAGE_SIZE
@@ -12,6 +12,8 @@ from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
 from app.services.tarot.cards import FULL_DECK, storage_image_path
 from app.services.tarot.daily_card import pick_daily_card_with_ai
+from app.bot.i18n import normalize_language, reading_label, t
+from app.services.settings.service import SettingsService
 
 READING_TYPES = {
     "day": 1,
@@ -52,11 +54,15 @@ class TarotService:
             "Напиши вопрос обычным сообщением, а я сделаю расклад и объясню карты простым языком."
         )
 
+    async def _lang(self, telegram_id: int) -> str:
+        return await SettingsService().get_ui_language(telegram_id)
+
     async def daily_card_for_telegram(self, telegram_id: int) -> tuple[str, dict | None]:
+        lang = await self._lang(telegram_id)
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль.", None
+                return t("error_need_start", lang), None
 
             existing = await session.scalar(
                 select(DailyPrediction).where(
@@ -102,6 +108,48 @@ class TarotService:
             )
             await session.commit()
             return text, card
+
+    async def record_daily_card_context(
+        self, telegram_id: int, interpretation: str, *, card_name: str
+    ) -> None:
+        """Сохраняет карту дня в историю сообщений для последующего обсуждения с ИИ."""
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return
+
+            recent = await session.scalars(
+                select(Message)
+                .where(Message.user_id == user.id)
+                .order_by(Message.created_at.desc())
+                .limit(4)
+            )
+            today = date.today().isoformat()
+            for msg in recent:
+                if isinstance(msg.meta, dict) and msg.meta.get("feature") == "daily_card":
+                    if msg.meta.get("prediction_date") == today:
+                        return
+
+            session.add(
+                Message(
+                    user_id=user.id,
+                    role=MessageRole.USER.value,
+                    content="🌅 Карта дня на сегодня",
+                )
+            )
+            session.add(
+                Message(
+                    user_id=user.id,
+                    role=MessageRole.ASSISTANT.value,
+                    content=interpretation.strip(),
+                    meta={
+                        "feature": "daily_card",
+                        "card": card_name,
+                        "prediction_date": today,
+                    },
+                )
+            )
+            await session.commit()
 
     async def _card_dict_from_prediction(
         self, session, prediction: DailyPrediction
@@ -220,12 +268,15 @@ class TarotService:
         ]
 
     async def history_page(
-        self, telegram_id: int, page: int = 0
+        self, telegram_id: int, page: int = 0, *, lang: str | None = None
     ) -> tuple[str, list[TarotReading], int, int]:
+        from app.bot.i18n import reading_label
+
+        lang = lang or await self._lang(telegram_id)
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль.", [], 0, 0
+                return t("error_need_start", lang), [], 0, 0
 
             total = await session.scalar(
                 select(func.count())
@@ -234,12 +285,7 @@ class TarotService:
             )
             total = int(total or 0)
             if total == 0:
-                return (
-                    "Пока раскладов нет. Выбери «Сделать расклад» или просто задай вопрос в чате.",
-                    [],
-                    0,
-                    0,
-                )
+                return t("history_empty", lang), [], 0, 0
 
             total_pages = max(1, (total + HISTORY_PAGE_SIZE - 1) // HISTORY_PAGE_SIZE)
             page = max(0, min(page, total_pages - 1))
@@ -255,12 +301,12 @@ class TarotService:
             items = list(readings)
 
             lines = [
-                "История раскладов",
-                f"Страница {page + 1} из {total_pages}\n",
-                "Нажми на расклад, чтобы открыть полное толкование:\n",
+                t("history_title", lang),
+                t("history_page", lang, page=page + 1, total=total_pages) + "\n",
+                t("history_hint", lang) + "\n",
             ]
             for index, reading in enumerate(items, start=offset + 1):
-                label = READING_TYPE_LABELS.get(reading.reading_type, reading.reading_type)
+                label = reading_label(reading.reading_type, lang)
                 question = reading.question[:60] + ("…" if len(reading.question) > 60 else "")
                 lines.append(f"{index}. {label} — «{question}»")
             return "\n".join(lines), items, page, total_pages

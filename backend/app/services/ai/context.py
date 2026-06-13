@@ -3,19 +3,32 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Memory, Message, RelationshipPerson, SoulProfile, Subscription, User
+from app.database.models import Memory, Message, RelationshipPerson, SoulProfile, Subscription, User, UserSettings
 from app.services.billing.limits import chat_history_limit_for_tier
 from app.services.memory.retrieval import select_relevant_memories, select_relevant_people
+from app.bot.i18n import normalize_language
 
-_SYSTEM_PROMPT_PATH = Path(__file__).resolve().parents[4] / "prompts" / "system_ru.md"
+_SYSTEM_PROMPT_DIR = Path(__file__).resolve().parents[4] / "prompts"
+_SYSTEM_PROMPT_FILES = {
+    "ru": "system_ru.md",
+    "en": "system_en.md",
+    "es": "system_es.md",
+    "pt": "system_pt.md",
+}
 
 HISTORY_CHAR_LIMIT = 220
 HISTORY_CHAR_LIMIT_RECENT = 420
 
 
-def load_system_prompt() -> str:
-    if _SYSTEM_PROMPT_PATH.exists():
-        return _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
+def load_system_prompt(lang: str = "ru") -> str:
+    lang = normalize_language(lang)
+    filename = _SYSTEM_PROMPT_FILES.get(lang, "system_ru.md")
+    path = _SYSTEM_PROMPT_DIR / filename
+    if path.exists():
+        return path.read_text(encoding="utf-8").strip()
+    fallback = _SYSTEM_PROMPT_DIR / "system_ru.md"
+    if fallback.exists():
+        return fallback.read_text(encoding="utf-8").strip()
     return (
         "Ты личный эзотерический наставник в Telegram. "
         "Пиши нейтрально, без женских форм от первого лица. "
@@ -32,11 +45,26 @@ def _compact_text(text: str, limit: int) -> str:
     return cleaned[: limit - 1] + "…"
 
 
-_MEMORY_HINT = (
-    "Память и люди ниже — только справочник. "
-    "Не упоминай их, если пользователь сам не спрашивает об этом или это напрямую нужно для ответа. "
-    "Не вставляй факты из памяти «для уюта» и не повторяй одно и то же в каждом сообщении."
-)
+_MEMORY_HINTS = {
+    "ru": (
+        "Память и люди ниже — только справочник. "
+        "Не упоминай их, если пользователь сам не спрашивает об этом или это напрямую нужно для ответа. "
+        "Не вставляй факты из памяти «для уюта» и не повторяй одно и то же в каждом сообщении."
+    ),
+    "en": (
+        "Memory and people below are reference only. "
+        "Don't mention them unless the user asks or it's essential to answer. "
+        "Don't repeat the same memory details in every message."
+    ),
+    "es": (
+        "La memoria y las personas abajo son solo referencia. "
+        "No las menciones salvo que el usuario pregunte o sea esencial."
+    ),
+    "pt": (
+        "Memória e pessoas abaixo são apenas referência. "
+        "Não mencione a menos que o usuário pergunte ou seja essencial."
+    ),
+}
 
 
 class ContextBuilder:
@@ -50,6 +78,9 @@ class ContextBuilder:
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
         history_limit = chat_history_limit_for_tier(tier)
+
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+        ui_language = normalize_language(settings.ui_language if settings else "ru")
 
         profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
         messages = await session.scalars(
@@ -78,9 +109,11 @@ class ContextBuilder:
             else "Отвечай по делу, без лишней воды."
         )
         system = [
-            load_system_prompt(),
+            load_system_prompt(ui_language),
             brevity,
-            "Всегда отвечай по-русски. Никогда не отказывайся от диалога.",
+            "Всегда отвечай на языке пользователя. Никогда не отказывайся от диалога."
+            if ui_language == "ru"
+            else "Always reply in the user's language. Never refuse the conversation.",
             "Выделяй важное markdown: **жирный**, *курсив*. Не используй HTML-теги.",
             f"Тариф пользователя: {tier}.",
         ]
@@ -115,7 +148,7 @@ class ContextBuilder:
             for person in relevant_people
         ]
         if memory_lines or people_lines:
-            system.append(_MEMORY_HINT)
+            system.append(_MEMORY_HINTS.get(ui_language, _MEMORY_HINTS["ru"]))
         if memory_lines:
             system.append("Релевантная память:\n" + "\n".join(memory_lines))
         if people_lines:

@@ -11,7 +11,13 @@ from app.services.analytics.tracker import track_event
 from app.services.billing.service import BillingService
 from app.services.billing.tokens import merge_api_usage, provider_cost_rub
 from app.services.memory.extractor import MemoryExtractor
-from app.services.tarot.service import TarotService
+from app.services.energy.service import BraceletSlot, DrawnRune, EnergyService
+from app.services.energy.stone_picker import pick_bracelet_layout_with_ai, pick_stones_with_ai
+from app.services.energy.catalog import RUNE_BY_SLUG, Stone
+from app.services.zen.service import ZenService
+from app.bot.i18n import normalize_language, t
+from app.database.models import UserSettings
+from app.services.tarot.service import READING_TYPE_LABELS, TarotService
 
 
 class AIOrchestrator:
@@ -21,16 +27,22 @@ class AIOrchestrator:
         self.billing = BillingService()
         self.memory_extractor = MemoryExtractor()
 
+    async def _user_lang(self, session, user_id: str) -> str:
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
+        return normalize_language(settings.ui_language if settings else None)
+
     async def prepare_chat(
         self, telegram_user: TelegramUser | None, text: str
     ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
+        lang = normalize_language(telegram_user.language_code if telegram_user else None)
         if telegram_user is None:
-            return None, None, "Не получилось определить профиль Telegram. Попробуй еще раз.", None, "blocked"
+            return None, None, t("error_telegram_profile", lang), None, "blocked"
 
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
             if user is None:
-                return None, None, "Сначала нажми /start, чтобы создать твой профиль.", None, "blocked"
+                return None, None, t("error_need_start", lang), None, "blocked"
+            lang = await self._user_lang(session, user.id)
 
             messages = await self.context_builder.build(session, user, user_query=text)
             messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
@@ -53,9 +65,9 @@ class AIOrchestrator:
         async for chunk in self.kie.stream_chat(messages):
             yield chunk
 
-    async def generate_chat(self, messages: list[dict]) -> str:
+    async def generate_chat(self, messages: list[dict], lang: str = "en") -> str:
         answer = await self.kie.chat_completion(messages)
-        return answer.strip() or "Не удалось получить ответ. Попробуй ещё раз."
+        return answer.strip() or t("error_no_ai_response", lang)
 
     async def complete_chat(
         self,
@@ -67,6 +79,7 @@ class AIOrchestrator:
         context_messages: list[dict] | None = None,
         feature: str = "chat",
         billing_mode: str = "free",
+        extra_api_usage: dict[str, int] | None = None,
     ) -> dict:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.id == user_id))
@@ -77,7 +90,7 @@ class AIOrchestrator:
             extraction_usage = await self.memory_extractor.extract_from_dialog(
                 session, user, text, answer
             )
-            combined_usage = merge_api_usage(chat_api_usage, extraction_usage)
+            combined_usage = merge_api_usage(chat_api_usage, extraction_usage, extra_api_usage)
 
             usage_meta: dict = {}
             if chat_api_usage:
@@ -166,6 +179,231 @@ class AIOrchestrator:
         )
         return result.get("answer", answer)
 
+    def _inject_system_addon(self, messages: list[dict], addon: str) -> list[dict]:
+        if not messages or messages[0].get("role") != "system":
+            return messages
+        updated = list(messages)
+        first = dict(updated[0])
+        content = first.get("content") or []
+        if content and isinstance(content[0], dict):
+            text = content[0].get("text", "")
+            content = [{"type": "text", "text": f"{text}\n\n{addon}"}]
+        first["content"] = content
+        updated[0] = first
+        return updated
+
+    async def _prepare_billed_exchange(
+        self,
+        telegram_user: TelegramUser | None,
+        *,
+        user_query: str,
+        ai_prompt: str,
+        stored_user_text: str,
+    ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
+        lang = normalize_language(telegram_user.language_code if telegram_user else None)
+        if telegram_user is None:
+            return None, None, t("error_telegram_profile", lang), None, "blocked"
+
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
+            if user is None:
+                return None, None, t("error_need_start", lang), None, "blocked"
+            lang = await self._user_lang(session, user.id)
+
+            messages = await self.context_builder.build(session, user, user_query=user_query)
+            messages.append({"role": "user", "content": [{"type": "text", "text": ai_prompt}]})
+
+            allowed, reason, billing_mode = await self.billing.ensure_can_use_chat(
+                session, user, context_messages=messages
+            )
+            if not allowed:
+                return None, None, reason, None, billing_mode
+
+            billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
+            user_message = Message(
+                user_id=user.id, role=MessageRole.USER.value, content=stored_user_text
+            )
+            session.add(user_message)
+            await session.flush()
+            await session.commit()
+            return user.id, messages, None, user_message.id, billing_mode
+
+    async def prepare_zen_reflection(
+        self,
+        telegram_user: TelegramUser | None,
+        text: str,
+        *,
+        lang: str = "ru",
+    ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
+        lang = normalize_language(lang)
+        zen = ZenService()
+        addon = zen.load_zen_prompt(lang)
+        user_id, messages, error, msg_id, billing = await self._prepare_billed_exchange(
+            telegram_user,
+            user_query=text,
+            ai_prompt=f"Режим дзен-рефлексии. Ответь на сообщение пользователя:\n{text}",
+            stored_user_text=f"🧘 Дзен-рефлексия: {text}",
+        )
+        if error or not messages:
+            return user_id, messages, error, msg_id, billing
+        return user_id, self._inject_system_addon(messages, addon), None, msg_id, billing
+
+    async def prepare_rune_reading(
+        self,
+        telegram_user: TelegramUser | None,
+        question: str,
+        drawn: list[DrawnRune],
+        *,
+        lang: str = "ru",
+    ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
+        energy = EnergyService()
+        rune_lines = energy.rune_lines_for_ai(drawn)
+        ai_prompt = (
+            f"Сделай толкование рун (до 6 предложений). Вопрос: {question}\n"
+            f"Руны:\n{rune_lines}\n"
+            "Объясни энергию сочетания и дай практический совет. Учитывай перевёрнутые руны."
+        )
+        names = ", ".join(d.rune.name for d in drawn)
+        stored = f"ᚠ Руны. Вопрос: {question}\nРуны: {names}"
+        return await self._prepare_billed_exchange(
+            telegram_user,
+            user_query=question,
+            ai_prompt=ai_prompt,
+            stored_user_text=stored,
+        )
+
+    async def prepare_stone_reading(
+        self,
+        telegram_user: TelegramUser | None,
+        query: str,
+        *,
+        lang: str = "ru",
+    ) -> tuple[
+        str | None,
+        list[Stone],
+        str,
+        list[dict] | None,
+        str | None,
+        str | None,
+        str,
+        dict[str, int] | None,
+    ]:
+        lang = normalize_language(telegram_user.language_code if telegram_user else None)
+        if telegram_user is None:
+            return None, [], "", None, t("error_telegram_profile", lang), None, "blocked", None
+
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
+            if user is None:
+                return None, [], "", None, t("error_need_start", lang), None, "blocked", None
+            lang = await self._user_lang(session, user.id)
+
+            base_messages = await self.context_builder.build(session, user, user_query=query)
+            pick_usage: dict[str, int] | None = None
+            pick_reason = ""
+
+            try:
+                stones, pick_reason = await pick_stones_with_ai(base_messages, self.kie, query)
+                pick_usage = dict(self.kie.last_usage) if self.kie.last_usage else None
+            except ValueError:
+                stones = EnergyService().recommend_stones(query)
+
+            energy = EnergyService()
+            stone_lines = energy.stone_lines_for_ai(stones)
+            reason_hint = f"\nКраткое обоснование подбора: {pick_reason}" if pick_reason else ""
+            ai_prompt = (
+                f"Ты уже подобрал для этого пользователя камни из каталога.{reason_hint}\n"
+                f"Запрос: {query or 'подбор по профилю soul'}\n"
+                f"Камни:\n{stone_lines}\n\n"
+                "Объясни персонально (до 6 предложений): почему именно они этому человеку с учётом профиля, "
+                "как их энергии дополняют друг друга, как носить или использовать."
+            )
+
+            messages = list(base_messages)
+            messages.append({"role": "user", "content": [{"type": "text", "text": ai_prompt}]})
+
+            allowed, reason, billing_mode = await self.billing.ensure_can_use_chat(
+                session, user, context_messages=messages
+            )
+            if not allowed:
+                return None, stones, pick_reason, None, reason, None, billing_mode, pick_usage
+
+            billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
+            names = ", ".join(s.name for s in stones)
+            stored = f"💎 Камни. Запрос: {query or 'по профилю'}\nПодбор: {names}"
+            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored)
+            session.add(user_message)
+            await session.flush()
+            await session.commit()
+            return user.id, stones, pick_reason, messages, None, user_message.id, billing_mode, pick_usage
+
+    async def prepare_bracelet_reading(
+        self,
+        telegram_user: TelegramUser | None,
+        query: str,
+        *,
+        lang: str = "ru",
+    ) -> tuple[
+        str | None,
+        list[BraceletSlot],
+        str,
+        list[dict] | None,
+        str | None,
+        str | None,
+        str,
+        dict[str, int] | None,
+    ]:
+        lang = normalize_language(telegram_user.language_code if telegram_user else None)
+        if telegram_user is None:
+            return None, [], "", None, t("error_telegram_profile", lang), None, "blocked", None
+
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
+            if user is None:
+                return None, [], "", None, t("error_need_start", lang), None, "blocked", None
+            lang = await self._user_lang(session, user.id)
+
+            base_messages = await self.context_builder.build(session, user, user_query=query)
+            pick_usage: dict[str, int] | None = None
+            pick_reason = ""
+            energy = EnergyService()
+
+            try:
+                layout, rune_slug, pick_reason = await pick_bracelet_layout_with_ai(
+                    base_messages, self.kie, query
+                )
+                pick_usage = dict(self.kie.last_usage) if self.kie.last_usage else None
+                slots = energy.build_bracelet_from_layout(layout, RUNE_BY_SLUG[rune_slug], lang)
+            except (ValueError, KeyError):
+                slots = energy.build_bracelet(query, lang)
+
+            layout_lines = energy.bracelet_lines_for_ai(slots)
+            reason_hint = f"\nОбоснование: {pick_reason}" if pick_reason else ""
+            ai_prompt = (
+                f"Ты подобрал схему браслета для этого пользователя.{reason_hint}\n"
+                f"Намерение: {query or 'по профилю soul'}\n"
+                f"Расположение:\n{layout_lines}\n\n"
+                "Объясни (до 7 предложений): почему камни и руна стоят именно так для этого человека, "
+                "как сочетать, на что обратить внимание при ношении."
+            )
+
+            messages = list(base_messages)
+            messages.append({"role": "user", "content": [{"type": "text", "text": ai_prompt}]})
+
+            allowed, reason, billing_mode = await self.billing.ensure_can_use_chat(
+                session, user, context_messages=messages
+            )
+            if not allowed:
+                return None, slots, pick_reason, None, reason, None, billing_mode, pick_usage
+
+            billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
+            stored = f"📿 Браслет. Намерение: {query or 'по профилю'}"
+            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored)
+            session.add(user_message)
+            await session.flush()
+            await session.commit()
+            return user.id, slots, pick_reason, messages, None, user_message.id, billing_mode, pick_usage
+
     async def prepare_tarot_reading(
         self,
         telegram_user: TelegramUser | None,
@@ -173,10 +411,14 @@ class AIOrchestrator:
         cards: list[dict],
         reading_type: str,
     ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
+        lang = normalize_language(telegram_user.language_code if telegram_user else None)
         if telegram_user is None:
-            return None, None, "Не получилось определить профиль Telegram. Попробуй еще раз.", None, "blocked"
+            return None, None, t("error_telegram_profile", lang), None, "blocked"
 
         card_lines = "\n".join(f"- {card['name']}: {card['description']}" for card in cards)
+        from app.bot.i18n import reading_label
+
+        label = reading_label(reading_type, lang)
         reading_prompt = (
             f"Сделай краткое толкование расклада Таро (до 5 предложений).\n"
             f"Тип: {reading_type}\n"
@@ -184,11 +426,15 @@ class AIOrchestrator:
             f"Карты:\n{card_lines}\n"
             "Свяжи с вопросом и дай один практический совет."
         )
+        stored_user_text = (
+            f"Расклад «{label}». Вопрос: {question}\n"
+            f"Карты: {', '.join(card['name'] for card in cards)}"
+        )
 
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
             if user is None:
-                return None, None, "Сначала нажми /start, чтобы создать твой профиль.", None, "blocked"
+                return None, None, t("error_need_start", lang), None, "blocked"
 
             messages = await self.context_builder.build(session, user, user_query=question)
             messages.append({"role": "user", "content": [{"type": "text", "text": reading_prompt}]})
@@ -201,7 +447,7 @@ class AIOrchestrator:
 
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
 
-            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=question)
+            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored_user_text)
             session.add(user_message)
             await session.flush()
             await session.commit()

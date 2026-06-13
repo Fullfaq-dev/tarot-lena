@@ -80,6 +80,8 @@ class UserSettings(UUIDMixin, TimestampMixin, Base):
 
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     voice_preset: Mapped[str] = mapped_column(String(64), default="female_mystical")
+    ui_language: Mapped[str] = mapped_column(String(8), default="ru")
+    language_locked: Mapped[bool] = mapped_column(Boolean, default=False)
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     quiet_hours_start: Mapped[str] = mapped_column(String(5), default="22:00")
     quiet_hours_end: Mapped[str] = mapped_column(String(5), default="09:00")
