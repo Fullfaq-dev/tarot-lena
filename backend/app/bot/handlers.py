@@ -216,9 +216,18 @@ async def _open_referrals(
     actor_id = telegram_id or (message.from_user.id if message.from_user else None)
     if actor_id is None:
         return
+    lang = await _user_language(actor_id)
     bot_user = await message.bot.get_me()
-    text = await ReferralService().panel_text(actor_id, bot_username=bot_user.username)
-    share_link = ReferralService().build_referral_link(bot_user.username, actor_id)
+    username = bot_user.username
+    if not username:
+        text = t("error_generic", lang)
+        if edit_message is not None:
+            await safe_edit(edit_message, text)
+        else:
+            await message.answer(text)
+        return
+    text = await ReferralService().panel_text(actor_id, bot_username=username)
+    share_link = ReferralService().build_referral_link(username, actor_id)
     markup = inline_referral_menu(share_link=share_link, lang=lang)
     if edit_message is not None:
         await safe_edit(edit_message, text, markup)
