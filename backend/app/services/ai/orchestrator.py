@@ -279,7 +279,7 @@ class AIOrchestrator:
     ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
         resolved_lang = await self._resolve_lang(telegram_user, lang)
         energy = EnergyService()
-        rune_lines = energy.rune_lines_for_ai(drawn, resolved_lang)
+        rune_lines = energy.rune_lines_for_ai(drawn)
         names = ", ".join(d.rune.name for d in drawn)
         return await self._prepare_billed_exchange(
             telegram_user,

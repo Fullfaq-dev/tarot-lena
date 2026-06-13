@@ -41,7 +41,6 @@ from app.bot.keyboards import (
     main_menu,
     onboarding_keyboard,
     profile_field_keyboard,
-    READING_LABEL_TO_TYPE,
     READINGS_MENU_TEXT,
 )
 from app.bot.states import BotStates
@@ -82,6 +81,33 @@ from app.bot.feature_handlers import (
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+# FSM modes started from inline menus — only active until user answers or cancels.
+_FEATURE_WAIT_STATES = frozenset(
+    {
+        BotStates.waiting_reading_question.state,
+        BotStates.waiting_zen_question.state,
+        BotStates.waiting_rune_question.state,
+        BotStates.waiting_stone_query.state,
+        BotStates.waiting_bracelet_query.state,
+    }
+)
+
+# Typing these while in a feature prompt returns to free chat (state cleared).
+_CHAT_ESCAPE_WORDS = frozenset(
+    {
+        "отмена",
+        "cancel",
+        "назад",
+        "back",
+        "стоп",
+        "stop",
+        "меню",
+        "menu",
+        "exit",
+        "выход",
+    }
+)
 
 
 def _admin_telegram_ids() -> set[int]:
@@ -523,7 +549,9 @@ async def _get_user_free_used(telegram_id: int) -> int:
         return user.free_messages_used_month if user else 0
 
 
-async def _chat_reply(message: Message, text: str) -> None:
+async def _chat_reply(message: Message, text: str, *, state: FSMContext | None = None) -> None:
+    if state is not None:
+        await state.clear()
     lang = await _user_language(message.from_user.id)
     orchestrator = AIOrchestrator()
     user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_chat(
@@ -1147,6 +1175,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "onb:back")
 async def onboarding_back(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     await state.clear()
     service = OnboardingService()
@@ -1458,21 +1487,30 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         onboarding = OnboardingService()
 
         current_state = await state.get_state()
-        if current_state == BotStates.waiting_zen_question.state:
-            await handle_zen_question(message, text, state)
+
+        if not await onboarding.is_onboarded(message.from_user):
+            if text in all_menu_texts():
+                await message.answer(t("error_finish_onboarding_step", lang))
+                return
+            if text:
+                await _process_onboarding_answer(message, text, edit=False)
             return
 
-        if current_state == BotStates.waiting_rune_question.state:
-            await handle_rune_question(message, text, state)
+        # Menu buttons cancel any stale feature FSM and open the chosen section.
+        if is_balance_button(text):
+            await state.clear()
+            await _open_billing(message)
             return
 
-        if current_state == BotStates.waiting_stone_query.state:
-            await handle_stone_query(message, text, state)
+        if text in all_menu_texts():
+            await _handle_menu_text(message, state, text)
             return
 
-        if current_state == BotStates.waiting_bracelet_query.state:
-            await handle_bracelet_query(message, text, state)
-            return
+        if current_state in _FEATURE_WAIT_STATES:
+            normalized = text.lower()
+            if not text or normalized in _CHAT_ESCAPE_WORDS:
+                await state.clear()
+                return
 
         if current_state == BotStates.waiting_profile_field.state:
             data = await state.get_data()
@@ -1500,13 +1538,6 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             if ok:
                 await _show_memory_list(message, message.from_user.id, page)
                 await _track(None, "bot.memory", {"action": "add"})
-            return
-
-        if current_state == BotStates.waiting_reading_question.state:
-            if not text:
-                await message.answer(t("reading_ask_question_text", lang))
-                return
-            await _handle_reading_question(message, state, text)
             return
 
         if current_state == BotStates.waiting_photo_mode.state:
@@ -1566,43 +1597,34 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             )
             return
 
-        if not await onboarding.is_onboarded(message.from_user):
-            if text in all_menu_texts():
-                await message.answer(t("error_finish_onboarding_step", lang))
+        # Feature prompts — only after explicit inline-menu selection (FSM set there).
+        if current_state == BotStates.waiting_reading_question.state:
+            if not text:
+                await message.answer(t("reading_ask_question_text", lang))
                 return
-
-            if text:
-                await _process_onboarding_answer(message, text, edit=False)
+            await _handle_reading_question(message, state, text)
             return
 
-        if is_balance_button(text):
-            await _open_billing(message)
+        if current_state == BotStates.waiting_zen_question.state:
+            await handle_zen_question(message, text, state)
             return
 
-        if text in all_menu_texts():
-            await _handle_menu_text(message, state, text)
+        if current_state == BotStates.waiting_rune_question.state:
+            await handle_rune_question(message, text, state)
             return
 
-        reading_type = READING_LABEL_TO_TYPE.get(text.lower())
-        if reading_type:
-            tarot = TarotService()
-            ok, limit_error = await tarot.ensure_can_read_today(message.from_user.id)
-            if not ok:
-                await message.answer(limit_error, reply_markup=await _user_main_menu(message.from_user.id))
-                return
-            label = reading_label(reading_type, lang)
-            await state.set_state(BotStates.waiting_reading_question)
-            await state.update_data(reading_type=reading_type)
-            await message.answer(
-                t("reading_ask_question", lang, label=label),
-                reply_markup=inline_reading_prompt(reading_type, lang),
-            )
+        if current_state == BotStates.waiting_stone_query.state:
+            await handle_stone_query(message, text, state)
+            return
+
+        if current_state == BotStates.waiting_bracelet_query.state:
+            await handle_bracelet_query(message, text, state)
             return
 
         if not text:
             return
 
-        await _chat_reply(message, text)
+        await _chat_reply(message, text, state=state)
     except Exception as exc:
         logger.exception("fallback_message failed")
         await _track(
