@@ -9,7 +9,9 @@ from aiogram.types import User as TelegramUser
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.database.models import Message, MessageRole, SoulProfile, User
+from app.bot.i18n import normalize_language, t
+from app.bot.i18n_ai import vision_analysis_prompt, vision_image_base, vision_json_system
+from app.database.models import Message, MessageRole, SoulProfile, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
@@ -18,39 +20,10 @@ from app.services.media.service import MediaJobService
 from app.services.media.telegram_photo import store_telegram_photo
 from app.services.media.kie_upload import KieFileUpload
 
-_MODE_LABELS = {
-    "aura": "Аура",
-    "palm": "Ладонь",
-    "custom": "Фото",
-}
-
-_IMAGE_BASE = (
-    "Do NOT copy the reference photo 1:1. Transform and stylize. "
-    "Pure white background, black-on-white design, thin elegant lines, rounded cards, "
-    "luxury minimal aesthetic, lots of whitespace. All text labels in Russian."
-)
-
-_JSON_SYSTEM = (
-    "Ты анализируешь фото для эзотерического Telegram-бота.\n"
-    "Ответь ТОЛЬКО JSON-объектом, без markdown-обёртки и без пояснений.\n"
-    "interpretation — 2-4 предложения по-русски, markdown **жирный** *курсив*, без HTML.\n\n"
-    'Для aura: {"interpretation":"...", "aura_color":"english color phrase", '
-    '"aura_title":"короткий заголовок на русском", "image_summary":"1-2 предложения на русском для подписи на картинке"}\n'
-    'Для palm: {"interpretation":"...", "palm_lines":[{"name":"Линия сердца","note":"кратко на русском"},'
-    '{"name":"Линия ума","note":"..."},{"name":"Линия жизни","note":"..."},{"name":"Линия судьбы","note":"..."}], '
-    '"image_summary":"краткая общая подпись на русском"}'
-)
-
-_ANALYSIS_PROMPTS = {
-    "aura": (
-        "Проанализируй фото как эзотерическую ауру (развлекательная интерпретация, без медицинских утверждений). "
-        "Определи цвет энергетического поля, заголовок и краткое описание для минималистичной инфографики. "
-        "Учитывай пол пользователя из профиля. Никакой оценки внешности — только эзотерика и символика."
-    ),
-    "palm": (
-        "Проанализируй фото ладони как эзотерическую хиромантию (развлекательно, без медицинских утверждений). "
-        "Опиши линии сердца, ума, жизни и судьбы с краткими пояснениями на русском для минималистичного гайда."
-    ),
+_VISION_MODE_LABEL_KEYS = {
+    "aura": "spend_aura",
+    "palm": "spend_palm",
+    "custom": "spend_photo",
 }
 
 _DEFAULT_AURA = {
@@ -84,6 +57,16 @@ class VisionService:
         self.context_builder = ContextBuilder()
         self.kie_upload = KieFileUpload()
 
+    @staticmethod
+    async def _lang_for_user(session, user: User) -> str:
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+        return normalize_language(settings.ui_language if settings else "en")
+
+    @staticmethod
+    def _mode_label(mode: str, lang: str) -> str:
+        key = _VISION_MODE_LABEL_KEYS.get(mode, "spend_photo")
+        return t(key, lang)
+
     async def process_photo(
         self,
         bot: Bot,
@@ -94,8 +77,11 @@ class VisionService:
         custom_text: str = "",
         on_analysis_complete: Callable[[str], Awaitable[None]] | None = None,
     ) -> tuple[VisionResult | None, str | None]:
+        fallback_lang = normalize_language(
+            telegram_user.language_code if telegram_user else "en"
+        )
         if telegram_user is None:
-            return None, "Не получилось определить профиль Telegram."
+            return None, t("error_telegram_profile", fallback_lang)
 
         with_infographic = mode in {"aura", "palm"}
         feature = f"vision_{mode}"
@@ -103,7 +89,9 @@ class VisionService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
             if user is None:
-                return None, "Сначала нажми /start, чтобы создать твой профиль."
+                return None, t("error_need_start", fallback_lang)
+
+            lang = await self._lang_for_user(session, user)
 
             stored = await store_telegram_photo(bot, file_id)
             image_url = await self.kie_upload.ensure_kie_url(
@@ -115,22 +103,18 @@ class VisionService:
             )
 
             if mode == "custom":
-                question = custom_text.strip() or "Что ты видишь на этом фото?"
+                question = custom_text.strip() or t("vision_custom_default_question", lang)
                 user_content = [
                     {
                         "type": "text",
-                        "text": (
-                            f"{question}\n\n"
-                            "Ответь по-русски по сути вопроса, опираясь на изображение. "
-                            "2–5 предложений, markdown **жирный** *курсив*, без HTML."
-                        ),
+                        "text": t("vision_custom_instruction", lang, question=question),
                     },
                     {"type": "image_url", "image_url": {"url": image_url}},
                 ]
             else:
-                question = f"Анализ: {_MODE_LABELS[mode]}"
+                question = t("vision_analysis_prefix", lang, label=self._mode_label(mode, lang))
                 user_content = [
-                    {"type": "text", "text": _ANALYSIS_PROMPTS[mode]},
+                    {"type": "text", "text": vision_analysis_prompt(lang, mode)},
                     {"type": "image_url", "image_url": {"url": image_url}},
                 ]
 
@@ -138,7 +122,7 @@ class VisionService:
                 session, user, user_query=custom_text.strip() or question
             )
             if mode != "custom":
-                self._append_json_instruction(messages)
+                self._append_json_instruction(messages, lang)
             messages.append({"role": "user", "content": user_content})
 
             allowed, reason, billing_mode = await self.billing.ensure_can_use_vision(
@@ -173,7 +157,7 @@ class VisionService:
 
         try:
             if mode == "custom":
-                interpretation = await self._analyze_custom(messages)
+                interpretation = await self._analyze_custom(messages, lang)
                 usage = await self._finalize_usage(
                     user.id,
                     question,
@@ -196,7 +180,7 @@ class VisionService:
                     None,
                 )
 
-            parsed = await self._analyze_structured(messages, mode)
+            parsed = await self._analyze_structured(messages, mode, lang)
             interpretation = parsed["interpretation"]
             if on_analysis_complete is not None:
                 await on_analysis_complete(interpretation)
@@ -206,6 +190,7 @@ class VisionService:
                 mode=mode,
                 parsed=parsed,
                 subject_gender=subject_gender,
+                lang=lang,
             )
             usage = await self._finalize_usage(
                 user.id,
@@ -230,9 +215,9 @@ class VisionService:
                 None,
             )
         except Exception as exc:
-            return None, f"Не удалось обработать фото: {exc}"
+            return None, t("error_photo_process", lang, detail=exc)
 
-    async def _analyze_custom(self, messages: list[dict]) -> str:
+    async def _analyze_custom(self, messages: list[dict], lang: str) -> str:
         for effort in ("low", "medium"):
             answer = await self.kie.chat_completion(messages, reasoning_effort=effort)
             if answer.strip():
@@ -256,12 +241,12 @@ class VisionService:
             if answer.strip():
                 return answer.strip()
 
-        raise ValueError("Модель не вернула ответ по фото. Попробуй ещё раз через минуту.")
+        raise ValueError(t("vision_model_no_response", lang))
 
-    async def _analyze_structured(self, messages: list[dict], mode: str) -> dict:
+    async def _analyze_structured(self, messages: list[dict], mode: str, lang: str) -> dict:
         raw = await self.kie.chat_completion(messages, reasoning_effort="medium")
         try:
-            return self._coerce_structured_response(raw, mode)
+            return self._coerce_structured_response(raw, mode, lang)
         except ValueError:
             pass
 
@@ -272,24 +257,21 @@ class VisionService:
                 "content": [
                     {
                         "type": "text",
-                        "text": (
-                            f"Предыдущий ответ не удалось разобрать. Верни ТОЛЬКО JSON для режима {mode}.\n"
-                            f"Предыдущий ответ:\n{raw[:2000]}"
-                        ),
+                        "text": t("vision_json_retry", lang, mode=mode, raw=raw[:2000]),
                     }
                 ],
             },
         ]
         raw_retry = await self.kie.chat_completion(retry_messages, reasoning_effort="medium")
         try:
-            return self._coerce_structured_response(raw_retry, mode)
+            return self._coerce_structured_response(raw_retry, mode, lang)
         except ValueError:
             pass
 
         strict_messages = [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": _JSON_SYSTEM}],
+                "content": [{"type": "text", "text": vision_json_system(lang)}],
             },
             *[
                 m
@@ -301,32 +283,25 @@ class VisionService:
                 "content": [
                     {
                         "type": "text",
-                        "text": (
-                            "Верни только JSON-объект. Поле interpretation обязательно. "
-                            "Без markdown-обёртки и без текста вне JSON."
-                        ),
+                        "text": t("vision_json_strict", lang),
                     }
                 ],
             },
         ]
         raw_strict = await self.kie.chat_completion(strict_messages, reasoning_effort="medium")
         try:
-            return self._coerce_structured_response(raw_strict, mode)
+            return self._coerce_structured_response(raw_strict, mode, lang)
         except ValueError:
-            return await self._fallback_plain_analysis(messages, mode)
+            return await self._fallback_plain_analysis(messages, mode, lang)
 
-    async def _fallback_plain_analysis(self, messages: list[dict], mode: str) -> dict:
+    async def _fallback_plain_analysis(self, messages: list[dict], mode: str, lang: str) -> dict:
         plain_messages: list[dict] = [
             {
                 "role": "system",
                 "content": [
                     {
                         "type": "text",
-                        "text": (
-                            "Ты эзотерический таролог в Telegram. "
-                            "Ответь по-русски 2-4 предложения с markdown **жирный** *курсив*. "
-                            "Только эзотерика, без медицины и оценки внешности."
-                        ),
+                        "text": t("vision_fallback_system", lang),
                     }
                 ],
             }
@@ -339,7 +314,7 @@ class VisionService:
         interpretation = await self.kie.chat_completion(plain_messages, reasoning_effort="medium")
         interpretation = interpretation.strip()
         if not interpretation:
-            raise ValueError("Модель вернула неполный ответ")
+            raise ValueError(t("vision_incomplete_response", lang))
 
         if mode == "aura":
             return {
@@ -349,7 +324,7 @@ class VisionService:
         return {
             "interpretation": interpretation,
             "palm_lines": _DEFAULT_PALM_LINES,
-            "image_summary": "Хиромантический разбор ладони",
+            "image_summary": t("vision_palm_summary_default", lang),
         }
 
     @staticmethod
@@ -367,14 +342,17 @@ class VisionService:
             )
         return "Use a neutral androgynous adult silhouette without strong gender markers."
 
-    def _build_image_prompt(self, mode: str, parsed: dict, *, subject_gender: str | None = None) -> str:
+    def _build_image_prompt(
+        self, mode: str, parsed: dict, *, subject_gender: str | None = None, lang: str = "ru"
+    ) -> str:
+        image_base = vision_image_base(lang)
         gender_hint = self._subject_gender_hint(subject_gender)
         if mode == "aura":
             aura_color = parsed.get("aura_color") or _DEFAULT_AURA["aura_color"]
             aura_title = parsed.get("aura_title") or _DEFAULT_AURA["aura_title"]
             image_summary = parsed.get("image_summary") or _DEFAULT_AURA["image_summary"]
             return (
-                f"{_IMAGE_BASE} "
+                f"{image_base} "
                 "Create a clean, minimal, high-end esoteric aura reading report based on this photo. "
                 "Black-on-white design with thin lines, rounded cards, and a luxury aesthetic. "
                 "Include a simple contour line drawing of the person's silhouette from the reference — "
@@ -398,9 +376,9 @@ class VisionService:
         else:
             line_block = str(lines)
 
-        image_summary = parsed.get("image_summary") or "Эзотерический разбор ладони"
+        image_summary = parsed.get("image_summary") or t("vision_palm_summary_default", lang)
         return (
-            f"{_IMAGE_BASE} "
+            f"{image_base} "
             "Based on the reference hand photo, create a complete esoteric palm reading guide. "
             "Analyze the palm in a clean minimalistic style: thin lines, rounded map cards, very attractive layout. "
             "Focus on palmistry reading. Create a simple black and white outline of the main lines "
@@ -420,9 +398,10 @@ class VisionService:
         mode: str,
         parsed: dict,
         subject_gender: str | None = None,
+        lang: str = "ru",
     ) -> list[str]:
         settings = get_settings()
-        prompt = self._build_image_prompt(mode, parsed, subject_gender=subject_gender)
+        prompt = self._build_image_prompt(mode, parsed, subject_gender=subject_gender, lang=lang)
         payload = {
             "prompt": prompt,
             "input_urls": [source_image_url],
@@ -440,19 +419,19 @@ class VisionService:
                 )
                 task_id = KieClient.task_id_from_response(response)
                 if not task_id:
-                    raise ValueError("Не удалось создать задачу генерации")
+                    raise ValueError(t("vision_task_create_failed", lang))
 
                 await self.jobs.create_job(
                     f"{mode}_infographic",
                     {**payload, "provider_task_id": task_id},
                     user_id=user_id,
                 )
-                return await self._wait_for_result_urls(task_id)
+                return await self._wait_for_result_urls(task_id, lang=lang)
             except Exception as exc:
                 last_error = exc
                 if attempt == 0:
                     await asyncio.sleep(2.0)
-        raise last_error or ValueError("Генерация инфографики не удалась")
+        raise last_error or ValueError(t("vision_generation_failed", lang))
 
     async def _wait_for_result_urls(
         self,
@@ -460,6 +439,7 @@ class VisionService:
         *,
         timeout_sec: int = 300,
         interval_sec: float = 2.0,
+        lang: str = "ru",
     ) -> list[str]:
         if task_id.startswith("local_"):
             return []
@@ -479,14 +459,14 @@ class VisionService:
                 urls = parsed.get("resultUrls") or []
                 if urls:
                     return [str(url) for url in urls]
-                raise ValueError("Генератор не вернул ссылку на изображение")
+                raise ValueError(t("vision_no_image_url", lang))
 
             if state == "fail":
-                raise ValueError(data.get("failMsg") or "Генерация инфографики не удалась")
+                raise ValueError(data.get("failMsg") or t("vision_generation_failed", lang))
 
             await asyncio.sleep(interval_sec)
 
-        raise TimeoutError("Превышено время ожидания инфографики")
+        raise TimeoutError(t("vision_generation_timeout", lang))
 
     async def _finalize_usage(
         self,
@@ -554,17 +534,18 @@ class VisionService:
             return usage
 
     @staticmethod
-    def _append_json_instruction(messages: list[dict]) -> None:
+    def _append_json_instruction(messages: list[dict], lang: str) -> None:
+        json_system = vision_json_system(lang)
         if not messages or messages[0].get("role") != "system":
-            messages.insert(0, {"role": "system", "content": [{"type": "text", "text": _JSON_SYSTEM}]})
+            messages.insert(0, {"role": "system", "content": [{"type": "text", "text": json_system}]})
             return
         content = messages[0].get("content")
         if isinstance(content, list) and content and isinstance(content[0], dict):
-            content[0]["text"] = f"{content[0].get('text', '')}\n\n{_JSON_SYSTEM}"
+            content[0]["text"] = f"{content[0].get('text', '')}\n\n{json_system}"
         elif isinstance(content, str):
-            messages[0]["content"] = f"{content}\n\n{_JSON_SYSTEM}"
+            messages[0]["content"] = f"{content}\n\n{json_system}"
 
-    def _coerce_structured_response(self, raw: str, mode: str) -> dict:
+    def _coerce_structured_response(self, raw: str, mode: str, lang: str) -> dict:
         parsed = self._parse_json_response(raw)
         interpretation = str(parsed.get("interpretation", "")).strip()
 
@@ -576,7 +557,7 @@ class VisionService:
                 interpretation = cleaned[:2000]
 
         if not interpretation:
-            raise ValueError("Модель вернула неполный ответ")
+            raise ValueError(t("vision_incomplete_response", lang))
 
         result: dict = {"interpretation": interpretation}
 
@@ -606,7 +587,7 @@ class VisionService:
             result["palm_lines"] = _DEFAULT_PALM_LINES
 
         result["image_summary"] = (
-            str(parsed.get("image_summary", "")).strip() or "Хиромантический разбор ладони"
+            str(parsed.get("image_summary", "")).strip() or t("vision_palm_summary_default", lang)
         )
         return result
 

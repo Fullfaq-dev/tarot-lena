@@ -3,36 +3,16 @@ from __future__ import annotations
 import json
 import re
 
+from app.bot.i18n import normalize_language, t
+from app.bot.i18n_ai import (
+    pick_bracelet_system,
+    pick_bracelet_user,
+    pick_stones_retry,
+    pick_stones_system,
+    pick_stones_user,
+)
 from app.services.ai.kie_client import KieClient
 from app.services.energy.catalog import STONE_BY_SLUG, STONES, Stone
-
-_PICK_SYSTEM = (
-    "Ты эксперт по камням и энергетике в Telegram-боте.\n"
-    "Подбери 2–4 камня из каталога для пользователя.\n\n"
-    "Правила:\n"
-    "1. Если в запросе есть конкретная тема (любовь, защита, деньги, спокойствие…) — опирайся на неё.\n"
-    "2. Если запрос общий («подбери камни», «что мне подходит») — опирайся на профиль soul в контексте "
-    "(имя, пол, дата/место рождения, цели, беспокойства из памяти).\n"
-    "3. Камни должны дополнять друг друга, не дублировать одну энергию.\n"
-    "4. stone_slugs — только slug из каталога, 2–4 штуки.\n"
-    "5. Ответь ТОЛЬКО JSON без markdown:\n"
-    '{"stone_slugs":["slug1","slug2"],"reason_short":"одна строка почему эти камни"}'
-)
-
-_BRACELET_PICK_SYSTEM = (
-    "Ты эксперт по камням, рунам и браслетам-оберегам.\n"
-    "Подбери схему браслета из каталога камней.\n\n"
-    "Позиции:\n"
-    "- center: главный камень намерения\n"
-    "- left: защита и баланс\n"
-    "- right: притяжение и действие\n"
-    "- clasp_stone: заземление у замка\n"
-    "- clasp_rune_slug: руна заземления (fehu, algiz, isa, dagaz, othala и др. из списка рун)\n\n"
-    "Учти профиль пользователя в контексте и его намерение.\n"
-    "Ответь ТОЛЬКО JSON:\n"
-    '{"center":"slug","left":"slug","right":"slug","clasp_stone":"slug","clasp_rune_slug":"slug",'
-    '"reason_short":"одна строка"}'
-)
 
 
 def stones_catalog_text() -> str:
@@ -114,24 +94,19 @@ async def pick_stones_with_ai(
     messages: list[dict],
     kie: KieClient,
     query: str,
+    lang: str = "ru",
 ) -> tuple[list[Stone], str]:
+    lang = normalize_language(lang)
+    catalog = stones_catalog_text()
     prompt_messages = [
         {
             "role": "system",
-            "content": [{"type": "text", "text": f"{_PICK_SYSTEM}\n\nКаталог:\n{stones_catalog_text()}"}],
+            "content": [{"type": "text", "text": pick_stones_system(lang, catalog)}],
         },
         *_context_without_system(messages),
         {
             "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        f"Запрос пользователя: {query or 'подбери камни исходя из моего профиля'}\n\n"
-                        "Выбери камни. Верни только JSON."
-                    ),
-                }
-            ],
+            "content": [{"type": "text", "text": pick_stones_user(lang, query)}],
         },
     ]
 
@@ -147,20 +122,11 @@ async def pick_stones_with_ai(
         [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": f"{_PICK_SYSTEM}\n\nКаталог:\n{stones_catalog_text()}"}],
+                "content": [{"type": "text", "text": pick_stones_system(lang, catalog)}],
             },
             {
                 "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "Предыдущий ответ не удалось разобрать. Верни только валидный JSON.\n"
-                            f"Запрос: {query}\n"
-                            f"Предыдущий ответ:\n{raw[:2000]}"
-                        ),
-                    }
-                ],
+                "content": [{"type": "text", "text": pick_stones_retry(lang, query, raw)}],
             },
         ],
         reasoning_effort="low",
@@ -172,43 +138,33 @@ async def pick_stones_with_ai(
     if len(slugs) >= 2:
         return stones_from_slugs(slugs), reason
 
-    raise ValueError("Не удалось подобрать камни")
+    raise ValueError(t("stone_pick_failed", lang))
 
 
 async def pick_bracelet_layout_with_ai(
     messages: list[dict],
     kie: KieClient,
     query: str,
+    lang: str = "ru",
 ) -> tuple[dict[str, Stone], str, str]:
     """Returns stone slots dict, rune slug, reason_short."""
     from app.services.energy.catalog import RUNE_BY_SLUG
+
+    lang = normalize_language(lang)
+    stones_text = stones_catalog_text()
+    runes_text = runes_catalog_brief()
 
     prompt_messages = [
         {
             "role": "system",
             "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        f"{_BRACELET_PICK_SYSTEM}\n\n"
-                        f"Камни:\n{stones_catalog_text()}\n\n"
-                        f"Руны:\n{runes_catalog_brief()}"
-                    ),
-                }
+                {"type": "text", "text": pick_bracelet_system(lang, stones_text, runes_text)},
             ],
         },
         *_context_without_system(messages),
         {
             "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        f"Намерение для браслета: {query or 'баланс и защита по моему профилю'}\n"
-                        "Верни только JSON."
-                    ),
-                }
-            ],
+            "content": [{"type": "text", "text": pick_bracelet_user(lang, query)}],
         },
     ]
 

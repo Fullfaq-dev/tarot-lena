@@ -5,7 +5,8 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Referral, ReferralWithdrawalRequest, User
+from app.bot.i18n import normalize_language, t
+from app.database.models import Referral, ReferralWithdrawalRequest, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.services.billing.tokens import format_balance
 from app.services.telegram_notify import notify_admins, notify_telegram_message
@@ -41,6 +42,10 @@ def parse_withdrawal_amount(text: str) -> Decimal | None:
 
 
 class ReferralService:
+    async def _user_lang(self, session: AsyncSession, user: User) -> str:
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+        return normalize_language(settings.ui_language if settings else "en")
+
     async def attach_referrer(
         self, session: AsyncSession, referrer: User, referred: User
     ) -> Referral | None:
@@ -83,15 +88,20 @@ class ReferralService:
                 return None
             await session.commit()
 
-            referred_name = referred.first_name or referred.username or "новый пользователь"
+            lang = await self._user_lang(session, referrer)
+            referred_name = (
+                referred.first_name or referred.username or t("referral_new_user", lang)
+            )
             notify_telegram_message(
                 referrer.telegram_id,
-                "🎉 По твоей ссылке присоединился "
-                f"{referred_name}!\n\n"
-                "Как только он или она пополнит баланс или оформит подписку — "
-                f"тебе начислится {DEFAULT_REWARD_PERCENT}% на реферальный баланс. 💰",
+                t(
+                    "referral_joined_notify",
+                    lang,
+                    name=referred_name,
+                    percent=DEFAULT_REWARD_PERCENT,
+                ),
             )
-            return referrer.first_name or referrer.username or "друг"
+            return referrer.first_name or referrer.username or t("referral_friend", lang)
 
     async def accrue_reward(
         self, session: AsyncSession, referred_user_id: str, payment_amount: Decimal
@@ -117,12 +127,22 @@ class ReferralService:
         referred = await session.scalar(select(User).where(User.id == referred_user_id))
         if referrer is None:
             return
-        referred_name = (referred.first_name or referred.username or "друг") if referred else "друг"
+        lang = await self._user_lang(session, referrer)
+        referred_name = (
+            (referred.first_name or referred.username or t("referral_friend", lang))
+            if referred
+            else t("referral_friend", lang)
+        )
         notify_telegram_message(
             referrer.telegram_id,
-            f"💰 {referred_name} пополнил(а) баланс на {format_balance(payment_amount)}!\n"
-            f"Тебе начислено {format_balance(reward)} ({referral.reward_percent}%) "
-            "на реферальный баланс. ✨",
+            t(
+                "referral_payment_notify",
+                lang,
+                name=referred_name,
+                amount=format_balance(payment_amount),
+                reward=format_balance(reward),
+                percent=referral.reward_percent,
+            ),
         )
 
     async def get_stats(self, session: AsyncSession, user: User) -> dict[str, Decimal | int]:
@@ -158,8 +178,9 @@ class ReferralService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль."
+                return t("error_need_start", "en")
 
+            lang = await self._user_lang(session, user)
             stats = await self.get_stats(session, user)
             link = (
                 self.build_referral_link(bot_username, telegram_id)
@@ -167,30 +188,34 @@ class ReferralService:
                 else f"ref_{telegram_id}"
             )
 
-            return (
-                "🤝 Реферальная программа\n\n"
-                f"💰 Доступно к выводу: {format_balance(stats['available'])}\n"
-                f"📈 Всего заработано: {format_balance(stats['total_accrued'])}\n"
-                f"👯 Приглашено друзей: {stats['referred_count']}\n\n"
-                "Как это работает:\n"
-                f"1️⃣ Отправь другу свою ссылку\n"
-                f"2️⃣ Он или она пополняет баланс или оформляет подписку\n"
-                f"3️⃣ Тебе сразу падает {DEFAULT_REWARD_PERCENT}% от каждой оплаты\n\n"
-                f"💸 Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} на USDT (сеть TRC-20). "
-                "Выплаты — каждую пятницу.\n\n"
-                f"🔗 Твоя ссылка:\n{link}"
+            return t(
+                "referral_panel",
+                lang,
+                available=format_balance(stats["available"]),
+                total=format_balance(stats["total_accrued"]),
+                count=stats["referred_count"],
+                percent=DEFAULT_REWARD_PERCENT,
+                min_withdraw=format_balance(MIN_WITHDRAWAL_RUB),
+                link=link,
             )
 
     async def request_withdrawal(
         self, session: AsyncSession, user: User, amount: Decimal, details: dict
     ) -> ReferralWithdrawalRequest:
+        lang = await self._user_lang(session, user)
         if amount < MIN_WITHDRAWAL_RUB:
-            raise ValueError(f"Минимальная сумма вывода — {format_balance(MIN_WITHDRAWAL_RUB)}.")
+            raise ValueError(
+                t("referral_withdraw_min_error", lang, min=format_balance(MIN_WITHDRAWAL_RUB))
+            )
         stats = await self.get_stats(session, user)
         available = stats["available"]
         if amount > available:
             raise ValueError(
-                f"Недостаточно средств. Доступно: {format_balance(available)}."
+                t(
+                    "referral_withdraw_insufficient_error",
+                    lang,
+                    available=format_balance(available),
+                )
             )
         pending = await session.scalar(
             select(func.count())
@@ -201,7 +226,7 @@ class ReferralService:
             )
         )
         if pending:
-            raise ValueError("У тебя уже есть заявка на вывод в обработке.")
+            raise ValueError(t("referral_withdraw_pending_exists", lang))
 
         request = ReferralWithdrawalRequest(
             user_id=user.id,
@@ -219,17 +244,19 @@ class ReferralService:
         wallet: str,
     ) -> str:
         wallet = wallet.strip()
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return t("error_need_start", "en")
+            lang = await self._user_lang(session, user)
+
         if not is_valid_trc20_wallet(wallet):
-            raise ValueError(
-                "Это не похоже на USDT-кошелёк сети TRC-20.\n"
-                "Адрес начинается с «T» и состоит из 34 символов, например:\n"
-                "TXk3…\n\nПроверь и пришли ещё раз."
-            )
+            raise ValueError(t("referral_withdraw_invalid_wallet", lang))
 
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль."
+                return t("error_need_start", lang)
 
             await self.request_withdrawal(
                 session,
@@ -251,11 +278,12 @@ class ReferralService:
 
             payout_date = next_friday().strftime("%d.%m")
             short_wallet = f"{wallet[:8]}…{wallet[-6:]}"
-            return (
-                f"✅ Заявка на вывод {format_balance(amount)} принята!\n\n"
-                f"💼 Кошелёк: {short_wallet} (USDT, TRC-20)\n"
-                f"📅 Средства поступят в ближайшую пятницу — {payout_date}.\n\n"
-                "Сумма уже зарезервирована и списана с реферального баланса."
+            return t(
+                "referral_withdraw_accepted",
+                lang,
+                amount=format_balance(amount),
+                wallet=f"{short_wallet}",
+                payout_date=payout_date,
             )
 
     async def get_saved_wallet(self, telegram_id: int) -> str | None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.bot.i18n_extra import EXTRA_STRINGS, ONBOARDING_CHOICE_KEYS, READING_TYPE_KEYS
+from app.bot.i18n_services import SERVICE_STRINGS
 
 SUPPORTED_LANGUAGES = ("ru", "en", "es", "pt")
 FALLBACK_LANGUAGE = "en"
@@ -597,3 +598,4 @@ _STRINGS: dict[str, dict[str, str]] = {
 }
 
 _STRINGS.update(EXTRA_STRINGS)
+_STRINGS.update(SERVICE_STRINGS)

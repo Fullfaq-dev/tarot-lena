@@ -17,6 +17,7 @@ from app.bot.formatting import to_telegram_html
 from app.core.config import get_settings
 from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
 from app.bot.i18n import all_menu_texts, main_menu_text, menu_actions, normalize_language, reading_label, t
+from app.bot.i18n_extra import ONBOARDING_CHOICE_STEPS
 from app.bot.keyboards import (
     MENU_ACTIONS,
     inline_billing_menu,
@@ -309,7 +310,7 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
         orchestrator.generate_chat(messages or []),
     )
     if not interpretation or "cannot fulfill" in interpretation.lower():
-        interpretation = tarot.interpret_locally(question, cards)
+        interpretation = tarot.interpret_locally(question, cards, lang)
 
     await _answer_formatted(message, interpretation, prefix=prefix)
 
@@ -346,23 +347,27 @@ async def _notify_billing(
     *,
     reply_markup=None,
     telegram_id: int | None = None,
+    lang: str | None = None,
 ) -> bool:
     user_telegram_id = telegram_id or (message.from_user.id if message.from_user else 0)
+    if lang is None:
+        lang = await _user_language(user_telegram_id)
     charged = Decimal(str(usage.get("charged_rub", "0")))
     image_charged = Decimal(str(usage.get("image_charged_rub", "0")))
     if charged > 0:
-        parts = [f"Списано {charged} ₽"]
+        parts = [t("chat_charged", lang, charged=charged)]
         if image_charged > 0:
-            parts.append(f"включая инфографику {image_charged} ₽")
-        parts.append(f"Остаток на балансе: {format_balance(usage.get('balance_after'))}.")
+            parts.append(t("chat_charged_infographic", lang, amount=image_charged))
+        parts.append(
+            t("chat_balance_after", lang, balance=format_balance(usage.get("balance_after")))
+        )
         await message.answer(" ".join(parts), reply_markup=reply_markup)
         return True
     if billing_mode == "free" and free_messages_left(
         (await _get_user_free_used(user_telegram_id))
     ) == 0:
         await message.answer(
-            f"Это было последнее бесплатное сообщение в этом месяце ({FREE_CHAT_MESSAGES_PER_MONTH}). "
-            "Дальше ответы списываются с баланса — пополни его в разделе «Баланс».",
+            t("chat_last_free", lang, limit=FREE_CHAT_MESSAGES_PER_MONTH),
             reply_markup=reply_markup,
         )
         return True
@@ -389,15 +394,15 @@ async def _process_photo_request_safe(
         )
     except asyncio.CancelledError:
         await _track(None, "bot.error", {"handler": "photo", "error": "cancelled"})
+        lang = await _user_language(message.from_user.id if message.from_user else 0)
         try:
-            await message.answer(
-                "Обработка фото прервалась. Попробуй отправить снимок ещё раз ✨"
-            )
+            await message.answer(t("photo_processing_interrupted", lang))
         except Exception:
             pass
     except Exception as exc:
         await _track(None, "bot.error", {"handler": "photo", "error": str(exc)})
-        await message.answer(f"Не удалось обработать фото: {exc}")
+        lang = await _user_language(message.from_user.id if message.from_user else 0)
+        await message.answer(t("error_photo_process", lang, detail=exc))
 
 
 async def _process_photo_request(
@@ -411,6 +416,7 @@ async def _process_photo_request(
 ) -> None:
     await state.clear()
     actor = telegram_user or message.from_user
+    lang = await _user_language(actor.id if actor else 0)
     if actor is None:
         await message.answer(t("error_telegram_profile", lang))
         return
@@ -486,7 +492,7 @@ async def _process_photo_request(
                     reply_markup=menu_markup,
                 )
                 await message.answer(
-                    "Инфографика сгенерирована, но не удалось отправить изображение. Попробуй ещё раз.",
+                    t("photo_infographic_send_failed", lang),
                     reply_markup=menu_markup,
                 )
         else:
@@ -676,30 +682,29 @@ async def history_open(callback: CallbackQuery) -> None:
 
 
 async def _show_profile_edit(target: Message, telegram_id: int, *, prefix: str = "") -> None:
+    lang = await _user_language(telegram_id)
     service = ProfileService()
     error, rows = await service.get_profile_summary(telegram_id)
     if error:
         await target.answer(error)
         return
-    text = (
-        f"{prefix}Данные анкеты\n\n"
-        "Нажми поле, которое хочешь изменить. Новое значение сразу попадёт в профиль и в контекст ИИ."
-    )
+    text = t("profile_edit_header", lang, prefix=prefix)
     await safe_edit(target, text, inline_profile_edit_menu(rows, lang))
 
 
 @router.callback_query(F.data.startswith("set:prof:"))
 async def profile_field_edit_start(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     await state.clear()
     field_key = callback.data.removeprefix("set:prof:")
     service = ProfileService()
-    prompt = service.prompt_for_field(field_key)
+    prompt = service.prompt_for_field(field_key, lang)
 
-    if field_key in ONBOARDING_CHOICES:
+    if field_key in ONBOARDING_CHOICE_STEPS:
         await safe_edit(
             callback.message,
-            f"Выбери новое значение.\n{prompt}",
+            t("profile_pick_value", lang, prompt=prompt),
             profile_field_keyboard(field_key, lang),
         )
         return
@@ -708,7 +713,7 @@ async def profile_field_edit_start(callback: CallbackQuery, state: FSMContext) -
     await state.update_data(profile_field=field_key)
     await safe_edit(
         callback.message,
-        f"{prompt}\n\nНапиши новое значение обычным сообщением в чат.",
+        t("profile_type_value", lang, prompt=prompt),
         profile_field_keyboard(field_key, lang),
     )
 
@@ -722,15 +727,19 @@ async def profile_field_pick(callback: CallbackQuery, state: FSMContext) -> None
     if not field_key or not value:
         return
 
-    if value == "другое" and field_key == "main_concern":
+    if field_key == "main_concern" and value.lower() in {
+        "другое",
+        t("mem_type_other", lang).lower(),
+        t("mem_type_other", "en").lower(),
+    }:
         await state.set_state(BotStates.waiting_profile_field)
         await state.update_data(profile_field=field_key)
         await safe_edit(
             callback.message,
-            "Напиши своими словами, что сейчас беспокоит больше всего.",
+            t("profile_concern_other", lang),
             InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="← Назад", callback_data="nav:profile_edit")]
+                    [InlineKeyboardButton(text=t("btn_back", lang), callback_data="nav:profile_edit")]
                 ]
             ),
         )
@@ -772,7 +781,7 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
         memory_id, page = parts[2], int(parts[3])
         text = await service.detail_text(callback.from_user.id, memory_id)
         if text is None:
-            await safe_callback_answer(callback, "Запись не найдена", show_alert=True)
+            await safe_callback_answer(callback, t("memory_not_found", lang), show_alert=True)
             return
         await safe_callback_answer(callback)
         await safe_edit(
@@ -789,7 +798,7 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
         deleted = await service.deactivate(callback.from_user.id, memory_id)
         await safe_callback_answer(
             callback,
-            "Запись удалена" if deleted else "Запись не найдена",
+            t("memory_deleted", lang) if deleted else t("memory_not_found", lang),
             show_alert=not deleted,
         )
         if deleted:
@@ -807,10 +816,7 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await safe_callback_answer(callback)
         await state.set_state(BotStates.waiting_memory_add)
         await state.update_data(memory_return_page=page)
-        await callback.message.answer(
-            "✏️ Напиши, что запомнить — одним сообщением.\n\n"
-            "Например: «Работаю дизайнером, люблю йогу» или «Не напоминай про бывшего»."
-        )
+        await callback.message.answer(t("memory_add_prompt", lang))
         await _track(None, "bot.memory", {"action": "add_start"})
         return
 
@@ -853,12 +859,12 @@ async def settings_callback(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "ref:share")
 async def referral_share_callback(callback: CallbackQuery) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     bot_user = await callback.message.bot.get_me()
     link = ReferralService().build_referral_link(bot_user.username, callback.from_user.id)
     await callback.message.answer(
-        f"🔗 Твоя личная ссылка:\n{link}\n\n"
-        "Перешли её другу — с каждой его или её оплаты тебе будет приходить 40% на реферальный баланс. 💰",
+        t("referral_share_text", lang, link=link),
         reply_markup=inline_referral_menu(share_link=link, lang=lang),
     )
 
@@ -882,47 +888,49 @@ async def referral_withdraw_callback(callback: CallbackQuery, state: FSMContext)
         return
     if available < MIN_WITHDRAWAL_RUB:
         await callback.message.answer(
-            f"💸 Вывод доступен от {format_balance(MIN_WITHDRAWAL_RUB)}.\n"
-            f"Сейчас на балансе: {format_balance(available)}.\n\n"
-            "Приглашай друзей по своей ссылке — 40% с каждой их оплаты твои. ✨"
+            t(
+                "withdraw_min",
+                lang,
+                min=format_balance(MIN_WITHDRAWAL_RUB),
+                available=format_balance(available),
+            )
         )
         return
 
     await state.set_state(BotStates.waiting_withdrawal_amount)
     await callback.message.answer(
-        f"💰 Доступно к выводу: {format_balance(available)}\n\n"
-        f"Напиши сумму в рублях, которую хочешь вывести (от {format_balance(MIN_WITHDRAWAL_RUB)}), "
-        "или нажми кнопку ниже.",
+        t(
+            "withdraw_ask_amount",
+            lang,
+            available=format_balance(available),
+            min=format_balance(MIN_WITHDRAWAL_RUB),
+        ),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"💸 Вывести всё ({format_balance(available)})",
+                        text=t("btn_withdraw_all", lang, amount=format_balance(available)),
                         callback_data="ref:amount_all",
                     )
                 ],
-                [InlineKeyboardButton(text="🏠 На главную", callback_data="nav:back:main")],
+                [InlineKeyboardButton(text=t("btn_home", lang), callback_data="nav:back:main")],
             ]
         ),
     )
 
 
 async def _ask_withdrawal_wallet(message: Message, state: FSMContext, telegram_id: int) -> None:
+    lang = await _user_language(telegram_id)
     saved_wallet = await ReferralService().get_saved_wallet(telegram_id)
     if saved_wallet:
         await state.set_state(BotStates.waiting_withdrawal_wallet)
         await message.answer(
-            "💼 Куда отправить USDT (сеть TRC-20)?\n\n"
-            f"У тебя сохранён кошелёк: {saved_wallet}",
+            t("withdraw_wallet_ask_saved", lang, wallet=saved_wallet),
             reply_markup=inline_withdraw_wallet_menu(saved_wallet, lang),
         )
         return
     await state.set_state(BotStates.waiting_withdrawal_wallet)
-    await message.answer(
-        "💼 Пришли адрес своего USDT-кошелька в сети TRC-20.\n\n"
-        "Он начинается с буквы «T» и состоит из 34 символов. "
-        "Я сохраню его — в следующий раз вводить не придётся."
-    )
+    await message.answer(t("withdraw_wallet_ask_new", lang))
 
 
 async def _finish_withdrawal(
@@ -944,11 +952,12 @@ async def _finish_withdrawal(
 
 @router.callback_query(F.data == "ref:amount_all")
 async def referral_amount_all_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     available = await _referral_available(callback.from_user.id)
     if available is None or available < MIN_WITHDRAWAL_RUB:
         await state.clear()
-        await callback.message.answer("Недостаточно средств для вывода.")
+        await callback.message.answer(t("withdraw_insufficient", lang))
         return
     await state.update_data(withdrawal_amount=str(available))
     await _ask_withdrawal_wallet(callback.message, state, callback.from_user.id)
@@ -956,22 +965,21 @@ async def referral_amount_all_callback(callback: CallbackQuery, state: FSMContex
 
 @router.callback_query(F.data == "ref:wallet_saved")
 async def referral_wallet_saved_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     wallet = await ReferralService().get_saved_wallet(callback.from_user.id)
     if not wallet:
-        await callback.message.answer("Сохранённый кошелёк не найден. Пришли адрес сообщением.")
+        await callback.message.answer(t("withdraw_wallet_missing", lang))
         return
     await _finish_withdrawal(callback.message, state, callback.from_user.id, wallet)
 
 
 @router.callback_query(F.data == "ref:wallet_new")
 async def referral_wallet_new_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    lang = await _user_language(callback.from_user.id)
     await callback.answer()
     await state.set_state(BotStates.waiting_withdrawal_wallet)
-    await callback.message.answer(
-        "✏️ Пришли новый адрес USDT-кошелька (сеть TRC-20).\n"
-        "Он начинается с «T» и состоит из 34 символов."
-    )
+    await callback.message.answer(t("withdraw_wallet_change", lang))
 
 
 @router.callback_query(F.data.startswith("bill:"))
@@ -1094,7 +1102,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "profile":
         text = await tarot.profile_extended_for_telegram(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_profile_menu(), parse_mode=None)
+        await safe_edit(callback.message, text, inline_profile_menu(lang), parse_mode=None)
         await _track(None, "bot.menu", {"item": "profile"})
         return
 
@@ -1400,7 +1408,7 @@ async def voice_message(message: Message) -> None:
         )
         detail = str(exc).strip()
         if detail and len(detail) < 120:
-            await message.answer(f"Не удалось обработать голосовое: {detail}")
+            await message.answer(t("error_voice_process", lang, detail=detail))
         else:
             await message.answer(t("error_voice_process_generic", lang))
     finally:
@@ -1434,8 +1442,7 @@ async def photo_message(message: Message, state: FSMContext) -> None:
         await state.set_state(BotStates.waiting_photo_mode)
         await state.update_data(photo_file_id=file_id)
         await message.answer(
-            "📸 Фото получено! Что хочешь узнать?\n"
-            "Аура и ладонь — с инфографикой, 100 ₽ с баланса.",
+            t("photo_received_prompt", lang),
             reply_markup=inline_photo_mode_menu(lang),
         )
     except Exception as exc:
@@ -1509,19 +1516,21 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if current_state == BotStates.waiting_withdrawal_amount.state:
             amount = parse_withdrawal_amount(text or "")
             if amount is None:
-                await message.answer("Напиши сумму числом, например: 3500")
+                await message.answer(t("withdraw_amount_invalid", lang))
                 return
             if amount < MIN_WITHDRAWAL_RUB:
                 await message.answer(
-                    f"Минимальная сумма вывода — {format_balance(MIN_WITHDRAWAL_RUB)}. "
-                    "Напиши сумму побольше 🙂"
+                    t("withdraw_amount_min", lang, min=format_balance(MIN_WITHDRAWAL_RUB))
                 )
                 return
             available = await _referral_available(message.from_user.id)
             if available is None or amount > available:
                 await message.answer(
-                    f"Недостаточно средств. Доступно: {format_balance(available or Decimal('0'))}. "
-                    "Напиши сумму поменьше."
+                    t(
+                        "withdraw_amount_over",
+                        lang,
+                        available=format_balance(available or Decimal("0")),
+                    )
                 )
                 return
             await state.update_data(withdrawal_amount=str(amount))
@@ -1531,10 +1540,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if current_state == BotStates.waiting_withdrawal_wallet.state:
             wallet = (text or "").strip()
             if not is_valid_trc20_wallet(wallet):
-                await message.answer(
-                    "Это не похоже на адрес USDT TRC-20. 🤔\n"
-                    "Он начинается с «T» и состоит из 34 символов. Проверь и пришли ещё раз."
-                )
+                await message.answer(t("withdraw_wallet_invalid", lang))
                 return
             await _finish_withdrawal(message, state, message.from_user.id, wallet)
             return
@@ -1547,7 +1553,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                 await message.answer(t("error_photo_not_found", lang))
                 return
             if not text:
-                await message.answer("Напиши, что хочешь узнать по фото.")
+                await message.answer(t("error_photo_ask", lang))
                 return
             _fire_and_forget(
                 _process_photo_request_safe(
@@ -1648,7 +1654,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     if action == "profile":
         await message.answer(
             await tarot.profile_extended_for_telegram(message.from_user.id),
-            reply_markup=inline_profile_menu(),
+            reply_markup=inline_profile_menu(lang),
             parse_mode=None,
         )
         await _track(None, "bot.menu", {"item": text})
@@ -1680,9 +1686,11 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
 
     if action == "support":
         await message.answer(
-            "💬 Напиши в поддержку Arcana AI — поможем с оплатой, багами и любыми вопросами по боту.",
+            t("support_message", lang),
             reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="💬 Открыть поддержку", url=support_url())]]
+                inline_keyboard=[
+                    [InlineKeyboardButton(text=t("btn_open_support", lang), url=support_url())]
+                ]
             ),
         )
         await _track(None, "bot.menu", {"item": text})

@@ -16,6 +16,18 @@ from app.services.energy.stone_picker import pick_bracelet_layout_with_ai, pick_
 from app.services.energy.catalog import RUNE_BY_SLUG, Stone
 from app.services.zen.service import ZenService
 from app.bot.i18n import normalize_language, t
+from app.bot.i18n_ai import (
+    bracelet_ai_prompt,
+    bracelet_stored_user,
+    rune_ai_prompt,
+    rune_stored_user,
+    stone_ai_prompt,
+    stone_stored_user,
+    tarot_ai_prompt,
+    tarot_stored_user,
+    zen_ai_prompt,
+    zen_stored_user,
+)
 from app.database.models import UserSettings
 from app.services.tarot.service import READING_TYPE_LABELS, TarotService
 
@@ -228,6 +240,15 @@ class AIOrchestrator:
             await session.commit()
             return user.id, messages, None, user_message.id, billing_mode
 
+    async def _resolve_lang(self, telegram_user: TelegramUser | None, hint: str = "en") -> str:
+        if telegram_user is None:
+            return normalize_language(hint)
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_user.id))
+            if user is None:
+                return normalize_language(telegram_user.language_code or hint)
+            return await self._user_lang(session, user.id)
+
     async def prepare_zen_reflection(
         self,
         telegram_user: TelegramUser | None,
@@ -235,14 +256,14 @@ class AIOrchestrator:
         *,
         lang: str = "ru",
     ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
-        lang = normalize_language(lang)
+        resolved_lang = await self._resolve_lang(telegram_user, lang)
         zen = ZenService()
-        addon = zen.load_zen_prompt(lang)
+        addon = zen.load_zen_prompt(resolved_lang)
         user_id, messages, error, msg_id, billing = await self._prepare_billed_exchange(
             telegram_user,
             user_query=text,
-            ai_prompt=f"Режим дзен-рефлексии. Ответь на сообщение пользователя:\n{text}",
-            stored_user_text=f"🧘 Дзен-рефлексия: {text}",
+            ai_prompt=zen_ai_prompt(resolved_lang, text),
+            stored_user_text=zen_stored_user(resolved_lang, text),
         )
         if error or not messages:
             return user_id, messages, error, msg_id, billing
@@ -256,20 +277,15 @@ class AIOrchestrator:
         *,
         lang: str = "ru",
     ) -> tuple[str | None, list[dict] | None, str | None, str | None, str]:
+        resolved_lang = await self._resolve_lang(telegram_user, lang)
         energy = EnergyService()
-        rune_lines = energy.rune_lines_for_ai(drawn)
-        ai_prompt = (
-            f"Сделай толкование рун (до 6 предложений). Вопрос: {question}\n"
-            f"Руны:\n{rune_lines}\n"
-            "Объясни энергию сочетания и дай практический совет. Учитывай перевёрнутые руны."
-        )
+        rune_lines = energy.rune_lines_for_ai(drawn, resolved_lang)
         names = ", ".join(d.rune.name for d in drawn)
-        stored = f"ᚠ Руны. Вопрос: {question}\nРуны: {names}"
         return await self._prepare_billed_exchange(
             telegram_user,
             user_query=question,
-            ai_prompt=ai_prompt,
-            stored_user_text=stored,
+            ai_prompt=rune_ai_prompt(resolved_lang, question, rune_lines),
+            stored_user_text=rune_stored_user(resolved_lang, question, names),
         )
 
     async def prepare_stone_reading(
@@ -303,21 +319,14 @@ class AIOrchestrator:
             pick_reason = ""
 
             try:
-                stones, pick_reason = await pick_stones_with_ai(base_messages, self.kie, query)
+                stones, pick_reason = await pick_stones_with_ai(base_messages, self.kie, query, lang)
                 pick_usage = dict(self.kie.last_usage) if self.kie.last_usage else None
             except ValueError:
                 stones = EnergyService().recommend_stones(query)
 
             energy = EnergyService()
             stone_lines = energy.stone_lines_for_ai(stones)
-            reason_hint = f"\nКраткое обоснование подбора: {pick_reason}" if pick_reason else ""
-            ai_prompt = (
-                f"Ты уже подобрал для этого пользователя камни из каталога.{reason_hint}\n"
-                f"Запрос: {query or 'подбор по профилю soul'}\n"
-                f"Камни:\n{stone_lines}\n\n"
-                "Объясни персонально (до 6 предложений): почему именно они этому человеку с учётом профиля, "
-                "как их энергии дополняют друг друга, как носить или использовать."
-            )
+            ai_prompt = stone_ai_prompt(lang, query, stone_lines, pick_reason)
 
             messages = list(base_messages)
             messages.append({"role": "user", "content": [{"type": "text", "text": ai_prompt}]})
@@ -330,7 +339,7 @@ class AIOrchestrator:
 
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
             names = ", ".join(s.name for s in stones)
-            stored = f"💎 Камни. Запрос: {query or 'по профилю'}\nПодбор: {names}"
+            stored = stone_stored_user(lang, query, names)
             user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored)
             session.add(user_message)
             await session.flush()
@@ -370,7 +379,7 @@ class AIOrchestrator:
 
             try:
                 layout, rune_slug, pick_reason = await pick_bracelet_layout_with_ai(
-                    base_messages, self.kie, query
+                    base_messages, self.kie, query, lang
                 )
                 pick_usage = dict(self.kie.last_usage) if self.kie.last_usage else None
                 slots = energy.build_bracelet_from_layout(layout, RUNE_BY_SLUG[rune_slug], lang)
@@ -378,14 +387,7 @@ class AIOrchestrator:
                 slots = energy.build_bracelet(query, lang)
 
             layout_lines = energy.bracelet_lines_for_ai(slots)
-            reason_hint = f"\nОбоснование: {pick_reason}" if pick_reason else ""
-            ai_prompt = (
-                f"Ты подобрал схему браслета для этого пользователя.{reason_hint}\n"
-                f"Намерение: {query or 'по профилю soul'}\n"
-                f"Расположение:\n{layout_lines}\n\n"
-                "Объясни (до 7 предложений): почему камни и руна стоят именно так для этого человека, "
-                "как сочетать, на что обратить внимание при ношении."
-            )
+            ai_prompt = bracelet_ai_prompt(lang, query, layout_lines, pick_reason)
 
             messages = list(base_messages)
             messages.append({"role": "user", "content": [{"type": "text", "text": ai_prompt}]})
@@ -397,7 +399,7 @@ class AIOrchestrator:
                 return None, slots, pick_reason, None, reason, None, billing_mode, pick_usage
 
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
-            stored = f"📿 Браслет. Намерение: {query or 'по профилю'}"
+            stored = bracelet_stored_user(lang, query)
             user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored)
             session.add(user_message)
             await session.flush()
@@ -419,16 +421,9 @@ class AIOrchestrator:
         from app.bot.i18n import reading_label
 
         label = reading_label(reading_type, lang)
-        reading_prompt = (
-            f"Сделай краткое толкование расклада Таро (до 5 предложений).\n"
-            f"Тип: {reading_type}\n"
-            f"Вопрос: {question}\n"
-            f"Карты:\n{card_lines}\n"
-            "Свяжи с вопросом и дай один практический совет."
-        )
-        stored_user_text = (
-            f"Расклад «{label}». Вопрос: {question}\n"
-            f"Карты: {', '.join(card['name'] for card in cards)}"
+        reading_prompt = tarot_ai_prompt(lang, reading_type, question, card_lines)
+        stored_user_text = tarot_stored_user(
+            lang, label, question, ", ".join(card["name"] for card in cards)
         )
 
         async with AsyncSessionLocal() as session:
@@ -468,7 +463,8 @@ class AIOrchestrator:
 
         answer = await self.generate_chat(messages or [])
         if not answer or "cannot fulfill" in answer.lower():
-            answer = TarotService().interpret_locally(question, cards)
+            lang = await self._resolve_lang(telegram_user)
+            answer = TarotService().interpret_locally(question, cards, lang)
 
         result = await self.complete_chat(
             user_id or "",

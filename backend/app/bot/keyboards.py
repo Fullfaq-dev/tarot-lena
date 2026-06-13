@@ -65,7 +65,7 @@ def _build_reading_label_map() -> dict[str, str]:
 
 READING_LABEL_TO_TYPE = _build_reading_label_map()
 
-from app.bot.i18n_extra import ONBOARDING_CHOICE_KEYS
+from app.bot.i18n_extra import ONBOARDING_CHOICE_KEYS, ONBOARDING_CHOICE_STEPS
 from app.services.billing.limits import HISTORY_PAGE_SIZE, MEMORY_PAGE_SIZE
 
 # Обратная совместимость для импортов
@@ -181,23 +181,23 @@ def inline_reading_prompt(reading_type: str, lang: str = "ru") -> InlineKeyboard
     )
 
 
-def inline_profile_menu() -> InlineKeyboardMarkup:
+def inline_profile_menu(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Данные анкеты", callback_data="nav:profile_edit")],
+            [InlineKeyboardButton(text=t("btn_profile_data", lang), callback_data="nav:profile_edit")],
             [
-                InlineKeyboardButton(text="🔮 Сделать расклад", callback_data="nav:readings"),
-                InlineKeyboardButton(text="🌅 Карта дня", callback_data="nav:daily"),
+                InlineKeyboardButton(text=btn_readings(lang), callback_data="nav:readings"),
+                InlineKeyboardButton(text=btn_daily(lang), callback_data="nav:daily"),
             ],
             [
-                InlineKeyboardButton(text="💳 Пополнить баланс", callback_data="nav:billing"),
-                InlineKeyboardButton(text="⚙️ Настройки", callback_data="nav:settings"),
+                InlineKeyboardButton(text=t("btn_topup", lang), callback_data="nav:billing"),
+                InlineKeyboardButton(text=btn_settings(lang), callback_data="nav:settings"),
             ],
             [
-                InlineKeyboardButton(text="📜 История раскладов", callback_data="nav:history"),
-                InlineKeyboardButton(text="🤝 Пригласить друга · 40%", callback_data="nav:referrals"),
+                InlineKeyboardButton(text=btn_history(lang), callback_data="nav:history"),
+                InlineKeyboardButton(text=t("btn_referrals", lang), callback_data="nav:referrals"),
             ],
-            [_home_button()],
+            [_home_button(lang)],
         ]
     )
 

@@ -3,12 +3,13 @@ from sqlalchemy import select
 from app.database.models import User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.bot.i18n import LANGUAGE_LABELS, normalize_language, t
+from app.bot.i18n_services import VOICE_PRESET_I18N
 from app.services.locale.service import LocaleService
 
 VOICE_PRESETS = [
-    ("female_mystical", "Мистический женский"),
-    ("male_calm", "Спокойный мужской"),
-    ("neutral_soft", "Мягкий нейтральный"),
+    ("female_mystical", "voice_preset_female"),
+    ("male_calm", "voice_preset_male"),
+    ("neutral_soft", "voice_preset_neutral"),
 ]
 
 TIMEZONE_OPTIONS = [
@@ -97,51 +98,30 @@ class SettingsService:
 
     def _format_panel(self, settings: UserSettings) -> str:
         lang = normalize_language(settings.ui_language)
-        voice_label = dict(VOICE_PRESETS).get(settings.voice_preset, settings.voice_preset)
+        voice_label = t(
+            VOICE_PRESET_I18N.get(settings.voice_preset, "voice_preset_female"),
+            lang,
+        )
         tz_label = dict(TIMEZONE_OPTIONS).get(settings.timezone, settings.timezone)
-        daily = "вкл" if settings.daily_card_enabled else "выкл"
-        proactive = "вкл" if settings.proactive_messages_enabled else "выкл"
         language_label = LANGUAGE_LABELS.get(lang, lang)
-        if lang == "en":
-            return (
-                "Settings\n\n"
-                f"Language: {language_label}\n"
-                f"Voice: {voice_label}\n"
-                f"Timezone: {tz_label}\n"
-                f"Quiet hours: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"
-                f"Morning daily card: {'on' if settings.daily_card_enabled else 'off'}\n"
-                f"Proactive messages: {'on' if settings.proactive_messages_enabled else 'off'}\n\n"
-                "Tap a button below to change a setting or profile data."
-            )
-        if lang == "es":
-            return (
-                "Ajustes\n\n"
-                f"Idioma: {language_label}\n"
-                f"Voz: {voice_label}\n"
-                f"Zona horaria: {tz_label}\n"
-                f"Horas silenciosas: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"
-                f"Carta del día por la mañana: {'sí' if settings.daily_card_enabled else 'no'}\n"
-                f"Mensajes proactivos: {'sí' if settings.proactive_messages_enabled else 'no'}\n\n"
-                "Toca un botón abajo para cambiar un ajuste o los datos del perfil."
-            )
-        if lang == "pt":
-            return (
-                "Configurações\n\n"
-                f"Idioma: {language_label}\n"
-                f"Voz: {voice_label}\n"
-                f"Fuso horário: {tz_label}\n"
-                f"Horário silencioso: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"
-                f"Carta do dia de manhã: {'sim' if settings.daily_card_enabled else 'não'}\n"
-                f"Mensagens proativas: {'sim' if settings.proactive_messages_enabled else 'não'}\n\n"
-                "Toque um botão abaixo para alterar uma configuração ou os dados do perfil."
-            )
-        return (
-            "Настройки\n\n"
-            f"Язык: {language_label}\n"
-            f"Голос ответов: {voice_label}\n"
-            f"Часовой пояс: {tz_label}\n"
-            f"Тихие часы: {settings.quiet_hours_start} – {settings.quiet_hours_end}\n"
-            f"Карта дня утром: {daily}\n"
-            f"Проактивные сообщения: {proactive}\n\n"
-            "Нажми кнопку ниже, чтобы изменить параметр или данные анкеты."
+        daily = (
+            t("settings_toggle_on", lang)
+            if settings.daily_card_enabled
+            else t("settings_toggle_off", lang)
+        )
+        proactive = (
+            t("settings_toggle_on", lang)
+            if settings.proactive_messages_enabled
+            else t("settings_toggle_off", lang)
+        )
+        return t(
+            "settings_panel",
+            lang,
+            language=language_label,
+            voice=voice_label,
+            timezone=tz_label,
+            quiet_start=settings.quiet_hours_start,
+            quiet_end=settings.quiet_hours_end,
+            daily=daily,
+            proactive=proactive,
         )

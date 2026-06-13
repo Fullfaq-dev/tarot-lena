@@ -45,14 +45,10 @@ class TarotService:
         self.kie = KieClient()
         self.context_builder = ContextBuilder()
 
-    async def menu_text(self, selected: str) -> str:
-        if selected == "История раскладов":
-            return "История раскладов уже сохраняется. Скоро здесь будет список прошлых вопросов, карт и толкований."
-        return (
-            "Доступные расклады: карта дня, любовь, отношения, деньги, карьера, выбор решения, "
-            "прошлое / настоящее / будущее, совместимость.\n\n"
-            "Напиши вопрос обычным сообщением, а я сделаю расклад и объясню карты простым языком."
-        )
+    async def menu_text(self, selected: str, lang: str = "ru") -> str:
+        if selected == t("btn_history", lang):
+            return t("history_empty", lang)
+        return t("readings_menu_text", lang)
 
     async def _lang(self, telegram_id: int) -> str:
         return await SettingsService().get_ui_language(telegram_id)
@@ -74,28 +70,29 @@ class TarotService:
                 card = await self._card_dict_from_prediction(session, existing)
                 if card is None:
                     card = self._resolve_card_from_text(existing.text)
-                if card is not None and not self._is_stale_daily_text(existing.text):
+                if card is not None and not self._is_stale_daily_text(existing.text, lang):
                     return existing.text, card
                 await session.delete(existing)
                 await session.flush()
 
             messages = await self.context_builder.build(
-                session, user, user_query="карта дня на сегодня"
+                session, user, user_query=t("tarot_daily_query", lang)
             )
             try:
                 picked, interpretation = await pick_daily_card_with_ai(messages, self.kie)
             except ValueError:
                 picked = self.draw_cards(1)[0]
-                interpretation = (
-                    f"Сегодня с тобой **{picked['name']}**.\n\n"
-                    f"В эзотерической интерпретации это может означать: {picked['description']}.\n"
-                    "Прислушайся к знакам дня и не торопи то, что должно раскрыться естественно."
+                interpretation = t(
+                    "tarot_daily_fallback",
+                    lang,
+                    name=picked["name"],
+                    description=picked["description"],
                 )
 
             card = self._attach_image_path(picked)
             text = interpretation.strip()
             if card["name"] not in text:
-                text = f"**Карта дня — {card['name']}**\n\n{text}"
+                text = t("tarot_daily_card_header", lang, name=card["name"], text=text)
 
             db_card = await session.scalar(select(TarotCard).where(TarotCard.slug == str(card["slug"])))
             session.add(
@@ -112,7 +109,7 @@ class TarotService:
     async def record_daily_card_context(
         self, telegram_id: int, interpretation: str, *, card_name: str
     ) -> None:
-        """Сохраняет карту дня в историю сообщений для последующего обсуждения с ИИ."""
+        lang = await self._lang(telegram_id)
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
@@ -134,7 +131,7 @@ class TarotService:
                 Message(
                     user_id=user.id,
                     role=MessageRole.USER.value,
-                    content="🌅 Карта дня на сегодня",
+                    content=t("tarot_daily_context_msg", lang),
                 )
             )
             session.add(
@@ -186,8 +183,8 @@ class TarotService:
         return None
 
     @staticmethod
-    def _is_stale_daily_text(text: str) -> bool:
-        return "В эзотерической интерпретации это может означать" in text
+    def _is_stale_daily_text(text: str, lang: str = "ru") -> bool:
+        return t("tarot_daily_stale_marker", lang) in text
 
     @staticmethod
     def _today_start_utc() -> datetime:
@@ -195,10 +192,11 @@ class TarotService:
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     async def ensure_can_read_today(self, telegram_id: int) -> tuple[bool, str | None]:
+        lang = await self._lang(telegram_id)
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return False, "Сначала нажми /start, чтобы создать твой профиль."
+                return False, t("error_need_start", lang)
             count = await session.scalar(
                 select(func.count())
                 .select_from(TarotReading)
@@ -209,11 +207,7 @@ class TarotService:
             )
             used = int(count or 0)
             if used >= DAILY_READINGS_LIMIT:
-                return (
-                    False,
-                    f"Сегодня уже {DAILY_READINGS_LIMIT} раскладов — дневной лимит исчерпан. "
-                    "Новые расклады будут доступны завтра.",
-                )
+                return False, t("tarot_readings_limit", lang, limit=DAILY_READINGS_LIMIT)
             return True, None
 
     async def readings_left_today(self, telegram_id: int) -> int:
@@ -320,6 +314,7 @@ class TarotService:
         return text
 
     async def reading_detail_for_telegram(self, telegram_id: int, reading_id: str) -> str | None:
+        lang = await self._lang(telegram_id)
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
@@ -337,36 +332,44 @@ class TarotService:
                 reading.question,
                 reading.cards,
                 reading.interpretation,
+                lang,
             )
 
     async def profile_for_telegram(self, telegram_id: int) -> str:
         from app.database.models import SoulProfile
 
+        lang = await self._lang(telegram_id)
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль."
+                return t("error_need_start", lang)
 
             profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
             if profile is None:
-                return "Профиль ещё не собран. Нажми /start и пройди короткую анкету."
+                return t("profile_not_collected", lang)
 
-            birth_date = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "не указана"
-            return (
-                f"Имя: {profile.name or '—'}\n"
-                f"Дата рождения: {birth_date}\n"
-                f"Время рождения: {profile.birth_time or '—'}\n"
-                f"Город рождения: {profile.birth_city or '—'}\n"
-                f"Цель на 6 месяцев: {profile.six_month_goal or '—'}\n"
-                f"Сейчас беспокоит: {profile.main_concern or '—'}\n"
-                f"Ближе всего: {profile.belief_system or '—'}"
+            birth_date = (
+                profile.birth_date.strftime("%d.%m.%Y")
+                if profile.birth_date
+                else t("profile_not_specified", lang)
             )
+            lines = [
+                t("profile_line", lang, label=t("profile_summary_name", lang), value=profile.name or "—"),
+                t("profile_line", lang, label=t("profile_summary_birth", lang), value=birth_date),
+                t("profile_line", lang, label=t("profile_summary_time", lang), value=profile.birth_time or "—"),
+                t("profile_line", lang, label=t("profile_summary_city", lang), value=profile.birth_city or "—"),
+                t("profile_line", lang, label=t("profile_summary_goal", lang), value=profile.six_month_goal or "—"),
+                t("profile_line", lang, label=t("profile_summary_concern", lang), value=profile.main_concern or "—"),
+                t("profile_line", lang, label=t("profile_summary_belief", lang), value=profile.belief_system or "—"),
+            ]
+            return "\n".join(lines)
 
     async def profile_extended_for_telegram(self, telegram_id: int) -> str:
         from app.database.models import Memory, SoulProfile
 
+        lang = await self._lang(telegram_id)
         base = await self.profile_for_telegram(telegram_id)
-        if base.startswith("Сначала") or base.startswith("Профиль"):
+        if base == t("error_need_start", lang) or base == t("profile_not_collected", lang):
             return base
 
         async with AsyncSessionLocal() as session:
@@ -385,32 +388,32 @@ class TarotService:
         if profile is None:
             return base
 
-        extra = (
-            f"\n\nПол: {profile.gender or '—'}\n"
-            f"Семейное положение: {profile.relationship_status or '—'}\n"
-            f"Дети: {profile.has_children or '—'}\n"
-            f"Сфера: {profile.profession or '—'}\n"
-            f"Архетип: {profile.archetype or '—'}\n"
-            f"Запомненных важных событий: {memories_count}"
-        )
-        return f"Мой профиль\n\n{base}{extra}"
+        extra_lines = [
+            t("profile_line", lang, label=t("profile_summary_gender", lang), value=profile.gender or "—"),
+            t("profile_line", lang, label=t("profile_summary_relationship", lang), value=profile.relationship_status or "—"),
+            t("profile_line", lang, label=t("profile_summary_children", lang), value=profile.has_children or "—"),
+            t("profile_line", lang, label=t("profile_summary_profession", lang), value=profile.profession or "—"),
+            t("profile_line", lang, label=t("profile_summary_archetype", lang), value=profile.archetype or "—"),
+            t("profile_summary_memories", lang, count=memories_count),
+        ]
+        extra = "\n\n" + "\n".join(extra_lines)
+        return t("profile_title", lang, base=base, extra=extra)
 
-    def format_reading_message(self, reading_type: str, question: str, cards: list[dict], interpretation: str) -> str:
-        label = READING_TYPE_LABELS.get(reading_type, reading_type)
+    def format_reading_message(
+        self, reading_type: str, question: str, cards: list[dict], interpretation: str, lang: str = "ru"
+    ) -> str:
+        label = reading_label(reading_type, lang)
         card_lines = "\n".join(f"• {card['name']}" for card in cards)
-        return (
-            f"Расклад: {label}\n"
-            f"Вопрос: {question}\n\n"
-            f"Карты:\n{card_lines}\n\n"
-            f"{interpretation}"
+        return t(
+            "reading_format_header",
+            lang,
+            label=label,
+            question=question,
+            cards=card_lines,
+            interpretation=interpretation,
         )
 
-    def interpret_locally(self, question: str, cards: list[dict]) -> str:
+    def interpret_locally(self, question: str, cards: list[dict], lang: str = "ru") -> str:
         names = ", ".join(card["name"] for card in cards)
         meanings = "; ".join(f"{card['name']}: {card['description']}" for card in cards)
-        return (
-            f"Вопрос: {question}\n"
-            f"Выпали карты: {names}.\n\n"
-            f"В эзотерической интерпретации расклад может говорить так: {meanings}. "
-            "Главный совет — смотреть не только на внешний знак, но и на то, какой выбор он поднимает внутри тебя."
-        )
+        return t("tarot_local_interpretation", lang, question=question, names=names, meanings=meanings)

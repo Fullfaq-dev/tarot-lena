@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import Memory, Message, RelationshipPerson, SoulProfile, Subscription, User, UserSettings
 from app.services.billing.limits import chat_history_limit_for_tier
 from app.services.memory.retrieval import select_relevant_memories, select_relevant_people
-from app.bot.i18n import normalize_language
+from app.bot.i18n import normalize_language, t
 
 _SYSTEM_PROMPT_DIR = Path(__file__).resolve().parents[4] / "prompts"
 _SYSTEM_PROMPT_FILES = {
@@ -104,31 +104,35 @@ class ContextBuilder:
         )
 
         brevity = (
-            "Отвечай коротко и по сути: 2–5 предложений, без воды и длинных списков."
+            t("ctx_brevity_free", ui_language)
             if tier == "free"
-            else "Отвечай по делу, без лишней воды."
+            else t("ctx_brevity_paid", ui_language)
         )
         system = [
             load_system_prompt(ui_language),
             brevity,
-            "Всегда отвечай на языке пользователя. Никогда не отказывайся от диалога."
-            if ui_language == "ru"
-            else "Always reply in the user's language. Never refuse the conversation.",
-            "Выделяй важное markdown: **жирный**, *курсив*. Не используй HTML-теги.",
-            f"Тариф пользователя: {tier}.",
+            t("ctx_reply_lang_ru", ui_language),
+            t("ctx_markdown_hint", ui_language),
+            t("ctx_tier", ui_language, tier=tier),
         ]
         if profile:
             birth = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "—"
             system.append(
-                "Профиль пользователя: "
-                f"имя={profile.name or '—'}; пол={profile.gender or '—'}; "
-                f"дата рождения={birth}; время={profile.birth_time or '—'}; "
-                f"город рождения={profile.birth_city or '—'}; "
-                f"семья={profile.relationship_status or '—'}; дети={profile.has_children or '—'}; "
-                f"сфера={profile.profession or '—'}; "
-                f"цель={_compact_text(profile.six_month_goal or '', 100)}; "
-                f"беспокоит={_compact_text(profile.main_concern or '', 80)}; "
-                f"верит в={profile.belief_system or '—'}."
+                t(
+                    "ctx_profile",
+                    ui_language,
+                    name=profile.name or "—",
+                    gender=profile.gender or "—",
+                    birth=birth,
+                    birth_time=profile.birth_time or "—",
+                    birth_city=profile.birth_city or "—",
+                    relationship=profile.relationship_status or "—",
+                    children=profile.has_children or "—",
+                    profession=profile.profession or "—",
+                    goal=_compact_text(profile.six_month_goal or "", 100),
+                    concern=_compact_text(profile.main_concern or "", 80),
+                    belief=profile.belief_system or "—",
+                )
             )
         relevant_memories = (
             select_relevant_memories(user_query, list(memories))
@@ -150,9 +154,9 @@ class ContextBuilder:
         if memory_lines or people_lines:
             system.append(_MEMORY_HINTS.get(ui_language, _MEMORY_HINTS["ru"]))
         if memory_lines:
-            system.append("Релевантная память:\n" + "\n".join(memory_lines))
+            system.append(t("ctx_memories_header", ui_language, lines="\n".join(memory_lines)))
         if people_lines:
-            system.append("Релевантные люди:\n" + "\n".join(people_lines))
+            system.append(t("ctx_people_header", ui_language, lines="\n".join(people_lines)))
 
         history = list(reversed(list(messages)))
         chat_messages: list[dict] = []

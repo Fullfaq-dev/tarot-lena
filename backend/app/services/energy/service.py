@@ -11,6 +11,7 @@ from app.services.energy.catalog import (
     Rune,
     Stone,
 )
+from app.bot.i18n import t
 
 
 @dataclass
@@ -122,13 +123,7 @@ class EnergyService:
     def format_runes_text(self, drawn: list[DrawnRune], lang: str = "ru") -> str:
         lines = []
         for item in drawn:
-            suffix = " (перев.)" if item.reversed else ""
-            if lang == "en":
-                suffix = " (reversed)" if item.reversed else ""
-            elif lang == "es":
-                suffix = " (invertida)" if item.reversed else ""
-            elif lang == "pt":
-                suffix = " (invertida)" if item.reversed else ""
+            suffix = t("rune_reversed_suffix", lang) if item.reversed else ""
             lines.append(f"• {item.rune.name}{suffix} — {item.rune.meaning}")
         return "\n".join(lines)
 

@@ -4,9 +4,11 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import BalanceTransaction, Payment, Subscription, UsageRecord, User
+from app.database.models import BalanceTransaction, Payment, Subscription, UsageRecord, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.core.config import get_settings
+from app.bot.i18n import normalize_language, t
+from app.bot.i18n_services import SPENDING_FEATURE_I18N
 from app.services.billing.limits import (
     AI_MODEL_NAME,
     FREE_CHAT_MESSAGES_PER_MONTH,
@@ -34,6 +36,10 @@ class BillingService:
     def __init__(self) -> None:
         self.provider = PlategaProvider()
 
+    async def _user_lang(self, session: AsyncSession, user_id: str) -> str:
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
+        return normalize_language(settings.ui_language if settings else "en")
+
     async def ensure_can_use_chat(
         self,
         session: AsyncSession,
@@ -48,6 +54,7 @@ class BillingService:
         """
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
+        lang = await self._user_lang(session, user.id)
 
         if is_unlimited_chat(tier):
             return True, "", "unlimited"
@@ -62,15 +69,18 @@ class BillingService:
         if user.balance_rub > 0:
             return (
                 False,
-                f"На балансе {format_balance(user.balance_rub)} — недостаточно для ответа. "
-                "Пополни баланс — нажми «Баланс».",
+                t("billing_insufficient_balance", lang, balance=format_balance(user.balance_rub)),
                 "blocked",
             )
 
         return (
             False,
-            f"Бесплатные сообщения закончились ({FREE_CHAT_MESSAGES_PER_MONTH}/{FREE_CHAT_MESSAGES_PER_MONTH}). "
-            "Пополни баланс или подключи Plus/Premium — нажми «Баланс».",
+            t(
+                "billing_free_exhausted",
+                lang,
+                used=FREE_CHAT_MESSAGES_PER_MONTH,
+                limit=FREE_CHAT_MESSAGES_PER_MONTH,
+            ),
             "blocked",
         )
 
@@ -105,6 +115,7 @@ class BillingService:
     ) -> tuple[bool, str, str]:
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
+        lang = await self._user_lang(session, user.id)
 
         image_charge = vision_infographic_charge_rub(vision_mode) if with_infographic else Decimal("0")
 
@@ -113,15 +124,13 @@ class BillingService:
                 return True, "", "unlimited"
             return (
                 False,
-                f"Для инфографики нужно {format_balance(image_charge)} на балансе. "
-                "Пополни баланс — нажми «Баланс».",
+                t("billing_infographic_needed", lang, amount=format_balance(image_charge)),
                 "blocked",
             )
         if with_infographic and user.balance_rub < image_charge:
             return (
                 False,
-                f"Для инфографики нужно {format_balance(image_charge)} на балансе. "
-                "Пополни баланс — нажми «Баланс».",
+                t("billing_infographic_needed", lang, amount=format_balance(image_charge)),
                 "blocked",
             )
 
@@ -135,15 +144,18 @@ class BillingService:
         if user.balance_rub > 0:
             return (
                 False,
-                f"На балансе {format_balance(user.balance_rub)} — недостаточно для анализа фото. "
-                "Пополни баланс — нажми «Баланс».",
+                t("billing_insufficient_photo", lang, balance=format_balance(user.balance_rub)),
                 "blocked",
             )
 
         return (
             False,
-            f"Бесплатные сообщения закончились ({FREE_CHAT_MESSAGES_PER_MONTH}/{FREE_CHAT_MESSAGES_PER_MONTH}). "
-            "Пополни баланс — нажми «Баланс».",
+            t(
+                "billing_free_exhausted",
+                lang,
+                used=FREE_CHAT_MESSAGES_PER_MONTH,
+                limit=FREE_CHAT_MESSAGES_PER_MONTH,
+            ),
             "blocked",
         )
 
@@ -303,49 +315,48 @@ class BillingService:
         return usage
 
     async def panel_text(self, telegram_id: int) -> str:
+        from app.services.referrals.service import MIN_WITHDRAWAL_RUB, ReferralService
+
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            lang = await self._user_lang(session, user.id) if user else "en"
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль."
+                return t("error_need_start", lang)
 
             subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
             tier = subscription.tier if subscription else "free"
             free_left = free_messages_left(user.free_messages_used_month)
             readings_left = max(0, 3 - user.free_readings_used_month)
 
-            tier_label = {"free": "Бесплатный", "plus": "Plus", "premium": "Premium"}.get(
-                tier, tier
-            )
-            from app.services.referrals.service import MIN_WITHDRAWAL_RUB, ReferralService
+            tier_label = {
+                "free": t("tier_free", lang),
+                "plus": "Plus",
+                "premium": "Premium",
+            }.get(tier, tier)
 
             ref_stats = await ReferralService().get_stats(session, user)
-            return (
-                "💳 Подписка и баланс\n\n"
-                f"⭐ Тариф: {tier_label}\n"
-                f"💰 Баланс: {format_balance(user.balance_rub)}\n"
-                f"🤝 Реферальный баланс: {format_balance(ref_stats['available'])}\n"
-                f"💬 Бесплатных сообщений: {free_left} из {FREE_CHAT_MESSAGES_PER_MONTH}\n"
-                f"🔮 Бесплатных раскладов: {readings_left} из 3\n\n"
-                f"✨ Plus — {format_balance(SUBSCRIPTION_PRICES_RUB['plus'])}/мес: безлимитный чат.\n"
-                f"👑 Premium — {format_balance(SUBSCRIPTION_PRICES_RUB['premium'])}/мес: безлимитный чат и голосовые ответы.\n\n"
-                f"🤝 Приглашай друзей и получай 40% с их оплат. Вывод от {format_balance(MIN_WITHDRAWAL_RUB)} в USDT."
+            return t(
+                "billing_panel",
+                lang,
+                tier=tier_label,
+                balance=format_balance(user.balance_rub),
+                ref_balance=format_balance(ref_stats["available"]),
+                free_left=free_left,
+                free_limit=FREE_CHAT_MESSAGES_PER_MONTH,
+                readings_left=readings_left,
+                plus_price=format_balance(SUBSCRIPTION_PRICES_RUB["plus"]),
+                premium_price=format_balance(SUBSCRIPTION_PRICES_RUB["premium"]),
+                min_withdraw=format_balance(MIN_WITHDRAWAL_RUB),
             )
-
-    _SPENDING_FEATURE_LABELS = {
-        "chat": "Чат",
-        "tarot_reading": "Расклад",
-        "vision_aura": "Аура",
-        "vision_palm": "Ладонь",
-        "vision_custom": "Фото",
-    }
 
     async def spending_history_page(
         self, telegram_id: int, page: int = 0
     ) -> tuple[str, int, int]:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            lang = await self._user_lang(session, user.id) if user else "en"
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль.", 0, 0
+                return t("error_need_start", lang), 0, 0
 
             total = await session.scalar(
                 select(func.count())
@@ -354,13 +365,7 @@ class BillingService:
             )
             total = int(total or 0)
             if total == 0:
-                return (
-                    "📋 История трат\n\n"
-                    "Пока списаний с баланса нет — траты появятся после платных ответов в чате, "
-                    "раскладов и генерации инфографики.",
-                    0,
-                    0,
-                )
+                return t("billing_spending_empty", lang), 0, 0
 
             total_pages = max(1, (total + SPENDING_PAGE_SIZE - 1) // SPENDING_PAGE_SIZE)
             page = max(0, min(page, total_pages - 1))
@@ -375,35 +380,43 @@ class BillingService:
             )
 
             lines = [
-                "📋 История трат",
-                f"Страница {page + 1} из {total_pages}\n",
+                t("billing_spending_title", lang),
+                t("history_page", lang, page=page + 1, total=total_pages) + "\n",
             ]
             for record in records:
-                label = self._SPENDING_FEATURE_LABELS.get(record.feature, record.feature)
+                feature_key = SPENDING_FEATURE_I18N.get(record.feature)
+                label = t(feature_key, lang) if feature_key else record.feature
                 when = record.created_at.strftime("%d.%m %H:%M")
-                lines.append(f"{when} — {label} — {format_balance(record.charged_rub)}")
+                lines.append(
+                    t(
+                        "billing_spending_line",
+                        lang,
+                        when=when,
+                        label=label,
+                        amount=format_balance(record.charged_rub),
+                    )
+                )
             return "\n".join(lines), page, total_pages
 
     async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> str:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            lang = await self._user_lang(session, user.id) if user else "en"
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль."
+                return t("error_need_start", lang)
             intent = await self.create_topup(session, user, amount)
-            return (
-                f"Ссылка на оплату {amount} ₽:\n{intent.payment_url}\n\n"
-                "После успешной оплаты баланс обновится автоматически."
-            )
+            return t("billing_topup_link", lang, amount=amount, url=intent.payment_url)
 
     async def create_subscription_for_telegram(self, telegram_id: int, tier: str) -> str:
         amount = SUBSCRIPTION_PRICES_RUB.get(tier)
         if amount is None:
-            return "Неизвестный тариф."
+            return t("billing_unknown_tier", "en")
 
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            lang = await self._user_lang(session, user.id) if user else "en"
             if user is None:
-                return "Сначала нажми /start, чтобы создать твой профиль."
+                return t("error_need_start", lang)
 
             intent = await self.provider.create_payment(user.id, amount, f"subscription_{tier}")
             session.add(
@@ -417,11 +430,7 @@ class BillingService:
             )
             await session.commit()
             label = "Plus" if tier == "plus" else "Premium"
-            return (
-                f"Подписка {label} — {amount} ₽/мес.\n"
-                f"Ссылка на оплату:\n{intent.payment_url}\n\n"
-                "После оплаты тариф активируется автоматически."
-            )
+            return t("billing_sub_link", lang, label=label, amount=amount, url=intent.payment_url)
 
     async def admin_topup_balance(
         self,

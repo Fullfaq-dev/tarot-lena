@@ -181,11 +181,13 @@ class OnboardingService:
                 await session.commit()
                 return self.prompt_for_step(next_step, lang), user.id, False
 
-            await self._complete_profile(session, user, answers)
+            await self._complete_profile(session, user, answers, lang)
             await session.commit()
             return onboarding_complete(lang), user.id, True
 
-    async def _complete_profile(self, session, user: User, answers: dict[str, str]) -> None:
+    async def _complete_profile(
+        self, session, user: User, answers: dict[str, str], lang: str
+    ) -> None:
         profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
         if profile is None:
             profile = SoulProfile(user_id=user.id)
@@ -198,7 +200,7 @@ class OnboardingService:
             if raw:
                 profile_service._apply_field(profile, field_key, raw)
         profile.preferences = {"onboarding_answers": answers}
-        profile.archetype = "Искатель"
+        profile.archetype = t("onboarding_archetype", lang)
         profile.personal_arcana = "—"
         user.is_onboarded = True
 

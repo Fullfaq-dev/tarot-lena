@@ -103,6 +103,106 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
             "Aura e palma — com infográfico, 100 ₽ do saldo."
         ),
     },
+    "vision_custom_default_question": {
+        "ru": "Что ты видишь на этом фото?",
+        "en": "What do you see in this photo?",
+        "es": "¿Qué ves en esta foto?",
+        "pt": "O que você vê nesta foto?",
+    },
+    "vision_custom_instruction": {
+        "ru": (
+            "{question}\n\n"
+            "Ответь по сути вопроса, опираясь на изображение. "
+            "2–5 предложений, markdown **жирный** *курсив*, без HTML."
+        ),
+        "en": (
+            "{question}\n\n"
+            "Answer the question based on the image. "
+            "2–5 sentences, markdown **bold** *italic*, no HTML."
+        ),
+        "es": "{question}\n\nResponde según la imagen. 2–5 frases, markdown **negrita** *cursiva*.",
+        "pt": "{question}\n\nResponda com base na imagem. 2–5 frases, markdown **negrito** *itálico*.",
+    },
+    "vision_analysis_prefix": {
+        "ru": "Анализ: {label}",
+        "en": "Analysis: {label}",
+        "es": "Análisis: {label}",
+        "pt": "Análise: {label}",
+    },
+    "vision_json_retry": {
+        "ru": (
+            "Предыдущий ответ не удалось разобрать. Верни ТОЛЬКО JSON для режима {mode}.\n"
+            "Предыдущий ответ:\n{raw}"
+        ),
+        "en": (
+            "Could not parse the previous reply. Return ONLY JSON for mode {mode}.\n"
+            "Previous reply:\n{raw}"
+        ),
+        "es": "No se pudo analizar la respuesta. Devuelve SOLO JSON para {mode}.\n{raw}",
+        "pt": "Não foi possível analisar a resposta. Retorne APENAS JSON para {mode}.\n{raw}",
+    },
+    "vision_json_strict": {
+        "ru": "Верни только JSON-объект. Поле interpretation обязательно. Без markdown и текста вне JSON.",
+        "en": "Return a JSON object only. Field interpretation is required. No markdown or text outside JSON.",
+        "es": "Devuelve solo JSON. Campo interpretation obligatorio.",
+        "pt": "Retorne apenas JSON. Campo interpretation obrigatório.",
+    },
+    "vision_fallback_system": {
+        "ru": (
+            "Ты эзотерический таролог в Telegram. "
+            "Ответь 2-4 предложения с markdown **жирный** *курсив*. "
+            "Только эзотерика, без медицины и оценки внешности."
+        ),
+        "en": (
+            "You are an esoteric tarot guide in Telegram. "
+            "Reply in 2-4 sentences with markdown **bold** *italic*. "
+            "Esoteric only, no medical claims or appearance judgment."
+        ),
+        "es": "Guía esotérico en Telegram. 2-4 frases, markdown, sin medicina.",
+        "pt": "Guia esotérico no Telegram. 2-4 frases, markdown, sem medicina.",
+    },
+    "vision_model_no_response": {
+        "ru": "Модель не вернула ответ по фото. Попробуй ещё раз через минуту.",
+        "en": "The model returned no photo reply. Try again in a minute.",
+        "es": "El modelo no respondió. Inténtalo en un minuto.",
+        "pt": "O modelo não respondeu. Tente novamente em um minuto.",
+    },
+    "vision_incomplete_response": {
+        "ru": "Модель вернула неполный ответ",
+        "en": "The model returned an incomplete reply",
+        "es": "Respuesta incompleta del modelo",
+        "pt": "Resposta incompleta do modelo",
+    },
+    "vision_task_create_failed": {
+        "ru": "Не удалось создать задачу генерации",
+        "en": "Could not create generation task",
+        "es": "No se pudo crear la tarea de generación",
+        "pt": "Não foi possível criar a tarefa de geração",
+    },
+    "vision_no_image_url": {
+        "ru": "Генератор не вернул ссылку на изображение",
+        "en": "Generator did not return an image URL",
+        "es": "El generador no devolvió URL de imagen",
+        "pt": "O gerador não retornou URL da imagem",
+    },
+    "vision_generation_failed": {
+        "ru": "Генерация инфографики не удалась",
+        "en": "Infographic generation failed",
+        "es": "Falló la generación de infografía",
+        "pt": "Falha na geração do infográfico",
+    },
+    "vision_generation_timeout": {
+        "ru": "Превышено время ожидания инфографики",
+        "en": "Infographic generation timed out",
+        "es": "Tiempo de espera agotado para la infografía",
+        "pt": "Tempo esgotado para o infográfico",
+    },
+    "vision_palm_summary_default": {
+        "ru": "Хиромантический разбор ладони",
+        "en": "Esoteric palm reading",
+        "es": "Lectura esotérica de la palma",
+        "pt": "Leitura esotérica da palma",
+    },
     "error_voice_process": {
         "ru": "Не удалось обработать голосовое: {detail}",
         "en": "Could not process voice message: {detail}",
@@ -469,6 +569,353 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
         "es": "Tirada: {label}\nPregunta: {question}\n\nCartas:\n{cards}\n\n{interpretation}",
         "pt": "Leitura: {label}\nPergunta: {question}\n\nCartas:\n{cards}\n\n{interpretation}",
     },
+    # --- AI orchestrator prompts ---
+    "ai_zen_prompt": {
+        "ru": "Режим дзен-рефлексии. Ответь на сообщение пользователя:\n{text}",
+        "en": "Zen reflection mode. Reply to the user's message:\n{text}",
+        "es": "Modo reflexión zen. Responde al mensaje del usuario:\n{text}",
+        "pt": "Modo reflexão zen. Responda à mensagem do usuário:\n{text}",
+    },
+    "ai_zen_stored": {
+        "ru": "🧘 Дзен-рефлексия: {text}",
+        "en": "🧘 Zen reflection: {text}",
+        "es": "🧘 Reflexión zen: {text}",
+        "pt": "🧘 Reflexão zen: {text}",
+    },
+    "ai_rune_prompt": {
+        "ru": (
+            "Сделай толкование рун (до 6 предложений). Вопрос: {question}\n"
+            "Руны:\n{runes}\n"
+            "Объясни энергию сочетания и дай практический совет. Учитывай перевёрнутые руны."
+        ),
+        "en": (
+            "Interpret the runes (up to 6 sentences). Question: {question}\n"
+            "Runes:\n{runes}\n"
+            "Explain the combined energy and give practical advice. Note reversed runes."
+        ),
+        "es": (
+            "Interpreta las runas (hasta 6 frases). Pregunta: {question}\n"
+            "Runas:\n{runes}\n"
+            "Explica la energía combinada y da un consejo práctico."
+        ),
+        "pt": (
+            "Interprete as runas (até 6 frases). Pergunta: {question}\n"
+            "Runas:\n{runes}\n"
+            "Explique a energia combinada e dê um conselho prático."
+        ),
+    },
+    "ai_rune_stored": {
+        "ru": "ᚠ Руны. Вопрос: {question}\nРуны: {names}",
+        "en": "ᚠ Runes. Question: {question}\nRunes: {names}",
+        "es": "ᚠ Runas. Pregunta: {question}\nRunas: {names}",
+        "pt": "ᚠ Runas. Pergunta: {question}\nRunas: {names}",
+    },
+    "ai_stone_reason_hint": {
+        "ru": "\nКраткое обоснование подбора: {reason}",
+        "en": "\nBrief selection rationale: {reason}",
+        "es": "\nBreve justificación: {reason}",
+        "pt": "\nBreve justificativa: {reason}",
+    },
+    "ai_stone_default_query": {
+        "ru": "подбор по профилю soul",
+        "en": "pick based on soul profile",
+        "es": "elegir según perfil soul",
+        "pt": "escolher pelo perfil soul",
+    },
+    "ai_stone_profile_short": {
+        "ru": "по профилю",
+        "en": "by profile",
+        "es": "por perfil",
+        "pt": "pelo perfil",
+    },
+    "ai_stone_prompt": {
+        "ru": (
+            "Ты уже подобрал для этого пользователя камни из каталога.{reason_hint}\n"
+            "Запрос: {query}\nКамни:\n{stones}\n\n"
+            "Объясни персонально (до 6 предложений): почему именно они этому человеку с учётом профиля, "
+            "как их энергии дополняют друг друга, как носить или использовать."
+        ),
+        "en": (
+            "You already picked stones from the catalog for this user.{reason_hint}\n"
+            "Request: {query}\nStones:\n{stones}\n\n"
+            "Explain personally (up to 6 sentences): why these stones fit this person, "
+            "how their energies complement each other, how to wear or use them."
+        ),
+        "es": (
+            "Ya elegiste piedras del catálogo para este usuario.{reason_hint}\n"
+            "Solicitud: {query}\nPiedras:\n{stones}\n\n"
+            "Explica personalmente (hasta 6 frases): por qué encajan, cómo usarlas."
+        ),
+        "pt": (
+            "Você já escolheu pedras do catálogo para este usuário.{reason_hint}\n"
+            "Pedido: {query}\nPedras:\n{stones}\n\n"
+            "Explique pessoalmente (até 6 frases): por que combinam, como usar."
+        ),
+    },
+    "ai_stone_stored": {
+        "ru": "💎 Камни. Запрос: {query}\nПодбор: {names}",
+        "en": "💎 Stones. Request: {query}\nSelection: {names}",
+        "es": "💎 Piedras. Solicitud: {query}\nSelección: {names}",
+        "pt": "💎 Pedras. Pedido: {query}\nSeleção: {names}",
+    },
+    "ai_bracelet_reason_hint": {
+        "ru": "\nОбоснование: {reason}",
+        "en": "\nRationale: {reason}",
+        "es": "\nJustificación: {reason}",
+        "pt": "\nJustificativa: {reason}",
+    },
+    "ai_bracelet_default_query": {
+        "ru": "по профилю soul",
+        "en": "based on soul profile",
+        "es": "según perfil soul",
+        "pt": "pelo perfil soul",
+    },
+    "ai_bracelet_profile_short": {
+        "ru": "по профилю",
+        "en": "by profile",
+        "es": "por perfil",
+        "pt": "pelo perfil",
+    },
+    "ai_bracelet_prompt": {
+        "ru": (
+            "Ты подобрал схему браслета для этого пользователя.{reason_hint}\n"
+            "Намерение: {query}\nРасположение:\n{layout}\n\n"
+            "Объясни (до 7 предложений): почему камни и руна стоят именно так для этого человека, "
+            "как сочетать, на что обратить внимание при ношении."
+        ),
+        "en": (
+            "You picked a bracelet layout for this user.{reason_hint}\n"
+            "Intention: {query}\nLayout:\n{layout}\n\n"
+            "Explain (up to 7 sentences): why stones and rune are placed this way, "
+            "how to combine them, what to notice when wearing."
+        ),
+        "es": (
+            "Elegiste un diseño de pulsera para este usuario.{reason_hint}\n"
+            "Intención: {query}\nDisposición:\n{layout}\n\n"
+            "Explica (hasta 7 frases): por qué están así y cómo usarlos."
+        ),
+        "pt": (
+            "Você escolheu um layout de pulseira para este usuário.{reason_hint}\n"
+            "Intenção: {query}\nLayout:\n{layout}\n\n"
+            "Explique (até 7 frases): por que estão assim e como usar."
+        ),
+    },
+    "ai_bracelet_stored": {
+        "ru": "📿 Браслет. Намерение: {query}",
+        "en": "📿 Bracelet. Intention: {query}",
+        "es": "📿 Brazalete. Intención: {query}",
+        "pt": "📿 Pulseira. Intenção: {query}",
+    },
+    "ai_tarot_prompt": {
+        "ru": (
+            "Сделай краткое толкование расклада Таро (до 5 предложений).\n"
+            "Тип: {reading_type}\nВопрос: {question}\nКарты:\n{cards}\n"
+            "Свяжи с вопросом и дай один практический совет."
+        ),
+        "en": (
+            "Give a brief tarot reading (up to 5 sentences).\n"
+            "Type: {reading_type}\nQuestion: {question}\nCards:\n{cards}\n"
+            "Connect to the question and give one practical tip."
+        ),
+        "es": (
+            "Da una tirada breve (hasta 5 frases).\n"
+            "Tipo: {reading_type}\nPregunta: {question}\nCartas:\n{cards}\n"
+            "Conecta con la pregunta y da un consejo práctico."
+        ),
+        "pt": (
+            "Faça uma leitura breve (até 5 frases).\n"
+            "Tipo: {reading_type}\nPergunta: {question}\nCartas:\n{cards}\n"
+            "Conecte à pergunta e dê uma dica prática."
+        ),
+    },
+    "ai_tarot_stored": {
+        "ru": "Расклад «{label}». Вопрос: {question}\nКарты: {cards}",
+        "en": "Reading «{label}». Question: {question}\nCards: {cards}",
+        "es": "Tirada «{label}». Pregunta: {question}\nCartas: {cards}",
+        "pt": "Leitura «{label}». Pergunta: {question}\nCartas: {cards}",
+    },
+    "ai_pick_stones_system": {
+        "ru": (
+            "Ты эксперт по камням и энергетике в Telegram-боте.\n"
+            "Подбери 2–4 камня из каталога для пользователя.\n\n"
+            "Правила:\n"
+            "1. Если в запросе есть конкретная тема — опирайся на неё.\n"
+            "2. Если запрос общий — опирайся на профиль soul в контексте.\n"
+            "3. Камни должны дополнять друг друга.\n"
+            "4. stone_slugs — только slug из каталога, 2–4 штуки.\n"
+            "5. Ответь ТОЛЬКО JSON без markdown:\n"
+            '{{"stone_slugs":["slug1","slug2"],"reason_short":"одна строка"}}'
+            "\n\nКаталог:\n{catalog}"
+        ),
+        "en": (
+            "You are a stones and energy expert in a Telegram bot.\n"
+            "Pick 2–4 stones from the catalog for the user.\n\n"
+            "Rules:\n"
+            "1. If the request has a specific theme — use it.\n"
+            "2. If general — use the soul profile in context.\n"
+            "3. Stones should complement each other.\n"
+            "4. stone_slugs — catalog slugs only, 2–4 items.\n"
+            "5. Reply ONLY with JSON, no markdown:\n"
+            '{{"stone_slugs":["slug1","slug2"],"reason_short":"one line"}}'
+            "\n\nCatalog:\n{catalog}"
+        ),
+        "es": (
+            "Eres experto en piedras y energía en un bot de Telegram.\n"
+            "Elige 2–4 piedras del catálogo.\n"
+            "Responde SOLO JSON:\n"
+            '{{"stone_slugs":["slug1","slug2"],"reason_short":"una línea"}}'
+            "\n\nCatálogo:\n{catalog}"
+        ),
+        "pt": (
+            "Você é especialista em pedras e energia em um bot Telegram.\n"
+            "Escolha 2–4 pedras do catálogo.\n"
+            "Responda APENAS JSON:\n"
+            '{{"stone_slugs":["slug1","slug2"],"reason_short":"uma linha"}}'
+            "\n\nCatálogo:\n{catalog}"
+        ),
+    },
+    "ai_pick_stones_default_query": {
+        "ru": "подбери камни исходя из моего профиля",
+        "en": "pick stones based on my profile",
+        "es": "elige piedras según mi perfil",
+        "pt": "escolha pedras pelo meu perfil",
+    },
+    "ai_pick_stones_user": {
+        "ru": "Запрос пользователя: {query}\n\nВыбери камни. Верни только JSON.",
+        "en": "User request: {query}\n\nPick stones. Return JSON only.",
+        "es": "Solicitud: {query}\n\nElige piedras. Solo JSON.",
+        "pt": "Pedido: {query}\n\nEscolha pedras. Apenas JSON.",
+    },
+    "ai_pick_stones_retry": {
+        "ru": (
+            "Предыдущий ответ не удалось разобрать. Верни только валидный JSON.\n"
+            "Запрос: {query}\nПредыдущий ответ:\n{raw}"
+        ),
+        "en": (
+            "Could not parse previous answer. Return valid JSON only.\n"
+            "Request: {query}\nPrevious:\n{raw}"
+        ),
+        "es": "No se pudo parsear. Solo JSON válido.\nSolicitud: {query}\nAnterior:\n{raw}",
+        "pt": "Não foi possível parsear. Apenas JSON válido.\nPedido: {query}\nAnterior:\n{raw}",
+    },
+    "ai_pick_bracelet_system": {
+        "ru": (
+            "Ты эксперт по камням, рунам и браслетам-оберегам.\n"
+            "Подбери схему браслета из каталога.\n"
+            "Позиции: center, left, right, clasp_stone, clasp_rune_slug.\n"
+            "Ответь ТОЛЬКО JSON:\n"
+            '{{"center":"slug","left":"slug","right":"slug","clasp_stone":"slug",'
+            '"clasp_rune_slug":"slug","reason_short":"одна строка"}}'
+            "\n\nКамни:\n{stones}\n\nРуны:\n{runes}"
+        ),
+        "en": (
+            "You are an expert on stones, runes, and talisman bracelets.\n"
+            "Pick a bracelet layout from the catalog.\n"
+            "Positions: center, left, right, clasp_stone, clasp_rune_slug.\n"
+            "Reply ONLY JSON:\n"
+            '{{"center":"slug","left":"slug","right":"slug","clasp_stone":"slug",'
+            '"clasp_rune_slug":"slug","reason_short":"one line"}}'
+            "\n\nStones:\n{stones}\n\nRunes:\n{runes}"
+        ),
+        "es": (
+            "Experto en piedras, runas y pulseras.\n"
+            "Elige diseño. Solo JSON.\n"
+            "{{\"center\":\"slug\",...}}\n\nPiedras:\n{stones}\n\nRunas:\n{runes}"
+        ),
+        "pt": (
+            "Especialista em pedras, runas e pulseiras.\n"
+            "Escolha layout. Apenas JSON.\n"
+            "{{\"center\":\"slug\",...}}\n\nPedras:\n{stones}\n\nRunas:\n{runes}"
+        ),
+    },
+    "ai_pick_bracelet_default_query": {
+        "ru": "баланс и защита по моему профилю",
+        "en": "balance and protection for my profile",
+        "es": "equilibrio y protección según mi perfil",
+        "pt": "equilíbrio e proteção pelo meu perfil",
+    },
+    "ai_pick_bracelet_user": {
+        "ru": "Намерение для браслета: {query}\nВерни только JSON.",
+        "en": "Bracelet intention: {query}\nReturn JSON only.",
+        "es": "Intención del brazalete: {query}\nSolo JSON.",
+        "pt": "Intenção da pulseira: {query}\nApenas JSON.",
+    },
+    "ai_vision_json_system": {
+        "ru": (
+            "Ты анализируешь фото для эзотерического Telegram-бота.\n"
+            "Ответь ТОЛЬКО JSON-объектом, без markdown.\n"
+            "interpretation — 2-4 предложения на языке пользователя, markdown **жирный** *курсив*.\n\n"
+            'Для aura: {"interpretation":"...", "aura_color":"english color phrase", '
+            '"aura_title":"short title", "image_summary":"1-2 sentences for image caption"}\n'
+            'Для palm: {"interpretation":"...", "palm_lines":[{"name":"Heart line","note":"brief"},...], '
+            '"image_summary":"brief caption"}'
+        ),
+        "en": (
+            "You analyze photos for an esoteric Telegram bot.\n"
+            "Reply ONLY with a JSON object, no markdown wrapper.\n"
+            "interpretation — 2-4 sentences in the user's language, markdown **bold** *italic*.\n\n"
+            'For aura: {"interpretation":"...", "aura_color":"english color phrase", '
+            '"aura_title":"short title", "image_summary":"1-2 sentences"}\n'
+            'For palm: {"interpretation":"...", "palm_lines":[{"name":"Heart line","note":"brief"},...], '
+            '"image_summary":"brief caption"}'
+        ),
+        "es": (
+            "Analizas fotos para un bot esotérico.\n"
+            "Responde SOLO JSON.\n"
+            'aura: {"interpretation":"...", "aura_color":"...", "aura_title":"...", "image_summary":"..."}'
+        ),
+        "pt": (
+            "Você analisa fotos para um bot esotérico.\n"
+            "Responda APENAS JSON.\n"
+            'aura: {"interpretation":"...", "aura_color":"...", "aura_title":"...", "image_summary":"..."}'
+        ),
+    },
+    "ai_vision_analysis_aura": {
+        "ru": (
+            "Проанализируй фото как эзотерическую ауру (развлекательная интерпретация). "
+            "Определи цвет энергетического поля, заголовок и описание для инфографики. "
+            "Учитывай пол из профиля. Без оценки внешности — только символика."
+        ),
+        "en": (
+            "Analyze the photo as an esoteric aura (entertainment interpretation). "
+            "Determine energy field color, title, and description for an infographic. "
+            "Use gender from profile. No appearance judgment — symbolism only."
+        ),
+        "es": "Analiza la foto como aura esotérica. Color, título y descripción para infografía.",
+        "pt": "Analise a foto como aura esotérica. Cor, título e descrição para infográfico.",
+    },
+    "ai_vision_analysis_palm": {
+        "ru": (
+            "Проанализируй фото ладони как эзотерическую хиромантию (развлекательно). "
+            "Опиши линии сердца, ума, жизни и судьбы с краткими пояснениями."
+        ),
+        "en": (
+            "Analyze the palm photo as esoteric palmistry (entertainment). "
+            "Describe heart, head, life, and fate lines with brief notes."
+        ),
+        "es": "Analiza la palma como quiromancia esotérica. Líneas del corazón, mente, vida y destino.",
+        "pt": "Analise a palma como quiromancia esotérica. Linhas do coração, mente, vida e destino.",
+    },
+    "ai_vision_image_base": {
+        "ru": (
+            "Do NOT copy the reference photo 1:1. Transform and stylize. "
+            "Pure white background, black-on-white design, thin elegant lines, rounded cards, "
+            "luxury minimal aesthetic, lots of whitespace. All text labels in Russian."
+        ),
+        "en": (
+            "Do NOT copy the reference photo 1:1. Transform and stylize. "
+            "Pure white background, black-on-white design, thin elegant lines, rounded cards, "
+            "luxury minimal aesthetic, lots of whitespace. All text labels in English."
+        ),
+        "es": (
+            "Do NOT copy the reference photo 1:1. Transform and stylize. "
+            "Pure white background, minimal design. All text labels in Spanish."
+        ),
+        "pt": (
+            "Do NOT copy the reference photo 1:1. Transform and stylize. "
+            "Pure white background, minimal design. All text labels in Portuguese."
+        ),
+    },
     "info_panel": {
         "ru": (
             "ℹ️ О боте Arcana AI\n\n"
@@ -543,3 +990,5 @@ READING_TYPE_KEYS = (
 ONBOARDING_CHOICE_KEYS: dict[str, list[str]] = {
     "gender": ["gender_male", "gender_female", "gender_skip"],
 }
+
+ONBOARDING_CHOICE_STEPS = frozenset(ONBOARDING_CHOICE_KEYS)
