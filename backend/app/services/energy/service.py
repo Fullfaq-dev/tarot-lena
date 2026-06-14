@@ -134,13 +134,9 @@ class EnergyService:
         ]
 
     def format_runes_text(self, drawn: list[DrawnRune], lang: str = "ru") -> str:
-        lang = normalize_language(lang)
-        lines = []
-        for item in drawn:
-            rune = localize_rune(item.rune, lang)
-            suffix = t("rune_reversed_suffix", lang) if item.reversed else ""
-            lines.append(f"• {rune.name}{suffix} — {rune.meaning}")
-        return "\n".join(lines)
+        from app.bot.rich_layouts import format_runes_table_rich
+
+        return format_runes_table_rich(drawn, lang)
 
     def format_stones_text(self, stones: list[Stone], lang: str = "ru") -> str:
         lang = normalize_language(lang)

@@ -21,6 +21,7 @@ from app.bot.keyboards import (
 from app.bot.states import BotStates
 from app.bot.streaming import stream_to_message
 from app.services.ai.orchestrator import AIOrchestrator
+from app.bot.rich_layouts import format_runes_table_rich, format_stones_table_rich
 from app.services.energy.service import EnergyService
 from app.services.onboarding.service import OnboardingService
 from app.services.settings.service import SettingsService
@@ -149,8 +150,7 @@ async def handle_rune_question(message: Message, text: str, state: FSMContext) -
         await state.clear()
         energy = EnergyService()
         drawn = energy.draw_runes(3)
-        rune_text = energy.format_runes_text(drawn, lang)
-        prefix = f"{t('rune_result_header', lang)}\n{rune_text}\n\n"
+        prefix = format_runes_table_rich(drawn, lang, question=text) + "\n---\n\n"
 
         orchestrator = AIOrchestrator()
         user_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_rune_reading(
@@ -190,11 +190,8 @@ async def handle_stone_query(message: Message, text: str, state: FSMContext) -> 
             return
 
         energy = EnergyService()
-        stone_text = energy.format_stones_text(stones, lang)
-        prefix = f"{t('stone_result_header', lang)}\n{stone_text}"
-        if pick_reason:
-            prefix += f"\n_{pick_reason}_"
-        prefix += "\n\n"
+        stone_text = format_stones_table_rich(stones, lang, question=text, reason=pick_reason)
+        prefix = f"{stone_text}\n---\n\n"
 
         answer = await stream_to_message(message, orchestrator.stream_chat(messages or []), prefix=prefix)
         await orchestrator.complete_chat(

@@ -5,6 +5,8 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, InputMediaPhoto, Message
 
 from app.bot.media import truncate_caption
+from app.bot.rich_layouts import format_tarot_collage, format_tarot_reading_rich, tarot_collage_available
+from app.bot.rich_messages import answer_rich_message, send_rich_message
 from app.core.config import get_settings
 
 
@@ -72,3 +74,49 @@ async def send_drawn_cards(message: Message, cards: list[dict]) -> None:
         await message.answer_photo(media[0].media, caption=media[0].caption)
         return
     await message.answer_media_group(media[:10])
+
+
+async def send_tarot_reading_rich(
+    message: Message,
+    *,
+    label: str,
+    question: str,
+    reading_type: str,
+    cards: list[dict],
+    interpretation: str,
+    lang: str,
+    reply_markup=None,
+) -> None:
+    if tarot_collage_available() and format_tarot_collage(cards):
+        rich_with_collage = format_tarot_reading_rich(
+            label=label,
+            question=question,
+            cards=cards,
+            reading_type=reading_type,
+            interpretation=interpretation,
+            lang=lang,
+            include_collage=True,
+        )
+        try:
+            await send_rich_message(
+                message.bot,
+                message.chat.id,
+                rich_with_collage,
+                reply_markup=reply_markup,
+                message_thread_id=message.message_thread_id,
+            )
+            return
+        except TelegramBadRequest:
+            pass
+
+    rich_text = format_tarot_reading_rich(
+        label=label,
+        question=question,
+        cards=cards,
+        reading_type=reading_type,
+        interpretation=interpretation,
+        lang=lang,
+        include_collage=False,
+    )
+    await send_drawn_cards(message, cards)
+    await answer_rich_message(message, rich_text, reply_markup=reply_markup)

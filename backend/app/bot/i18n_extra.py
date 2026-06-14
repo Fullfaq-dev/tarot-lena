@@ -263,6 +263,66 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
         "es": "Tirada: {label}\nPregunta: {question}\n\nCartas:\n{cards}\n\n",
         "pt": "Leitura: {label}\nPergunta: {question}\n\nCartas:\n{cards}\n\n",
     },
+    "reading_question_label": {
+        "ru": "Вопрос",
+        "en": "Question",
+        "es": "Pregunta",
+        "pt": "Pergunta",
+    },
+    "reading_position_n": {
+        "ru": "Карта {n}",
+        "en": "Card {n}",
+        "es": "Carta {n}",
+        "pt": "Carta {n}",
+    },
+    "table_position": {
+        "ru": "Позиция",
+        "en": "Position",
+        "es": "Posición",
+        "pt": "Posição",
+    },
+    "table_card": {
+        "ru": "Карта",
+        "en": "Card",
+        "es": "Carta",
+        "pt": "Carta",
+    },
+    "table_rune": {
+        "ru": "Руна",
+        "en": "Rune",
+        "es": "Runa",
+        "pt": "Runa",
+    },
+    "table_meaning": {
+        "ru": "Значение",
+        "en": "Meaning",
+        "es": "Significado",
+        "pt": "Significado",
+    },
+    "table_energy": {
+        "ru": "Энергия",
+        "en": "Energy",
+        "es": "Energía",
+        "pt": "Energia",
+    },
+    "table_stone": {
+        "ru": "Камень",
+        "en": "Stone",
+        "es": "Piedra",
+        "pt": "Pedra",
+    },
+    "table_properties": {
+        "ru": "Свойства",
+        "en": "Properties",
+        "es": "Propiedades",
+        "pt": "Propriedades",
+    },
+    "table_chakra": {
+        "ru": "Чакра",
+        "en": "Chakra",
+        "es": "Chakra",
+        "pt": "Chakra",
+    },
     "reading_ask_question_text": {
         "ru": "Напиши вопрос для расклада обычным сообщением.",
         "en": "Send your reading question as a normal message.",
@@ -584,23 +644,27 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
     },
     "ai_rune_prompt": {
         "ru": (
-            "Сделай толкование рун (до 6 предложений). Вопрос: {question}\n"
-            "Руны:\n{runes}\n"
+            "Пользователю уже показана таблица рун. Дай только толкование (до 6 предложений), "
+            "не перечисляй руны заново.\n"
+            "Вопрос: {question}\nРуны:\n{runes}\n"
             "Объясни энергию сочетания и дай практический совет. Учитывай перевёрнутые руны."
         ),
         "en": (
-            "Interpret the runes (up to 6 sentences). Question: {question}\n"
-            "Runes:\n{runes}\n"
+            "The user already sees a rune table. Give interpretation only (up to 6 sentences), "
+            "do not list runes again.\n"
+            "Question: {question}\nRunes:\n{runes}\n"
             "Explain the combined energy and give practical advice. Note reversed runes."
         ),
         "es": (
-            "Interpreta las runas (hasta 6 frases). Pregunta: {question}\n"
-            "Runas:\n{runes}\n"
+            "El usuario ya ve una tabla de runas. Solo interpretación (hasta 6 frases), "
+            "no repitas las runas.\n"
+            "Pregunta: {question}\nRunas:\n{runes}\n"
             "Explica la energía combinada y da un consejo práctico."
         ),
         "pt": (
-            "Interprete as runas (até 6 frases). Pergunta: {question}\n"
-            "Runas:\n{runes}\n"
+            "O usuário já vê uma tabela de runas. Apenas interpretação (até 6 frases), "
+            "não repita as runas.\n"
+            "Pergunta: {question}\nRunas:\n{runes}\n"
             "Explique a energia combinada e dê um conselho prático."
         ),
     },
@@ -708,22 +772,26 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
     },
     "ai_tarot_prompt": {
         "ru": (
-            "Сделай краткое толкование расклада Таро (до 5 предложений).\n"
+            "Пользователю уже показаны карты в таблице. Дай только толкование (до 5 предложений), "
+            "не перечисляй карты заново.\n"
             "Тип: {reading_type}\nВопрос: {question}\nКарты:\n{cards}\n"
             "Свяжи с вопросом и дай один практический совет."
         ),
         "en": (
-            "Give a brief tarot reading (up to 5 sentences).\n"
+            "The user already sees the cards in a table. Give interpretation only (up to 5 sentences), "
+            "do not list the cards again.\n"
             "Type: {reading_type}\nQuestion: {question}\nCards:\n{cards}\n"
             "Connect to the question and give one practical tip."
         ),
         "es": (
-            "Da una tirada breve (hasta 5 frases).\n"
+            "El usuario ya ve las cartas en una tabla. Solo interpretación (hasta 5 frases), "
+            "no repitas las cartas.\n"
             "Tipo: {reading_type}\nPregunta: {question}\nCartas:\n{cards}\n"
             "Conecta con la pregunta y da un consejo práctico."
         ),
         "pt": (
-            "Faça uma leitura breve (até 5 frases).\n"
+            "O usuário já vê as cartas numa tabela. Apenas interpretação (até 5 frases), "
+            "não repita as cartas.\n"
             "Tipo: {reading_type}\nPergunta: {question}\nCartas:\n{cards}\n"
             "Conecte à pergunta e dê uma dica prática."
         ),

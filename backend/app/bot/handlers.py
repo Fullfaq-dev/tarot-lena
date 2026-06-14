@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import select
 
 from app.bot.content import info_panel_text, support_url
-from app.bot.cards_media import send_card_with_caption, send_drawn_cards
+from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
 from app.bot.rich_messages import answer_rich_message, truncate_text
@@ -322,9 +322,6 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
     orchestrator = AIOrchestrator()
     label = reading_label(reading_type, lang)
     cards = tarot.draw_cards(READING_TYPES.get(reading_type, 3))
-    await send_drawn_cards(message, cards)
-    card_lines = "\n".join(f"• {card['name']}" for card in cards)
-    prefix = t("reading_prefix", lang, label=label, question=question, cards=card_lines)
 
     user_db_id, messages, error, user_message_id, billing_mode = await orchestrator.prepare_tarot_reading(
         message.from_user, question, cards, reading_type
@@ -343,9 +340,29 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
     if not interpretation or "cannot fulfill" in interpretation.lower():
         interpretation = tarot.interpret_locally(question, cards, lang)
 
-    await _answer_formatted(message, interpretation, prefix=prefix)
+    from app.bot.rich_layouts import format_tarot_reading_rich
 
-    stored_answer = f"{prefix}{interpretation}".strip()
+    menu_markup = await _user_main_menu(message.from_user.id)
+    await send_tarot_reading_rich(
+        message,
+        label=label,
+        question=question,
+        reading_type=reading_type,
+        cards=cards,
+        interpretation=interpretation,
+        lang=lang,
+        reply_markup=menu_markup,
+    )
+
+    stored_answer = format_tarot_reading_rich(
+        label=label,
+        question=question,
+        cards=cards,
+        reading_type=reading_type,
+        interpretation=interpretation,
+        lang=lang,
+        include_collage=False,
+    )
     usage = await orchestrator.complete_chat(
         user_db_id or user_id,
         question,
@@ -359,7 +376,6 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
         message,
         billing_mode,
         usage,
-        reply_markup=await _user_main_menu(message.from_user.id),
     )
     await tarot.create_reading(
         user_id,
