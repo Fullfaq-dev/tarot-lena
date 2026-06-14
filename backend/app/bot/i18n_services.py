@@ -337,20 +337,26 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "ctx_markdown_hint": {
         "ru": (
-            "Форматируй ответ rich-markdown: **жирный**, *курсив*, списки `-`, "
-            "цитаты `>`, подзаголовки `###`. Без HTML-тегов."
+            "Rich-markdown используй умеренно: **жирный** и *курсив* для акцентов, списки `-` где нужно. "
+            "Заголовки `###` — только в структурированных ответах (расклад, инструкция, новая большая тема). "
+            "В живом диалоге, когда пользователь уточняет или продолжает разговор, отвечай обычным текстом "
+            "без заголовка в начале — не начинай каждое сообщение с `###` или **заголовка**. Без HTML-тегов."
         ),
         "en": (
-            "Format with rich markdown: **bold**, *italic*, `-` lists, "
-            "`>` quotes, `###` subheadings. No HTML tags."
+            "Use rich markdown sparingly: **bold** and *italic* for emphasis, `-` lists when helpful. "
+            "Use `###` headings only for structured replies (readings, instructions, a major new topic). "
+            "In ongoing dialogue, when the user follows up, reply in plain flowing text — "
+            "do not start every message with a heading. No HTML tags."
         ),
         "es": (
-            "Formatea con rich markdown: **negrita**, *cursiva*, listas `-`, "
-            "citas `>`, subtítulos `###`. Sin HTML."
+            "Usa rich markdown con moderación: **negrita** y *cursiva* para énfasis, listas `-` cuando ayuden. "
+            "Subtítulos `###` solo en respuestas estructuradas (tirada, instrucción, tema nuevo grande). "
+            "En diálogo continuo responde en texto fluido, sin encabezado al inicio de cada mensaje. Sin HTML."
         ),
         "pt": (
-            "Formate com rich markdown: **negrito**, *itálico*, listas `-`, "
-            "citações `>`, subtítulos `###`. Sem HTML."
+            "Use rich markdown com moderação: **negrito** e *itálico* para ênfase, listas `-` quando fizer sentido. "
+            "Títulos `###` só em respostas estruturadas (tiragem, instrução, tema novo grande). "
+            "Em diálogo contínuo responda em texto fluido, sem título no início de cada mensagem. Sem HTML."
         ),
     },
     "ctx_tier": {
