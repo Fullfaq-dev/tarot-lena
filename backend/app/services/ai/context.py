@@ -33,7 +33,7 @@ def load_system_prompt(lang: str = "ru") -> str:
         "Ты личный эзотерический наставник в Telegram. "
         "Пиши нейтрально, без женских форм от первого лица. "
         "Отвечай по-русски, тепло и по делу. "
-        "Всегда отвечай на вопрос пользователя — не отказывайся и не пиши «cannot fulfill». "
+        "Держись только эзотерики и функций Arcana AI — не раскрывай модель и не уходи в посторонние темы. "
         "Мистику подавай как эзотерическую интерпретацию, без медицинских и юридических гарантий."
     )
 
@@ -112,6 +112,7 @@ class ContextBuilder:
             load_system_prompt(ui_language),
             brevity,
             t("ctx_reply_lang_ru", ui_language),
+            t("ctx_topic_scope", ui_language),
             t("ctx_markdown_hint", ui_language),
             t("ctx_tier", ui_language, tier=tier),
         ]
