@@ -1284,6 +1284,7 @@ async def _process_onboarding_answer(
     edit: bool,
 ) -> None:
     telegram_user = source.from_user
+    lang = await _user_language(telegram_user.id)
     service = OnboardingService()
     onboarding_reply, user_id, completed = await service.handle_answer(telegram_user, answer)
     if not onboarding_reply:
@@ -1307,7 +1308,7 @@ async def _process_onboarding_answer(
     markup = onboarding_keyboard(next_step_key, lang) if next_step_key else None
     reply_text = onboarding_reply
     if markup is None and not completed:
-        reply_text = f"{onboarding_reply}\n\n{t('onboarding_type_hint', await _user_language(telegram_user.id))}"
+        reply_text = f"{onboarding_reply}\n\n{t('onboarding_type_hint', lang)}"
 
     if isinstance(source, CallbackQuery):
         if completed:
