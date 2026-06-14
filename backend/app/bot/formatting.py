@@ -4,6 +4,18 @@ from html import escape
 _TELEGRAM_HTML_TAG = re.compile(r"</?(?:b|i|code|u|s|pre|blockquote)>", re.IGNORECASE)
 _MD_TOKEN = re.compile(r"(\*\*.+?\*\*|\*.+?\*|`[^`]+`)", re.DOTALL)
 _LONE_ANGLE = re.compile(r"<(?![/]?(?:b|i|code|u|s|pre|blockquote)\b)", re.IGNORECASE)
+_RICH_STRIP_HTML = re.compile(
+    r"</?(?:script|style|iframe|object|embed|form|input|button|meta|link)\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def prepare_rich_markdown(text: str) -> str:
+    """Prepare model output for Telegram rich markdown."""
+    if not text:
+        return text
+    cleaned = _RICH_STRIP_HTML.sub("", text)
+    return cleaned.replace("\r\n", "\n").strip()
 
 
 def to_telegram_html(text: str) -> str:

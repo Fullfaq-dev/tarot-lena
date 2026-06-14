@@ -336,10 +336,22 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "pt": "Responda sempre no idioma do usuário.",
     },
     "ctx_markdown_hint": {
-        "ru": "Выделяй важное markdown: **жирный**, *курсив*. Не используй HTML-теги.",
-        "en": "Use markdown for emphasis: **bold**, *italic*. No HTML tags.",
-        "es": "Usa markdown: **negrita**, *cursiva*. Sin HTML.",
-        "pt": "Use markdown: **negrito**, *itálico*. Sem HTML.",
+        "ru": (
+            "Форматируй ответ rich-markdown: **жирный**, *курсив*, списки `-`, "
+            "цитаты `>`, подзаголовки `###`. Без HTML-тегов."
+        ),
+        "en": (
+            "Format with rich markdown: **bold**, *italic*, `-` lists, "
+            "`>` quotes, `###` subheadings. No HTML tags."
+        ),
+        "es": (
+            "Formatea con rich markdown: **negrita**, *cursiva*, listas `-`, "
+            "citas `>`, subtítulos `###`. Sin HTML."
+        ),
+        "pt": (
+            "Formate com rich markdown: **negrito**, *itálico*, listas `-`, "
+            "citações `>`, subtítulos `###`. Sem HTML."
+        ),
     },
     "ctx_tier": {
         "ru": "Тариф пользователя: {tier}.",

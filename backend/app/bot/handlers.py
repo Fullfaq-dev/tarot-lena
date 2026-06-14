@@ -14,6 +14,7 @@ from app.bot.content import info_panel_text, support_url
 from app.bot.cards_media import send_card_with_caption, send_drawn_cards
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
+from app.bot.rich_messages import answer_rich_message, truncate_text
 from app.core.config import get_settings
 from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
 from app.bot.i18n import all_menu_texts, main_menu_text, menu_actions, normalize_language, reading_label, t
@@ -44,7 +45,7 @@ from app.bot.keyboards import (
     READINGS_MENU_TEXT,
 )
 from app.bot.states import BotStates
-from app.bot.streaming import chat_action_loop, stream_to_message, truncate_text, typing_loop
+from app.bot.streaming import chat_action_loop, stream_to_message, typing_loop
 from app.database.models import Subscription, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
@@ -241,12 +242,7 @@ async def _with_typing(message: Message, coro):
 
 
 async def _answer_formatted(message: Message, text: str, *, prefix: str = "") -> None:
-    body = f"{prefix}{text}"
-    html = truncate_text(to_telegram_html(body))
-    try:
-        await message.answer(html, parse_mode=ParseMode.HTML)
-    except Exception:
-        await message.answer(truncate_text(body), parse_mode=None)
+    await answer_rich_message(message, f"{prefix}{text}")
 
 
 async def _generate_with_typing(message: Message, coro):
