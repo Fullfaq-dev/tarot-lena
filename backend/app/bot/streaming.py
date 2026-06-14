@@ -80,6 +80,7 @@ async def stream_to_message(
     last_edit = 0.0
     rich_mode = anchor.chat.type == "private"
     rich_draft: int | None = rich_draft_id(anchor.chat.id, anchor.message_id) if rich_mode else None
+    rich_draft_active = False
 
     try:
         async for chunk in chunks:
@@ -89,29 +90,33 @@ async def stream_to_message(
             now = time.monotonic()
             body = truncate_rich_text(f"{prefix}{full}")
 
-            if rich_mode and rich_draft is not None and (sent is not None or now - last_edit >= min_edit_interval):
-                try:
-                    await send_rich_message_draft(
-                        anchor.bot,
-                        anchor.chat.id,
-                        rich_draft,
-                        body,
-                        message_thread_id=anchor.message_thread_id,
-                    )
-                    last_edit = now
+            if rich_mode and rich_draft is not None:
+                should_update_draft = rich_draft_active or now - last_edit >= min_edit_interval
+                if should_update_draft:
+                    try:
+                        await send_rich_message_draft(
+                            anchor.bot,
+                            anchor.chat.id,
+                            rich_draft,
+                            body,
+                            message_thread_id=anchor.message_thread_id,
+                        )
+                        rich_draft_active = True
+                        last_edit = now
+                        continue
+                    except TelegramBadRequest as exc:
+                        if is_rich_message_unsupported(exc):
+                            rich_mode = False
+                            logger.info("Rich message draft unsupported, falling back to plain streaming")
+                        elif "too many requests" in str(exc).lower() or "retry after" in str(exc).lower():
+                            await asyncio.sleep(3.0)
+                            continue
+                        else:
+                            rich_mode = False
+                            logger.warning("Rich message draft failed: %s", exc)
+
+                if rich_mode:
                     continue
-                except TelegramBadRequest as exc:
-                    if is_rich_message_unsupported(exc):
-                        rich_mode = False
-                        logger.info("Rich message draft unsupported, falling back to plain streaming")
-                    elif now - last_edit < min_edit_interval:
-                        continue
-                    elif "too many requests" in str(exc).lower() or "retry after" in str(exc).lower():
-                        await asyncio.sleep(3.0)
-                        continue
-                    else:
-                        rich_mode = False
-                        logger.warning("Rich message draft failed: %s", exc)
 
             if now - last_edit < min_edit_interval and sent is not None:
                 continue
@@ -140,12 +145,18 @@ async def stream_to_message(
     body = truncate_rich_text(f"{prefix}{final}")
 
     if rich_mode:
+        if sent is not None:
+            try:
+                await sent.delete()
+            except TelegramBadRequest as exc:
+                logger.warning("Failed to delete plain draft before rich message: %s", exc)
         try:
             await edit_or_answer_rich_message(anchor, body, edit=False)
             return final
         except TelegramBadRequest as exc:
             if not is_rich_message_unsupported(exc):
                 logger.warning("Rich message finalize failed: %s", exc)
+            rich_mode = False
 
     if sent is None:
         await _send_formatted_text(anchor, truncate_text(f"{prefix}{final}"), edit=False)
