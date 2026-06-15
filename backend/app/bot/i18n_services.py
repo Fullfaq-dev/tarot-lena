@@ -9,10 +9,10 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "pt": "Saldo {balance} — insuficiente. Recarregue em «Saldo».",
     },
     "billing_free_exhausted": {
-        "ru": "Бесплатные сообщения закончились ({used}/{limit}). Пополни баланс или подключи Plus/Premium — нажми «Баланс».",
-        "en": "Free messages used up ({used}/{limit}). Top up or get Plus/Premium — tap «Balance».",
-        "es": "Mensajes gratis agotados ({used}/{limit}). Recarga o Plus/Premium — «Saldo».",
-        "pt": "Mensagens grátis esgotadas ({used}/{limit}). Recarregue ou Plus/Premium — «Saldo».",
+        "ru": "Бесплатные сообщения закончились ({used}/{limit}). Пополни баланс (ответы 5–30 ₽) или подключи Plus/Premium — нажми «Баланс».",
+        "en": "Free messages used up ({used}/{limit}). Top up (replies 5–30 ₽) or get Plus/Premium — tap «Balance».",
+        "es": "Mensajes gratis agotados ({used}/{limit}). Recarga (5–30 ₽/resp.) o Plus/Premium — «Saldo».",
+        "pt": "Mensagens grátis esgotadas ({used}/{limit}). Recarregue (5–30 ₽/resp.) ou Plus/Premium — «Saldo».",
     },
     "billing_infographic_needed": {
         "ru": "Для инфографики нужно {amount} на балансе. Пополни баланс — нажми «Баланс».",
@@ -30,12 +30,15 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "ru": (
             "💳 Подписка и баланс\n\n"
             "⭐ Тариф: {tier}\n"
-            "💰 Баланс: {balance}\n"
+            "💰 Баланс (ЛС): {balance}\n"
             "🤝 Реферальный баланс: {ref_balance}\n"
             "💬 Бесплатных сообщений: {free_left} из {free_limit}\n"
             "🔮 Бесплатных раскладов: {readings_left} из 3\n\n"
-            "✨ Plus — {plus_price}/мес: безлимитный чат.\n"
-            "👑 Premium — {premium_price}/мес: безлимитный чат и голосовые ответы.\n\n"
+            "📋 На бесплатном тарифе после лимита ответы ИИ списываются с баланса: 5–30 ₽ "
+            "(зависит от длины сообщения).\n"
+            "📸 Анализ фото с инфографикой (аура, ладонь) — 100 ₽ с баланса.\n\n"
+            "✨ Plus — {plus_price}/мес: безлимитный чат без списаний.\n"
+            "👑 Premium — {premium_price}/мес: безлимитный чат без списаний + голосовые ответы.\n\n"
             "🤝 Приглашай друзей и получай 40% с их оплат. Вывод от {min_withdraw} в USDT."
         ),
         "en": (
@@ -45,7 +48,10 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🤝 Referral balance: {ref_balance}\n"
             "💬 Free messages: {free_left} of {free_limit}\n"
             "🔮 Free readings: {readings_left} of 3\n\n"
-            "✨ Plus — {plus_price}/mo: unlimited chat.\n"
+            "📋 On the free plan, after the limit AI replies charge 5–30 ₽ from balance "
+            "(depends on message length).\n"
+            "📸 Photo analysis with infographic (aura, palm) — 100 ₽ from balance.\n\n"
+            "✨ Plus — {plus_price}/mo: unlimited chat, no per-message charges.\n"
             "👑 Premium — {premium_price}/mo: unlimited chat + voice replies.\n\n"
             "🤝 Invite friends — 40% of their payments. Withdraw from {min_withdraw} USDT."
         ),
@@ -56,8 +62,10 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🤝 Saldo referidos: {ref_balance}\n"
             "💬 Mensajes gratis: {free_left} de {free_limit}\n"
             "🔮 Tiradas gratis: {readings_left} de 3\n\n"
-            "✨ Plus — {plus_price}/mes: chat ilimitado.\n"
-            "👑 Premium — {premium_price}/mes: chat + voz.\n\n"
+            "📋 En plan gratis, tras el límite: 5–30 ₽ por respuesta IA del saldo.\n"
+            "📸 Foto con infografía (aura, palma) — 100 ₽ del saldo.\n\n"
+            "✨ Plus — {plus_price}/mes: chat ilimitado sin cobros por mensaje.\n"
+            "👑 Premium — {premium_price}/mes: chat ilimitado + voz.\n\n"
             "🤝 Invita amigos — 40% de sus pagos. Retiro desde {min_withdraw} USDT."
         ),
         "pt": (
@@ -67,8 +75,10 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🤝 Saldo indicação: {ref_balance}\n"
             "💬 Mensagens grátis: {free_left} de {free_limit}\n"
             "🔮 Leituras grátis: {readings_left} de 3\n\n"
-            "✨ Plus — {plus_price}/mês: chat ilimitado.\n"
-            "👑 Premium — {premium_price}/mês: chat + voz.\n\n"
+            "📋 No plano grátis, após o limite: 5–30 ₽ por resposta IA do saldo.\n"
+            "📸 Foto com infográfico (aura, palma) — 100 ₽ do saldo.\n\n"
+            "✨ Plus — {plus_price}/mês: chat ilimitado sem cobrança por mensagem.\n"
+            "👑 Premium — {premium_price}/mês: chat ilimitado + voz.\n\n"
             "🤝 Convide amigos — 40% dos pagamentos. Saque a partir de {min_withdraw} USDT."
         ),
     },
@@ -99,16 +109,45 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "pt": "{when} — {label} — {amount}",
     },
     "billing_topup_link": {
-        "ru": "Ссылка на оплату {amount} ₽:\n{url}\n\nПосле успешной оплаты баланс обновится автоматически.",
-        "en": "Payment link for {amount} ₽:\n{url}\n\nBalance updates automatically after payment.",
-        "es": "Enlace de pago {amount} ₽:\n{url}\n\nEl saldo se actualiza tras el pago.",
-        "pt": "Link de pagamento {amount} ₽:\n{url}\n\nSaldo atualiza após pagamento.",
+        "ru": (
+            "Ссылка на оплату {amount} ₽:\n{url}\n\n"
+            "После успешной оплаты средства зачислятся на баланс (лицевой счёт). "
+            "С баланса списываются ответы ИИ (5–30 ₽) и анализ фото с инфографикой (100 ₽)."
+        ),
+        "en": (
+            "Payment link for {amount} ₽:\n{url}\n\n"
+            "Funds will be credited to your balance. "
+            "AI replies (5–30 ₽) and photo infographics (100 ₽) are charged from balance."
+        ),
+        "es": (
+            "Enlace de pago {amount} ₽:\n{url}\n\n"
+            "El saldo se acredita tras el pago. "
+            "Respuestas IA (5–30 ₽) e infografías de foto (100 ₽) se cobran del saldo."
+        ),
+        "pt": (
+            "Link de pagamento {amount} ₽:\n{url}\n\n"
+            "Saldo creditado após pagamento. "
+            "Respostas IA (5–30 ₽) e infográficos de foto (100 ₽) debitam do saldo."
+        ),
     },
     "billing_sub_link": {
-        "ru": "Подписка {label} — {amount} ₽/мес.\nСсылка на оплату:\n{url}\n\nПосле оплаты тариф активируется автоматически.",
-        "en": "{label} subscription — {amount} ₽/mo.\nPayment link:\n{url}\n\nPlan activates after payment.",
-        "es": "Suscripción {label} — {amount} ₽/mes.\nEnlace:\n{url}",
-        "pt": "Assinatura {label} — {amount} ₽/mês.\nLink:\n{url}",
+        "ru": (
+            "Подписка {label} — {amount} ₽/мес.\nСсылка на оплату:\n{url}\n\n"
+            "После оплаты тариф активируется автоматически. "
+            "Сообщения в AI-чате — безлимитно и без списаний с баланса."
+        ),
+        "en": (
+            "{label} subscription — {amount} ₽/mo.\nPayment link:\n{url}\n\n"
+            "Plan activates after payment. AI chat is unlimited with no per-message charges."
+        ),
+        "es": (
+            "Suscripción {label} — {amount} ₽/mes.\nEnlace:\n{url}\n\n"
+            "Chat IA ilimitado sin cobro por mensaje."
+        ),
+        "pt": (
+            "Assinatura {label} — {amount} ₽/mês.\nLink:\n{url}\n\n"
+            "Chat IA ilimitado sem cobrança por mensagem."
+        ),
     },
     "billing_unknown_tier": {
         "ru": "Неизвестный тариф.",
@@ -437,14 +476,14 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     "chat_last_free": {
         "ru": (
             "Это было последнее бесплатное сообщение в этом месяце ({limit}). "
-            "Дальше ответы списываются с баланса — пополни его в разделе «Баланс»."
+            "Дальше ответы списываются с баланса (5–30 ₽ в зависимости от длины) — пополни его в разделе «Баланс»."
         ),
         "en": (
             "That was your last free message this month ({limit}). "
-            "Further replies charge your balance — top up in «Balance»."
+            "Further replies charge 5–30 ₽ from balance (by length) — top up in «Balance»."
         ),
-        "es": "Último mensaje gratis del mes ({limit}). Luego se cobra del saldo.",
-        "pt": "Última mensagem grátis do mês ({limit}). Depois debita do saldo.",
+        "es": "Último mensaje gratis del mes ({limit}). Luego 5–30 ₽ del saldo por respuesta.",
+        "pt": "Última mensagem grátis do mês ({limit}). Depois 5–30 ₽ do saldo por resposta.",
     },
     "photo_processing_interrupted": {
         "ru": "Обработка фото прервалась. Попробуй отправить снимок ещё раз ✨",

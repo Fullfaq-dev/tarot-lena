@@ -32,10 +32,10 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
         "pt": "Termine a ficha primeiro — /start",
     },
     "error_free_messages_ended": {
-        "ru": "Бесплатные сообщения закончились. Ответ спишется с баланса.",
-        "en": "Free messages used up. This reply will be charged from your balance.",
-        "es": "Mensajes gratis agotados. La respuesta se cobrará del saldo.",
-        "pt": "Mensagens grátis esgotadas. A resposta será debitada do saldo.",
+        "ru": "Бесплатные сообщения закончились. Ответ спишется с баланса (5–30 ₽ в зависимости от длины).",
+        "en": "Free messages used up. This reply will charge 5–30 ₽ from your balance (by length).",
+        "es": "Mensajes gratis agotados. La respuesta costará 5–30 ₽ del saldo.",
+        "pt": "Mensagens grátis esgotadas. A resposta debitará 5–30 ₽ do saldo.",
     },
     "error_no_model_response": {
         "ru": "Не удалось получить ответ от модели. Попробуй ещё раз через минуту.",
