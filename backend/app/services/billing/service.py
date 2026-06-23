@@ -49,6 +49,37 @@ class BillingService:
         settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
         return normalize_language(settings.ui_language if settings else "en")
 
+    async def _payment_success_notify(
+        self,
+        session: AsyncSession,
+        user: User,
+        payment: Payment,
+        *,
+        subscription: Subscription | None = None,
+    ) -> dict[str, int | str] | None:
+        lang = await self._user_lang(session, user.id)
+        if payment.purpose == "topup":
+            text = t(
+                "billing_payment_success_topup",
+                lang,
+                amount=format_balance(payment.amount_rub),
+                balance=format_balance(user.balance_rub),
+            )
+        elif payment.purpose.startswith("subscription_"):
+            tier = payment.purpose.removeprefix("subscription_")
+            label = "Plus" if tier == "plus" else "Premium"
+            expires_at = subscription.expires_at if subscription else None
+            expires = expires_at.strftime("%d.%m.%Y") if expires_at else "—"
+            text = t(
+                "billing_payment_success_sub",
+                lang,
+                label=label,
+                expires=expires,
+            )
+        else:
+            return None
+        return {"telegram_id": user.telegram_id, "text": text}
+
     async def ensure_can_use_chat(
         self,
         session: AsyncSession,
@@ -174,6 +205,14 @@ class BillingService:
             if user is None:
                 return format_balance(Decimal("0"))
             return format_balance(user.balance_rub)
+
+    async def reply_main_menu_markup(self, telegram_id: int):
+        from app.bot.keyboards import main_menu
+        from app.services.settings.service import SettingsService
+
+        balance = await self.get_balance_label(telegram_id)
+        lang = await SettingsService().get_ui_language(telegram_id)
+        return main_menu(balance, lang)
 
     async def record_chat_usage(
         self,
@@ -414,7 +453,7 @@ class BillingService:
             if user is None:
                 return t("error_need_start", lang), ""
             intent = await self.create_topup(session, user, amount)
-            text = t("billing_topup_link", lang, amount=amount, url=intent.payment_url)
+            text = t("billing_topup_link", lang, amount=amount)
             return text, intent.payment_url
 
     async def create_subscription_for_telegram(self, telegram_id: int, tier: str) -> tuple[str, str]:
@@ -435,7 +474,7 @@ class BillingService:
                 f"subscription_{tier}",
             )
             label = "Plus" if tier == "plus" else "Premium"
-            text = t("billing_sub_link", lang, label=label, amount=amount, url=intent.payment_url)
+            text = t("billing_sub_link", lang, label=label, amount=amount)
             return text, intent.payment_url
 
     async def admin_topup_balance(
@@ -505,7 +544,7 @@ class BillingService:
         transaction_id: str,
         payment_id: str | None,
         status: str,
-    ) -> None:
+    ) -> dict | None:
         payment = None
         if payment_id:
             payment = await session.scalar(select(Payment).where(Payment.id == payment_id))
@@ -531,13 +570,14 @@ class BillingService:
         payment.payload = payload
 
         if status == "CONFIRMED":
-            await self.complete_payment(session, payment)
-        elif status in {"CANCELED", "CHARGEBACKED"}:
+            return await self.complete_payment(session, payment)
+        if status in {"CANCELED", "CHARGEBACKED"}:
             await self.reject_payment(
                 session,
                 payment,
                 admin_comment=f"Platega status: {status}",
             )
+        return None
 
     async def complete_payment(
         self,
@@ -553,6 +593,7 @@ class BillingService:
         if user is None:
             raise ValueError("Пользователь не найден")
 
+        subscription: Subscription | None = None
         if payment.purpose == "topup":
             existing = await session.scalar(
                 select(BalanceTransaction).where(BalanceTransaction.payment_id == payment.id)
@@ -601,13 +642,22 @@ class BillingService:
             payment.payload = payload
 
         await session.flush()
-        return {
+        result: dict = {
             "payment_id": payment.id,
             "status": payment.status,
             "purpose": payment.purpose,
             "amount_rub": payment.amount_rub,
             "balance_rub": user.balance_rub,
         }
+        notify = await self._payment_success_notify(
+            session,
+            user,
+            payment,
+            subscription=subscription,
+        )
+        if notify:
+            result["telegram_notify"] = notify
+        return result
 
     async def reject_payment(
         self,

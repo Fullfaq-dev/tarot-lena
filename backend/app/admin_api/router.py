@@ -14,6 +14,7 @@ from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, U
 from app.database.session import get_session
 from app.services.billing.platega_client import fetch_balances
 from app.services.billing.service import BillingService
+from app.services.telegram_notify import notify_telegram_message
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin)])
 
@@ -164,6 +165,15 @@ async def update_payment(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     await session.commit()
+    notify = result.get("telegram_notify")
+    if isinstance(notify, dict):
+        billing = BillingService()
+        keyboard = await billing.reply_main_menu_markup(int(notify["telegram_id"]))
+        notify_telegram_message(
+            int(notify["telegram_id"]),
+            str(notify["text"]),
+            reply_markup=keyboard,
+        )
     return result
 
 

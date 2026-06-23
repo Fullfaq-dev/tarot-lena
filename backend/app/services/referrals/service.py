@@ -1,18 +1,20 @@
 import re
-from datetime import date, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.i18n import normalize_language, t
-from app.database.models import Referral, ReferralWithdrawalRequest, User, UserSettings
+from app.database.models import Payment, Referral, ReferralWithdrawalRequest, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.services.billing.tokens import format_balance
 from app.services.telegram_notify import notify_admins, notify_telegram_message
 
 MIN_WITHDRAWAL_RUB = Decimal("3000")
 DEFAULT_REWARD_PERCENT = 40
+REFERRAL_LIST_PAGE_SIZE = 8
 _RESERVED_WITHDRAWAL_STATUSES = ("pending", "approved")
 
 _TRC20_WALLET_RE = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
@@ -39,6 +41,18 @@ def parse_withdrawal_amount(text: str) -> Decimal | None:
     if amount <= 0:
         return None
     return amount.quantize(Decimal("0.01"))
+
+
+def _today_start_utc() -> datetime:
+    now = datetime.now(timezone.utc)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+@dataclass
+class ReferredUserRow:
+    name: str
+    joined_at: datetime
+    earned_rub: Decimal
 
 
 class ReferralService:
@@ -169,6 +183,123 @@ class ReferralService:
             "available": available,
             "referred_count": int(referred_count or 0),
         }
+
+    async def get_daily_stats(self, session: AsyncSession, user: User) -> dict[str, Decimal | int]:
+        today_start = _today_start_utc()
+        joined_today = await session.scalar(
+            select(func.count())
+            .select_from(Referral)
+            .where(
+                Referral.referrer_user_id == user.id,
+                Referral.created_at >= today_start,
+            )
+        )
+        earned_today = await session.scalar(
+            select(
+                func.coalesce(
+                    func.sum(Payment.amount_rub * Referral.reward_percent / Decimal("100")),
+                    0,
+                )
+            )
+            .select_from(Payment)
+            .join(Referral, Referral.referred_user_id == Payment.user_id)
+            .where(
+                Referral.referrer_user_id == user.id,
+                Payment.status == "completed",
+                Payment.updated_at >= today_start,
+            )
+        )
+        return {
+            "joined_today": int(joined_today or 0),
+            "earned_today": Decimal(earned_today or 0),
+        }
+
+    async def stats_panel_text(self, telegram_id: int) -> str:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return t("error_need_start", "en")
+            lang = await self._user_lang(session, user)
+            totals = await self.get_stats(session, user)
+            daily = await self.get_daily_stats(session, user)
+            return t(
+                "referral_stats_panel",
+                lang,
+                joined_today=daily["joined_today"],
+                earned_today=format_balance(daily["earned_today"]),
+                count=totals["referred_count"],
+                total=format_balance(totals["total_accrued"]),
+                available=format_balance(totals["available"]),
+            )
+
+    async def referred_users_page(
+        self,
+        telegram_id: int,
+        page: int,
+        *,
+        sort_newest_first: bool = True,
+    ) -> tuple[str, list[ReferredUserRow], int, int]:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return t("error_need_start", "en"), [], 0, 1
+
+            lang = await self._user_lang(session, user)
+            total_count = await session.scalar(
+                select(func.count())
+                .select_from(Referral)
+                .where(Referral.referrer_user_id == user.id)
+            )
+            total_count = int(total_count or 0)
+            total_pages = max(1, (total_count + REFERRAL_LIST_PAGE_SIZE - 1) // REFERRAL_LIST_PAGE_SIZE)
+            page = max(0, min(page, total_pages - 1))
+
+            order = Referral.created_at.desc() if sort_newest_first else Referral.created_at.asc()
+            offset = page * REFERRAL_LIST_PAGE_SIZE
+            rows = await session.execute(
+                select(Referral, User)
+                .join(User, User.id == Referral.referred_user_id)
+                .where(Referral.referrer_user_id == user.id)
+                .order_by(order)
+                .offset(offset)
+                .limit(REFERRAL_LIST_PAGE_SIZE)
+            )
+
+            items: list[ReferredUserRow] = []
+            for referral, referred in rows.all():
+                name = referred.first_name or referred.username or t("referral_friend", lang)
+                items.append(
+                    ReferredUserRow(
+                        name=name,
+                        joined_at=referral.created_at,
+                        earned_rub=referral.accrued_rub,
+                    )
+                )
+
+            if total_count == 0:
+                return t("referral_list_empty", lang), [], page, total_pages
+
+            sort_label = t("referral_sort_newest", lang) if sort_newest_first else t("referral_sort_oldest", lang)
+            lines = [
+                t("referral_list_title", lang),
+                t("history_page", lang, page=page + 1, total=total_pages),
+                t("referral_list_sort", lang, sort=sort_label),
+                "",
+            ]
+            start_index = offset + 1
+            for index, item in enumerate(items, start=start_index):
+                joined = item.joined_at.strftime("%d.%m.%Y")
+                lines.append(
+                    t(
+                        "referral_list_line",
+                        lang,
+                        index=index,
+                        name=item.name,
+                        date=joined,
+                        earned=format_balance(item.earned_rub),
+                    )
+                )
+            return "\n".join(lines), items, page, total_pages
 
     def build_referral_link(self, bot_username: str, telegram_id: int) -> str:
         username = bot_username.lstrip("@")

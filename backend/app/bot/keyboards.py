@@ -9,6 +9,7 @@ from aiogram.types import (
 
 from app.bot.content import LEGAL_URL, support_url
 from app.bot.i18n import (
+    SUPPORTED_LANGUAGES,
     btn_daily,
     btn_energy,
     btn_history,
@@ -45,6 +46,10 @@ def is_balance_button(text: str) -> bool:
         t("btn_balance_prefix", "pt"),
     )
     return any(text.startswith(prefix) for prefix in prefixes)
+
+
+def is_home_button(text: str) -> bool:
+    return any(text == t("btn_home", lang) for lang in SUPPORTED_LANGUAGES)
 
 
 READING_TYPE_LABELS = reading_type_labels()
@@ -88,6 +93,7 @@ def main_menu(balance_label: str = "0 ₽", lang: str = "ru") -> ReplyKeyboardMa
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=balance_button_text(balance_label, lang))],
+            [KeyboardButton(text=t("btn_home", lang))],
             [KeyboardButton(text=btn_readings(lang)), KeyboardButton(text=btn_daily(lang))],
             [KeyboardButton(text=btn_zen(lang)), KeyboardButton(text=btn_energy(lang))],
             [KeyboardButton(text=btn_history(lang)), KeyboardButton(text=btn_language(lang))],
@@ -389,7 +395,64 @@ def inline_referral_menu(*, share_link: str | None = None, lang: str = "ru") -> 
         rows.append(
             [InlineKeyboardButton(text=t("btn_share_friend", lang), url=share_url)]
         )
+    rows.append([InlineKeyboardButton(text=t("btn_referral_stats", lang), callback_data="ref:stats")])
     rows.append([InlineKeyboardButton(text=t("btn_withdraw", lang), callback_data="ref:withdraw")])
+    rows.append([_home_button(lang)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def inline_referral_stats_menu(lang: str = "ru") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t("btn_referral_invited_list", lang), callback_data="ref:list:0:new")],
+            [InlineKeyboardButton(text=t("btn_back_to_referrals", lang), callback_data="nav:referrals")],
+            [_home_button(lang)],
+        ]
+    )
+
+
+def _referral_list_pagination(
+    page: int,
+    total_pages: int,
+    sort: str,
+    lang: str = "ru",
+) -> list[InlineKeyboardButton]:
+    buttons: list[InlineKeyboardButton] = []
+    if page > 0:
+        buttons.append(
+            InlineKeyboardButton(
+                text=t("btn_pagination_back", lang),
+                callback_data=f"ref:list:{page - 1}:{sort}",
+            )
+        )
+    if page < total_pages - 1:
+        buttons.append(
+            InlineKeyboardButton(
+                text=t("btn_pagination_forward", lang),
+                callback_data=f"ref:list:{page + 1}:{sort}",
+            )
+        )
+    return buttons
+
+
+def inline_referral_list_menu(
+    page: int,
+    total_pages: int,
+    *,
+    sort: str = "new",
+    lang: str = "ru",
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    nav = _referral_list_pagination(page, total_pages, sort, lang)
+    if nav:
+        rows.append(nav)
+    toggle_sort = "old" if sort == "new" else "new"
+    sort_label = t("btn_sort_oldest", lang) if sort == "new" else t("btn_sort_newest", lang)
+    rows.append(
+        [InlineKeyboardButton(text=sort_label, callback_data=f"ref:list:0:{toggle_sort}")]
+    )
+    rows.append([InlineKeyboardButton(text=t("btn_back_to_referral_stats", lang), callback_data="ref:stats")])
+    rows.append([InlineKeyboardButton(text=t("btn_back_to_referrals", lang), callback_data="nav:referrals")])
     rows.append([_home_button(lang)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

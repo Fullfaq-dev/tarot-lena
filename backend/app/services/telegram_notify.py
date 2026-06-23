@@ -8,19 +8,36 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-async def send_telegram_message(telegram_id: int, text: str) -> None:
+async def send_telegram_message(
+    telegram_id: int,
+    text: str,
+    *,
+    reply_markup=None,
+) -> None:
     settings = get_settings()
     if settings.telegram_bot_token == "replace-me":
         return
     try:
         async with Bot(token=settings.telegram_bot_token) as bot:
-            await bot.send_message(telegram_id, text, parse_mode=None)
+            await bot.send_message(
+                telegram_id,
+                text,
+                parse_mode=None,
+                reply_markup=reply_markup,
+            )
     except Exception as exc:
         logger.warning("Failed to notify telegram_id=%s: %s", telegram_id, exc)
 
 
-def notify_telegram_message(telegram_id: int, text: str) -> None:
-    asyncio.create_task(send_telegram_message(telegram_id, text))
+def notify_telegram_message(
+    telegram_id: int,
+    text: str,
+    *,
+    reply_markup=None,
+) -> None:
+    asyncio.create_task(
+        send_telegram_message(telegram_id, text, reply_markup=reply_markup)
+    )
 
 
 async def notify_admins(text: str) -> None:

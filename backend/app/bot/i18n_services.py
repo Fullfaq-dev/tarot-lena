@@ -110,44 +110,82 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "billing_topup_link": {
         "ru": (
-            "Ссылка на оплату {amount} ₽:\n{url}\n\n"
-            "После успешной оплаты средства зачислятся на баланс (лицевой счёт). "
+            "Оплата {amount} ₽ — нажми кнопку ниже.\n\n"
+            "Платёжная система может взимать свою комиссию. "
+            "На баланс зачисляется ровно {amount} ₽ — как указано на кнопке.\n\n"
+            "После успешной оплаты пришлю уведомление. "
             "С баланса списываются ответы ИИ (5–30 ₽) и анализ фото с инфографикой (100 ₽)."
         ),
         "en": (
-            "Payment link for {amount} ₽:\n{url}\n\n"
-            "Funds will be credited to your balance. "
-            "AI replies (5–30 ₽) and photo infographics (100 ₽) are charged from balance."
+            "Pay {amount} ₽ — tap the button below.\n\n"
+            "The payment provider may charge its own fee. "
+            "Your balance is credited exactly {amount} ₽ — as shown on the button.\n\n"
+            "You'll get a notification once payment succeeds."
         ),
         "es": (
-            "Enlace de pago {amount} ₽:\n{url}\n\n"
-            "El saldo se acredita tras el pago. "
-            "Respuestas IA (5–30 ₽) e infografías de foto (100 ₽) se cobran del saldo."
+            "Pago {amount} ₽ — pulsa el botón.\n\n"
+            "El proveedor puede cobrar comisión. "
+            "Se acreditan exactamente {amount} ₽ en el saldo.\n\n"
+            "Te avisaré cuando se complete el pago."
         ),
         "pt": (
-            "Link de pagamento {amount} ₽:\n{url}\n\n"
-            "Saldo creditado após pagamento. "
-            "Respostas IA (5–30 ₽) e infográficos de foto (100 ₽) debitam do saldo."
+            "Pagamento {amount} ₽ — toque no botão.\n\n"
+            "O provedor pode cobrar taxa. "
+            "Creditamos exatamente {amount} ₽ no saldo.\n\n"
+            "Avisarei quando o pagamento for concluído."
         ),
     },
     "billing_sub_link": {
         "ru": (
-            "Подписка {label} — {amount} ₽/мес.\nСсылка на оплату:\n{url}\n\n"
-            "После оплаты тариф активируется автоматически. "
-            "Сообщения в AI-чате — безлимитно и без списаний с баланса."
+            "Подписка {label} — {amount} ₽/мес. Нажми кнопку ниже.\n\n"
+            "Платёжная система может взимать свою комиссию. "
+            "Сумма на кнопке — {amount} ₽; после оплаты тариф активируется автоматически, "
+            "сообщения в AI-чате безлимитны и без списаний с баланса.\n\n"
+            "Пришлю уведомление, когда оплата пройдёт."
         ),
         "en": (
-            "{label} subscription — {amount} ₽/mo.\nPayment link:\n{url}\n\n"
-            "Plan activates after payment. AI chat is unlimited with no per-message charges."
+            "{label} subscription — {amount} ₽/mo. Tap the button below.\n\n"
+            "The payment provider may charge its own fee. "
+            "Button amount is {amount} ₽; after payment your plan activates with unlimited AI chat.\n\n"
+            "You'll get a notification once payment succeeds."
         ),
         "es": (
-            "Suscripción {label} — {amount} ₽/mes.\nEnlace:\n{url}\n\n"
-            "Chat IA ilimitado sin cobro por mensaje."
+            "Suscripción {label} — {amount} ₽/mes. Pulsa el botón.\n\n"
+            "El proveedor puede cobrar comisión. "
+            "Importe del botón: {amount} ₽; chat IA ilimitado tras activar.\n\n"
+            "Te avisaré cuando se complete el pago."
         ),
         "pt": (
-            "Assinatura {label} — {amount} ₽/mês.\nLink:\n{url}\n\n"
-            "Chat IA ilimitado sem cobrança por mensagem."
+            "Assinatura {label} — {amount} ₽/mês. Toque no botão.\n\n"
+            "O provedor pode cobrar taxa. "
+            "Valor do botão: {amount} ₽; chat IA ilimitado após ativação.\n\n"
+            "Avisarei quando o pagamento for concluído."
         ),
+    },
+    "billing_payment_success_topup": {
+        "ru": (
+            "✅ Оплата прошла!\n\n"
+            "На баланс зачислено {amount}. Текущий баланс: {balance}."
+        ),
+        "en": (
+            "✅ Payment received!\n\n"
+            "{amount} added to your balance. Current balance: {balance}."
+        ),
+        "es": "✅ ¡Pago recibido!\n\n{amount} acreditados. Saldo: {balance}.",
+        "pt": "✅ Pagamento recebido!\n\n{amount} creditados. Saldo: {balance}.",
+    },
+    "billing_payment_success_sub": {
+        "ru": (
+            "✅ Оплата прошла!\n\n"
+            "Подписка {label} активирована до {expires}. "
+            "AI-чат безлимитен и без списаний с баланса."
+        ),
+        "en": (
+            "✅ Payment received!\n\n"
+            "{label} plan active until {expires}. Unlimited AI chat included."
+        ),
+        "es": "✅ ¡Pago recibido!\n\n{label} activa hasta {expires}. Chat IA ilimitado.",
+        "pt": "✅ Pagamento recebido!\n\n{label} ativa até {expires}. Chat IA ilimitado.",
     },
     "billing_unknown_tier": {
         "ru": "Неизвестный тариф.",
@@ -799,6 +837,90 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "{percent}% de cada pagamento. Saque a partir de {min_withdraw} USDT.\n\n"
             "🔗 Link:\n{link}"
         ),
+    },
+    "referral_stats_panel": {
+        "ru": (
+            "📊 Статистика рефералки\n\n"
+            "📅 Сегодня:\n"
+            "👥 Новых приглашённых: {joined_today}\n"
+            "💰 Заработано: {earned_today}\n\n"
+            "📈 Всего:\n"
+            "👯 Приглашено: {count}\n"
+            "💰 Заработано: {total}\n"
+            "💵 Доступно к выводу: {available}"
+        ),
+        "en": (
+            "📊 Referral statistics\n\n"
+            "📅 Today:\n"
+            "👥 New invites: {joined_today}\n"
+            "💰 Earned: {earned_today}\n\n"
+            "📈 All time:\n"
+            "👯 Invited: {count}\n"
+            "💰 Earned: {total}\n"
+            "💵 Available to withdraw: {available}"
+        ),
+        "es": (
+            "📊 Estadísticas de referidos\n\n"
+            "📅 Hoy:\n"
+            "👥 Nuevos: {joined_today}\n"
+            "💰 Ganado: {earned_today}\n\n"
+            "📈 Total:\n"
+            "👯 Invitados: {count}\n"
+            "💰 Ganado: {total}\n"
+            "💵 Disponible: {available}"
+        ),
+        "pt": (
+            "📊 Estatísticas de indicação\n\n"
+            "📅 Hoje:\n"
+            "👥 Novos: {joined_today}\n"
+            "💰 Ganho: {earned_today}\n\n"
+            "📈 Total:\n"
+            "👯 Convidados: {count}\n"
+            "💰 Ganho: {total}\n"
+            "💵 Disponível: {available}"
+        ),
+    },
+    "referral_list_title": {
+        "ru": "👥 Твои приглашённые",
+        "en": "👥 Your invited friends",
+        "es": "👥 Tus invitados",
+        "pt": "👥 Seus convidados",
+    },
+    "referral_list_sort": {
+        "ru": "Сортировка: {sort}",
+        "en": "Sort: {sort}",
+        "es": "Orden: {sort}",
+        "pt": "Ordem: {sort}",
+    },
+    "referral_sort_newest": {
+        "ru": "сначала новые",
+        "en": "newest first",
+        "es": "más recientes",
+        "pt": "mais recentes",
+    },
+    "referral_sort_oldest": {
+        "ru": "сначала старые",
+        "en": "oldest first",
+        "es": "más antiguos",
+        "pt": "mais antigos",
+    },
+    "referral_list_line": {
+        "ru": "{index}. {name} · {date} · +{earned}",
+        "en": "{index}. {name} · {date} · +{earned}",
+        "es": "{index}. {name} · {date} · +{earned}",
+        "pt": "{index}. {name} · {date} · +{earned}",
+    },
+    "referral_list_empty": {
+        "ru": (
+            "👥 Пока никого не пригласил.\n\n"
+            "Отправь другу свою ссылку — здесь появится список с датой присоединения."
+        ),
+        "en": (
+            "👥 No invited friends yet.\n\n"
+            "Share your link — invited users will appear here with join dates."
+        ),
+        "es": "👥 Aún no hay invitados. Comparte tu enlace.",
+        "pt": "👥 Ainda não há convidados. Compartilhe seu link.",
     },
     "referral_withdraw_accepted": {
         "ru": (

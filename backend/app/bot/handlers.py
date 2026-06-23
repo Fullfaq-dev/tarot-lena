@@ -36,10 +36,13 @@ from app.bot.keyboards import (
     inline_reading_prompt,
     inline_readings_menu,
     inline_referral_menu,
+    inline_referral_list_menu,
+    inline_referral_stats_menu,
     inline_settings_menu,
     inline_spending_menu,
     inline_withdraw_wallet_menu,
     is_balance_button,
+    is_home_button,
     main_menu,
     onboarding_keyboard,
     profile_field_keyboard,
@@ -151,6 +154,22 @@ async def _user_main_menu(telegram_id: int):
     return main_menu(balance, lang)
 
 
+async def _refresh_reply_keyboard(message: Message, telegram_id: int) -> None:
+    await message.answer(
+        "\u2800",
+        reply_markup=await _user_main_menu(telegram_id),
+        disable_notification=True,
+    )
+
+
+async def _go_home(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    telegram_id = message.from_user.id
+    await _refresh_reply_keyboard(message, telegram_id)
+    menu_text, menu_markup = await _main_menu_inline(telegram_id)
+    await message.answer(menu_text, reply_markup=menu_markup)
+
+
 async def _main_menu_inline(telegram_id: int):
     lang = await _user_language(telegram_id)
     return main_menu_text(lang), inline_main_menu(lang)
@@ -164,6 +183,7 @@ async def _open_billing(message: Message, *, edit_message: Message | None = None
         await safe_edit(edit_message, text, markup)
     else:
         await message.answer(text, reply_markup=markup, parse_mode=None)
+    await _refresh_reply_keyboard(message, message.from_user.id)
 
 
 async def _readings_menu_text(telegram_id: int) -> str:
@@ -411,6 +431,8 @@ async def _notify_billing(
         parts.append(
             t("chat_balance_after", lang, balance=format_balance(usage.get("balance_after")))
         )
+        if reply_markup is None:
+            reply_markup = await _user_main_menu(user_telegram_id)
         await message.answer(" ".join(parts), reply_markup=reply_markup)
         return True
     if billing_mode == "free" and free_messages_left(
@@ -683,6 +705,7 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
     if target == "main":
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
         await safe_edit(callback.message, menu_text, menu_markup)
+        await _refresh_reply_keyboard(callback.message, callback.from_user.id)
         return
 
     if target == "readings":
@@ -921,6 +944,47 @@ async def referral_share_callback(callback: CallbackQuery) -> None:
     )
 
 
+@router.callback_query(F.data == "ref:stats")
+async def referral_stats_callback(callback: CallbackQuery) -> None:
+    lang = await _user_language(callback.from_user.id)
+    await callback.answer()
+    text = await ReferralService().stats_panel_text(callback.from_user.id)
+    await safe_edit(callback.message, text, inline_referral_stats_menu(lang), parse_mode=None)
+    await _track(None, "bot.referral", {"action": "stats"})
+
+
+@router.callback_query(F.data.startswith("ref:list:"))
+async def referral_list_callback(callback: CallbackQuery) -> None:
+    lang = await _user_language(callback.from_user.id)
+    await callback.answer()
+    parts = callback.data.split(":")
+    try:
+        page = int(parts[2])
+        sort = parts[3] if len(parts) > 3 else "new"
+    except (IndexError, ValueError):
+        page = 0
+        sort = "new"
+    if sort not in {"new", "old"}:
+        sort = "new"
+    service = ReferralService()
+    text, items, page, total_pages = await service.referred_users_page(
+        callback.from_user.id,
+        page,
+        sort_newest_first=sort == "new",
+    )
+    if not items and page == 0:
+        markup = inline_referral_stats_menu(lang)
+    else:
+        markup = inline_referral_list_menu(page, total_pages, sort=sort, lang=lang)
+    await safe_edit(
+        callback.message,
+        text,
+        markup,
+        parse_mode=None,
+    )
+    await _track(None, "bot.referral", {"action": "list", "page": page, "sort": sort})
+
+
 async def _referral_available(telegram_id: int) -> Decimal | None:
     async with AsyncSessionLocal() as session:
         user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
@@ -1076,6 +1140,7 @@ async def billing_callback(callback: CallbackQuery) -> None:
     await callback.answer()
     markup = inline_payment_menu(pay_url, lang) if pay_url else await _user_main_menu(callback.from_user.id)
     await callback.message.answer(text, reply_markup=markup, parse_mode=None)
+    await _refresh_reply_keyboard(callback.message, callback.from_user.id)
 
 
 @router.callback_query(F.data == "nav:readings")
@@ -1154,6 +1219,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
         await safe_edit(callback.message, menu_text, menu_markup)
+        await _refresh_reply_keyboard(callback.message, callback.from_user.id)
         return
 
     if action == "daily":
@@ -1177,6 +1243,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "billing":
         text = await BillingService().panel_text(callback.from_user.id)
         await safe_edit(callback.message, text, inline_billing_menu(lang))
+        await _refresh_reply_keyboard(callback.message, callback.from_user.id)
         await _track(None, "bot.menu", {"item": "billing"})
         return
 
@@ -1538,6 +1605,10 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             return
 
         # Menu buttons cancel any stale feature FSM and open the chosen section.
+        if is_home_button(text):
+            await _go_home(message, state)
+            return
+
         if is_balance_button(text):
             await state.clear()
             await _open_billing(message)
@@ -1680,6 +1751,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     tarot = TarotService()
     await state.clear()
     lang = await _user_language(message.from_user.id)
+    await _refresh_reply_keyboard(message, message.from_user.id)
     action = menu_actions(lang).get(text) or MENU_ACTIONS.get(text)
 
     if action == "zen":

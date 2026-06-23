@@ -481,6 +481,42 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
         "es": "💸 Retirar fondos",
         "pt": "💸 Sacar fundos",
     },
+    "btn_referral_stats": {
+        "ru": "📊 Статистика",
+        "en": "📊 Statistics",
+        "es": "📊 Estadísticas",
+        "pt": "📊 Estatísticas",
+    },
+    "btn_referral_invited_list": {
+        "ru": "👥 Список приглашённых",
+        "en": "👥 Invited friends",
+        "es": "👥 Invitados",
+        "pt": "👥 Convidados",
+    },
+    "btn_back_to_referrals": {
+        "ru": "← Рефералка",
+        "en": "← Referrals",
+        "es": "← Referidos",
+        "pt": "← Indicações",
+    },
+    "btn_back_to_referral_stats": {
+        "ru": "← Статистика",
+        "en": "← Statistics",
+        "es": "← Estadísticas",
+        "pt": "← Estatísticas",
+    },
+    "btn_sort_newest": {
+        "ru": "📅 Сначала новые",
+        "en": "📅 Newest first",
+        "es": "📅 Más recientes",
+        "pt": "📅 Mais recentes",
+    },
+    "btn_sort_oldest": {
+        "ru": "📅 Сначала старые",
+        "en": "📅 Oldest first",
+        "es": "📅 Más antiguos",
+        "pt": "📅 Mais antigos",
+    },
     "btn_withdraw_all": {
         "ru": "💸 Вывести всё ({amount})",
         "en": "💸 Withdraw all ({amount})",
