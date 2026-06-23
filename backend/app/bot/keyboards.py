@@ -347,13 +347,13 @@ def inline_billing_menu(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="💳 +100 ₽", callback_data="bill:topup:100"),
-                InlineKeyboardButton(text="💳 +300 ₽", callback_data="bill:topup:300"),
-                InlineKeyboardButton(text="💳 +500 ₽", callback_data="bill:topup:500"),
+                InlineKeyboardButton(text="🟢 Пополнить 100 ₽", callback_data="bill:topup:100"),
+                InlineKeyboardButton(text="🟢 300 ₽", callback_data="bill:topup:300"),
+                InlineKeyboardButton(text="🟢 500 ₽", callback_data="bill:topup:500"),
             ],
             [
-                InlineKeyboardButton(text="✨ Plus · 999 ₽/мес", callback_data="bill:sub:plus"),
-                InlineKeyboardButton(text="👑 Premium · 2999 ₽/мес", callback_data="bill:sub:premium"),
+                InlineKeyboardButton(text="✨ Plus · безлимит", callback_data="bill:sub:plus"),
+                InlineKeyboardButton(text="👑 Premium · голос", callback_data="bill:sub:premium"),
             ],
             [InlineKeyboardButton(text=t("btn_spending_history", lang), callback_data="bill:spend:0")],
             [_support_button(lang)],

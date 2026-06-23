@@ -28,58 +28,61 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "billing_panel": {
         "ru": (
-            "💳 Подписка и баланс\n\n"
-            "⭐ Тариф: {tier}\n"
-            "💰 Баланс (ЛС): {balance}\n"
-            "🤝 Реферальный баланс: {ref_balance}\n"
-            "💬 Бесплатных сообщений: {free_left} из {free_limit}\n"
-            "🔮 Бесплатных раскладов: {readings_left} из 3\n\n"
-            "📋 На бесплатном тарифе после лимита ответы ИИ списываются с баланса: 5–30 ₽ "
-            "(зависит от длины сообщения).\n"
-            "📸 Анализ фото с инфографикой (аура, ладонь) — 100 ₽ с баланса.\n\n"
-            "✨ Plus — {plus_price}/мес: безлимитный чат без списаний.\n"
-            "👑 Premium — {premium_price}/мес: безлимитный чат без списаний + голосовые ответы.\n\n"
-            "🤝 Приглашай друзей и получай 40% с их оплат. Вывод от {min_withdraw} в USDT."
+            "<b>💳 Баланс и подписка</b>\n"
+            "<i>Здесь видно, что доступно сейчас и сколько стоит продолжить.</i>\n\n"
+            "<pre>"
+            "Тариф              {tier}\n"
+            "Баланс             {balance}\n"
+            "Реферальный баланс {ref_balance}\n"
+            "</pre>\n\n"
+            "<b>Бесплатный лимит на месяц</b>\n"
+            "💬 Сообщения в AI-чате: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Расклады таро: <b>{readings_left}/3</b>\n\n"
+            "<b>Если лимит закончился</b>\n"
+            "• Ответ AI списывает с баланса примерно <b>5–30 ₽</b> — зависит от длины диалога.\n"
+            "• Фото с инфографикой по ауре или ладони стоит <b>100 ₽</b>.\n\n"
+            "<b>Подписки</b>\n"
+            "✨ <b>Plus</b> — {plus_price}/мес: безлимитный AI-чат без списаний.\n"
+            "👑 <b>Premium</b> — {premium_price}/мес: безлимитный чат + голосовые ответы.\n\n"
+            "🤝 Приглашай друзей и получай <b>40%</b> с их оплат. Вывод от {min_withdraw} в USDT."
         ),
         "en": (
-            "💳 Subscription & balance\n\n"
-            "⭐ Plan: {tier}\n"
-            "💰 Balance: {balance}\n"
-            "🤝 Referral balance: {ref_balance}\n"
-            "💬 Free messages: {free_left} of {free_limit}\n"
-            "🔮 Free readings: {readings_left} of 3\n\n"
-            "📋 On the free plan, after the limit AI replies charge 5–30 ₽ from balance "
-            "(depends on message length).\n"
-            "📸 Photo analysis with infographic (aura, palm) — 100 ₽ from balance.\n\n"
-            "✨ Plus — {plus_price}/mo: unlimited chat, no per-message charges.\n"
-            "👑 Premium — {premium_price}/mo: unlimited chat + voice replies.\n\n"
-            "🤝 Invite friends — 40% of their payments. Withdraw from {min_withdraw} USDT."
+            "<b>💳 Balance & subscription</b>\n\n"
+            "<pre>"
+            "Plan             {tier}\n"
+            "Balance          {balance}\n"
+            "Referral balance {ref_balance}\n"
+            "</pre>\n\n"
+            "<b>Monthly free quota</b>\n"
+            "💬 AI chat: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Tarot readings: <b>{readings_left}/3</b>\n\n"
+            "After the free quota, AI replies charge <b>5–30 ₽</b> from balance.\n"
+            "Photo aura/palm infographic costs <b>100 ₽</b>.\n\n"
+            "✨ <b>Plus</b> — {plus_price}/mo: unlimited AI chat.\n"
+            "👑 <b>Premium</b> — {premium_price}/mo: unlimited chat + voice replies.\n\n"
+            "🤝 Invite friends and get <b>40%</b> of their payments. Withdraw from {min_withdraw} USDT."
         ),
         "es": (
-            "💳 Suscripción y saldo\n\n"
-            "⭐ Plan: {tier}\n"
-            "💰 Saldo: {balance}\n"
-            "🤝 Saldo referidos: {ref_balance}\n"
-            "💬 Mensajes gratis: {free_left} de {free_limit}\n"
-            "🔮 Tiradas gratis: {readings_left} de 3\n\n"
-            "📋 En plan gratis, tras el límite: 5–30 ₽ por respuesta IA del saldo.\n"
-            "📸 Foto con infografía (aura, palma) — 100 ₽ del saldo.\n\n"
-            "✨ Plus — {plus_price}/mes: chat ilimitado sin cobros por mensaje.\n"
-            "👑 Premium — {premium_price}/mes: chat ilimitado + voz.\n\n"
-            "🤝 Invita amigos — 40% de sus pagos. Retiro desde {min_withdraw} USDT."
+            "<b>💳 Suscripción y saldo</b>\n\n"
+            "Plan: <b>{tier}</b>\n"
+            "Saldo: <b>{balance}</b>\n"
+            "Referidos: <b>{ref_balance}</b>\n\n"
+            "💬 Mensajes gratis: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Tiradas gratis: <b>{readings_left}/3</b>\n\n"
+            "Tras el límite: 5–30 ₽ por respuesta IA. Foto con infografía — 100 ₽.\n\n"
+            "✨ <b>Plus</b> — {plus_price}/mes: chat ilimitado.\n"
+            "👑 <b>Premium</b> — {premium_price}/mes: chat ilimitado + voz."
         ),
         "pt": (
-            "💳 Assinatura e saldo\n\n"
-            "⭐ Plano: {tier}\n"
-            "💰 Saldo: {balance}\n"
-            "🤝 Saldo indicação: {ref_balance}\n"
-            "💬 Mensagens grátis: {free_left} de {free_limit}\n"
-            "🔮 Leituras grátis: {readings_left} de 3\n\n"
-            "📋 No plano grátis, após o limite: 5–30 ₽ por resposta IA do saldo.\n"
-            "📸 Foto com infográfico (aura, palma) — 100 ₽ do saldo.\n\n"
-            "✨ Plus — {plus_price}/mês: chat ilimitado sem cobrança por mensagem.\n"
-            "👑 Premium — {premium_price}/mês: chat ilimitado + voz.\n\n"
-            "🤝 Convide amigos — 40% dos pagamentos. Saque a partir de {min_withdraw} USDT."
+            "<b>💳 Assinatura e saldo</b>\n\n"
+            "Plano: <b>{tier}</b>\n"
+            "Saldo: <b>{balance}</b>\n"
+            "Indicação: <b>{ref_balance}</b>\n\n"
+            "💬 Mensagens grátis: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Leituras grátis: <b>{readings_left}/3</b>\n\n"
+            "Após o limite: 5–30 ₽ por resposta IA. Foto com infográfico — 100 ₽.\n\n"
+            "✨ <b>Plus</b> — {plus_price}/mês: chat ilimitado.\n"
+            "👑 <b>Premium</b> — {premium_price}/mês: chat ilimitado + voz."
         ),
     },
     "tier_free": {"ru": "Бесплатный", "en": "Free", "es": "Gratis", "pt": "Grátis"},
@@ -110,16 +113,18 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "billing_topup_link": {
         "ru": (
-            "Оплата {amount} ₽ — нажми кнопку ниже.\n\n"
-            "Платёжная система может взимать свою комиссию. "
-            "На баланс зачисляется ровно {amount} ₽ — как указано на кнопке.\n\n"
-            "После успешной оплаты пришлю уведомление. "
-            "С баланса списываются ответы ИИ (5–30 ₽) и анализ фото с инфографикой (100 ₽)."
+            "<b>💳 Пополнение баланса</b>\n\n"
+            "Сумма на кнопке: <b>{amount} ₽</b>\n"
+            "На баланс Arcana AI зачислится ровно <b>{amount} ₽</b>.\n\n"
+            "Платёжная система может добавить свою комиссию сверху — это комиссия провайдера, "
+            "не бота.\n\n"
+            "После успешной оплаты я сразу пришлю уведомление."
         ),
         "en": (
-            "Pay {amount} ₽ — tap the button below.\n\n"
+            "<b>💳 Balance top-up</b>\n\n"
+            "Button amount: <b>{amount} ₽</b>.\n"
+            "Your Arcana AI balance receives exactly <b>{amount} ₽</b>.\n\n"
             "The payment provider may charge its own fee. "
-            "Your balance is credited exactly {amount} ₽ — as shown on the button.\n\n"
             "You'll get a notification once payment succeeds."
         ),
         "es": (
@@ -137,16 +142,20 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "billing_sub_link": {
         "ru": (
-            "Подписка {label} — {amount} ₽/мес. Нажми кнопку ниже.\n\n"
-            "Платёжная система может взимать свою комиссию. "
-            "Сумма на кнопке — {amount} ₽; после оплаты тариф активируется автоматически, "
-            "сообщения в AI-чате безлимитны и без списаний с баланса.\n\n"
-            "Пришлю уведомление, когда оплата пройдёт."
+            "<b>✨ Подписка {label}</b>\n\n"
+            "Стоимость: <b>{amount} ₽/мес</b>\n"
+            "После оплаты тариф включится автоматически.\n\n"
+            "Что изменится:\n"
+            "• AI-чат станет безлимитным\n"
+            "• за сообщения не будет списаний с баланса\n\n"
+            "Платёжная система может добавить свою комиссию сверху. "
+            "Когда оплата пройдёт, я пришлю уведомление."
         ),
         "en": (
-            "{label} subscription — {amount} ₽/mo. Tap the button below.\n\n"
+            "<b>✨ {label} subscription</b>\n\n"
+            "Price: <b>{amount} ₽/mo</b>.\n"
+            "After payment, your plan activates automatically.\n\n"
             "The payment provider may charge its own fee. "
-            "Button amount is {amount} ₽; after payment your plan activates with unlimited AI chat.\n\n"
             "You'll get a notification once payment succeeds."
         ),
         "es": (
@@ -689,8 +698,16 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "pt": "Não parece endereço USDT TRC-20. 🤔",
     },
     "support_message": {
-        "ru": "💬 Напиши в поддержку Arcana AI — поможем с оплатой, багами и любыми вопросами по боту.",
-        "en": "💬 Contact Arcana AI support — billing, bugs, and any bot questions.",
+        "ru": (
+            "<b>💬 Поддержка Arcana AI</b>\n\n"
+            "Напиши нам, если что-то не работает, не пришла оплата, списание выглядит странно "
+            "или просто нужен живой ответ по боту.\n\n"
+            "Обычно полезно сразу прислать скрин и коротко описать, что нажимал."
+        ),
+        "en": (
+            "<b>💬 Arcana AI support</b>\n\n"
+            "Contact us about payments, bugs, unexpected charges, or any bot questions."
+        ),
         "es": "💬 Contacta soporte Arcana AI.",
         "pt": "💬 Contate o suporte Arcana AI.",
     },
@@ -810,28 +827,31 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "referral_panel": {
         "ru": (
-            "🤝 Реферальная программа\n\n"
-            "💰 Доступно к выводу: {available}\n"
-            "📈 Всего заработано: {total}\n"
-            "👯 Приглашено друзей: {count}\n\n"
-            "Как это работает:\n"
-            "1️⃣ Отправь другу свою ссылку\n"
-            "2️⃣ Он или она пополняет баланс или оформляет подписку\n"
-            "3️⃣ Тебе сразу падает {percent}% от каждой оплаты\n\n"
-            "💸 Вывод от {min_withdraw} на USDT (сеть TRC-20). Выплаты — каждую пятницу.\n\n"
-            "🔗 Твоя ссылка:\n{link}"
+            "<b>🤝 Реферальная программа</b>\n"
+            "<i>Приглашай друзей и получай процент с их оплат.</i>\n\n"
+            "<pre>"
+            "Доступно к выводу {available}\n"
+            "Всего заработано  {total}\n"
+            "Приглашено        {count}\n"
+            "</pre>\n\n"
+            "<b>Как это работает</b>\n"
+            "1. Отправь другу свою ссылку.\n"
+            "2. Друг регистрируется и пополняет баланс или оформляет подписку.\n"
+            "3. Тебе начисляется <b>{percent}%</b> с каждой его оплаты.\n\n"
+            "💸 Вывод от <b>{min_withdraw}</b> на USDT TRC-20. Выплаты — по пятницам.\n\n"
+            "<b>Твоя ссылка</b>\n"
+            "<code>{link}</code>"
         ),
         "en": (
-            "🤝 Referral program\n\n"
-            "💰 Available to withdraw: {available}\n"
-            "📈 Total earned: {total}\n"
-            "👯 Friends invited: {count}\n\n"
-            "How it works:\n"
-            "1️⃣ Share your link\n"
-            "2️⃣ Friend tops up or subscribes\n"
-            "3️⃣ You get {percent}% of each payment\n\n"
-            "💸 Withdraw from {min_withdraw} in USDT (TRC-20). Payouts every Friday.\n\n"
-            "🔗 Your link:\n{link}"
+            "<b>🤝 Referral program</b>\n\n"
+            "<pre>"
+            "Available {available}\n"
+            "Earned    {total}\n"
+            "Invited   {count}\n"
+            "</pre>\n\n"
+            "Share your link. When a friend pays, you receive <b>{percent}%</b>.\n"
+            "Withdraw from <b>{min_withdraw}</b> in USDT TRC-20.\n\n"
+            "<b>Your link</b>\n<code>{link}</code>"
         ),
         "es": (
             "🤝 Programa de referidos\n\n"

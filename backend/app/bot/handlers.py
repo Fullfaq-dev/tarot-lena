@@ -171,9 +171,9 @@ async def _open_billing(message: Message, *, edit_message: Message | None = None
     text = await BillingService().panel_text(message.from_user.id)
     markup = inline_billing_menu(lang)
     if edit_message is not None:
-        await safe_edit(edit_message, text, markup)
+        await safe_edit(edit_message, text, markup, parse_mode=ParseMode.HTML)
     else:
-        await message.answer(text, reply_markup=markup, parse_mode=None)
+        await message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
 async def _readings_menu_text(telegram_id: int) -> str:
@@ -244,9 +244,9 @@ async def _open_referrals(
     share_link = ReferralService().build_referral_link(username, actor_id)
     markup = inline_referral_menu(share_link=share_link, lang=lang)
     if edit_message is not None:
-        await safe_edit(edit_message, text, markup)
+        await safe_edit(edit_message, text, markup, parse_mode=ParseMode.HTML)
     else:
-        await message.answer(text, reply_markup=markup, parse_mode=None)
+        await message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
 async def _with_typing(message: Message, coro):
@@ -1128,7 +1128,7 @@ async def billing_callback(callback: CallbackQuery) -> None:
 
     await callback.answer()
     markup = inline_payment_menu(pay_url, lang) if pay_url else await _user_main_menu(callback.from_user.id)
-    await callback.message.answer(text, reply_markup=markup, parse_mode=None)
+    await callback.message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
 
 
 @router.callback_query(F.data == "nav:readings")
@@ -1256,7 +1256,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if action == "info":
-        await safe_edit(callback.message, info_panel_text(lang), inline_info_menu(lang), parse_mode=None)
+        await safe_edit(callback.message, info_panel_text(lang), inline_info_menu(lang), parse_mode=ParseMode.HTML)
         await _track(None, "bot.menu", {"item": "info"})
         return
 
@@ -1805,7 +1805,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         return
 
     if action == "info":
-        await message.answer(info_panel_text(lang), reply_markup=inline_info_menu(lang), parse_mode=None)
+        await message.answer(info_panel_text(lang), reply_markup=inline_info_menu(lang), parse_mode=ParseMode.HTML)
         await _track(None, "bot.menu", {"item": text})
         return
 
@@ -1817,6 +1817,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
                     [InlineKeyboardButton(text=t("btn_open_support", lang), url=support_url())]
                 ]
             ),
+            parse_mode=ParseMode.HTML,
         )
         await _track(None, "bot.menu", {"item": text})
         return
