@@ -14,52 +14,70 @@ jobs:
         env:
           AI302_API_KEY: ${{ secrets.AI302_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          PLATEGA_MERCHANT_ID: ${{ secrets.PLATEGA_MERCHANT_ID }}
+          PLATEGA_API_KEY: ${{ secrets.PLATEGA_API_KEY }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: AI302_API_KEY,ELEVENLABS_API_KEY
+          envs: AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY
           script: |
             set -euo pipefail
             cd /opt/arcane-ai
-            for kv in \
-              "TELEGRAM_PLACEHOLDER_STICKER_ID=CAACAgIAAxkBAAEEhLJqK-RBbkGoDx15NCs0aJp0IsmNgwACRZsAAvgWYEnemsvTUs4FqzwE"; do
-              key="${kv%%=*}"
+
+            set_env() {
+              local key="$1"
+              local value="$2"
+              value="$(printf '%s' "$value" | tr -d '\r\n')"
               if grep -q "^${key}=" .env; then
-                sed -i "s|^${key}=.*|${kv}|" .env
+                sed -i "s|^${key}=.*|${key}=${value}|" .env
               else
-                echo "$kv" >> .env
+                echo "${key}=${value}" >> .env
               fi
-            done
+            }
+
+            set_env TELEGRAM_PLACEHOLDER_STICKER_ID "CAACAgIAAxkBAAEEhLJqK-RBbkGoDx15NCs0aJp0IsmNgwACRZsAAvgWYEnemsvTUs4FqzwE"
+
             bash deploy/deploy.sh
+
+            RECREATE_API=0
+
             if [ -n "${ELEVENLABS_API_KEY:-}" ]; then
-              ELEVENLABS_API_KEY="$(printf '%s' "$ELEVENLABS_API_KEY" | tr -d '\r\n')"
-              for kv in \
-                "ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}" \
-                "ELEVENLABS_TTS_MODEL=eleven_turbo_v2_5" \
-                "ELEVENLABS_DEFAULT_VOICE_ID=hLjwV7lYzk15SWLUmhEH"; do
-                key="${kv%%=*}"
-                if grep -q "^${key}=" .env; then
-                  sed -i "s|^${key}=.*|${kv}|" .env
-                else
-                  echo "$kv" >> .env
-                fi
-              done
-              docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps api
+              set_env ELEVENLABS_API_KEY "${ELEVENLABS_API_KEY}"
+              set_env ELEVENLABS_TTS_MODEL "eleven_turbo_v2_5"
+              set_env ELEVENLABS_DEFAULT_VOICE_ID "hLjwV7lYzk15SWLUmhEH"
+              RECREATE_API=1
             fi
+
             if [ -n "${AI302_API_KEY:-}" ]; then
-              AI302_API_KEY="$(printf '%s' "$AI302_API_KEY" | tr -d '\r\n')"
-              for kv in \
-                "AI302_API_KEY=${AI302_API_KEY}" \
-                "AI302_BASE_URL=https://api.302.ai" \
-                "AI302_STT_MODEL=whisper-1"; do
-                key="${kv%%=*}"
-                if grep -q "^${key}=" .env; then
-                  sed -i "s|^${key}=.*|${kv}|" .env
-                else
-                  echo "$kv" >> .env
-                fi
-              done
-              docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps api
+              set_env AI302_API_KEY "${AI302_API_KEY}"
+              set_env AI302_BASE_URL "https://api.302.ai"
+              set_env AI302_STT_MODEL "whisper-1"
+              RECREATE_API=1
+            fi
+
+            if [ -n "${PLATEGA_MERCHANT_ID:-}" ] && [ -n "${PLATEGA_API_KEY:-}" ]; then
+              set_env PLATEGA_MERCHANT_ID "${PLATEGA_MERCHANT_ID}"
+              set_env PLATEGA_API_KEY "${PLATEGA_API_KEY}"
+              set_env PLATEGA_PAYMENT_METHOD "10"
+              set_env PUBLIC_BASE_URL "https://arcaneai.online"
+              set_env APP_ENV "production"
+              RECREATE_API=1
+            fi
+
+            if [ "$RECREATE_API" -eq 1 ]; then
+              docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps api worker
+            fi
+
+            if [ -n "${AI302_API_KEY:-}" ]; then
               docker compose -f docker-compose.prod.yml exec -T api python -c "from app.core.config import get_settings; k=get_settings().ai302_api_key; print('AI302 configured:', k[:7]+'...' if k and k!='replace-me' else 'MISSING')"
+            fi
+
+            if [ -n "${PLATEGA_MERCHANT_ID:-}" ] && [ -n "${PLATEGA_API_KEY:-}" ]; then
+              docker compose -f docker-compose.prod.yml exec -T api python -c "
+            import asyncio
+            from app.services.billing.platega_client import fetch_balances
+            balances, err = asyncio.run(fetch_balances())
+            print('Platega balances:', balances if balances else err)
+            "
             fi
