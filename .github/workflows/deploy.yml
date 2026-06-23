@@ -67,6 +67,7 @@ jobs:
 
             if [ "$RECREATE_API" -eq 1 ]; then
               docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps api worker
+              docker compose -f docker-compose.prod.yml restart nginx
             fi
 
             if [ -n "${AI302_API_KEY:-}" ]; then
