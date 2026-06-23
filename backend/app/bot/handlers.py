@@ -154,23 +154,11 @@ async def _user_main_menu(telegram_id: int):
     return main_menu(balance, lang)
 
 
-async def _refresh_reply_keyboard(message: Message, telegram_id: int) -> None:
-    try:
-        await message.answer(
-            "·",
-            reply_markup=await _user_main_menu(telegram_id),
-            disable_notification=True,
-        )
-    except Exception as exc:
-        logger.warning("reply keyboard refresh failed for telegram_id=%s: %s", telegram_id, exc)
-
-
 async def _go_home(message: Message, state: FSMContext) -> None:
     await state.clear()
     telegram_id = message.from_user.id
     menu_text, menu_markup = await _main_menu_inline(telegram_id)
     await message.answer(menu_text, reply_markup=menu_markup)
-    await _refresh_reply_keyboard(message, telegram_id)
 
 
 async def _main_menu_inline(telegram_id: int):
@@ -186,7 +174,6 @@ async def _open_billing(message: Message, *, edit_message: Message | None = None
         await safe_edit(edit_message, text, markup)
     else:
         await message.answer(text, reply_markup=markup, parse_mode=None)
-    await _refresh_reply_keyboard(message, message.from_user.id)
 
 
 async def _readings_menu_text(telegram_id: int) -> str:
@@ -708,7 +695,6 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
     if target == "main":
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
         await safe_edit(callback.message, menu_text, menu_markup)
-        await _refresh_reply_keyboard(callback.message, callback.from_user.id)
         return
 
     if target == "readings":
@@ -1143,7 +1129,6 @@ async def billing_callback(callback: CallbackQuery) -> None:
     await callback.answer()
     markup = inline_payment_menu(pay_url, lang) if pay_url else await _user_main_menu(callback.from_user.id)
     await callback.message.answer(text, reply_markup=markup, parse_mode=None)
-    await _refresh_reply_keyboard(callback.message, callback.from_user.id)
 
 
 @router.callback_query(F.data == "nav:readings")
@@ -1222,7 +1207,6 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
         await safe_edit(callback.message, menu_text, menu_markup)
-        await _refresh_reply_keyboard(callback.message, callback.from_user.id)
         return
 
     if action == "daily":
@@ -1246,7 +1230,6 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "billing":
         text = await BillingService().panel_text(callback.from_user.id)
         await safe_edit(callback.message, text, inline_billing_menu(lang))
-        await _refresh_reply_keyboard(callback.message, callback.from_user.id)
         await _track(None, "bot.menu", {"item": "billing"})
         return
 
@@ -1754,7 +1737,6 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     tarot = TarotService()
     await state.clear()
     lang = await _user_language(message.from_user.id)
-    await _refresh_reply_keyboard(message, message.from_user.id)
     action = menu_actions(lang).get(text) or MENU_ACTIONS.get(text)
 
     if action == "home":
