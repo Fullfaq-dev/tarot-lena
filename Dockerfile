@@ -11,6 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./
+COPY platega-sdk-python ./platega-sdk-python
 RUN pip install --no-cache-dir -e .
 
 COPY alembic.ini ./

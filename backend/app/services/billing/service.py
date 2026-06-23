@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -30,6 +31,14 @@ from app.services.billing.tokens import (
     provider_cost_usd,
     total_tokens,
 )
+
+logger = logging.getLogger(__name__)
+
+_PAYMENT_DESCRIPTIONS = {
+    "topup": "Пополнение баланса Arcana AI",
+    "subscription_plus": "Подписка Plus Arcana AI",
+    "subscription_premium": "Подписка Premium Arcana AI",
+}
 
 
 class BillingService:
@@ -418,17 +427,12 @@ class BillingService:
             if user is None:
                 return t("error_need_start", lang)
 
-            intent = await self.provider.create_payment(user.id, amount, f"subscription_{tier}")
-            session.add(
-                Payment(
-                    user_id=user.id,
-                    provider="platega",
-                    provider_payment_id=intent.provider_payment_id,
-                    purpose=f"subscription_{tier}",
-                    amount_rub=amount,
-                )
+            intent = await self._initiate_platega_payment(
+                session,
+                user,
+                amount,
+                f"subscription_{tier}",
             )
-            await session.commit()
             label = "Plus" if tier == "plus" else "Premium"
             return t("billing_sub_link", lang, label=label, amount=amount, url=intent.payment_url)
 
@@ -457,18 +461,77 @@ class BillingService:
         }
 
     async def create_topup(self, session: AsyncSession, user: User, amount: Decimal) -> PaymentIntent:
-        intent = await self.provider.create_payment(user.id, amount, "topup")
-        session.add(
-            Payment(
-                user_id=user.id,
-                provider="platega",
-                provider_payment_id=intent.provider_payment_id,
-                purpose="topup",
-                amount_rub=amount,
-            )
+        return await self._initiate_platega_payment(session, user, amount, "topup")
+
+    async def _initiate_platega_payment(
+        self,
+        session: AsyncSession,
+        user: User,
+        amount: Decimal,
+        purpose: str,
+    ) -> PaymentIntent:
+        payment = Payment(
+            user_id=user.id,
+            provider="platega",
+            purpose=purpose,
+            amount_rub=amount,
+            status="pending",
         )
+        session.add(payment)
+        await session.flush()
+
+        description = _PAYMENT_DESCRIPTIONS.get(purpose, f"Оплата Arcana AI ({purpose})")
+        intent = await self.provider.create_payment(
+            payment_id=str(payment.id),
+            amount_rub=amount,
+            purpose=purpose,
+            description=description,
+        )
+        payment.provider_payment_id = intent.provider_payment_id
+        payment.payload = {"payment_url": intent.payment_url}
         await session.commit()
         return intent
+
+    async def process_platega_callback(
+        self,
+        session: AsyncSession,
+        *,
+        transaction_id: str,
+        payment_id: str | None,
+        status: str,
+    ) -> None:
+        payment = None
+        if payment_id:
+            payment = await session.scalar(select(Payment).where(Payment.id == payment_id))
+        if payment is None and transaction_id:
+            payment = await session.scalar(
+                select(Payment).where(Payment.provider_payment_id == transaction_id)
+            )
+        if payment is None:
+            logger.warning(
+                "Platega callback for unknown payment: tx=%s payment_id=%s",
+                transaction_id,
+                payment_id,
+            )
+            return
+
+        if payment.status != "pending":
+            logger.info("Platega callback ignored for payment %s with status %s", payment.id, payment.status)
+            return
+
+        payload = dict(payment.payload or {})
+        payload["platega_status"] = status
+        payload["platega_transaction_id"] = transaction_id
+        payment.payload = payload
+
+        if status == "CONFIRMED":
+            await self.complete_payment(session, payment)
+        elif status in {"CANCELED", "CHARGEBACKED"}:
+            await self.reject_payment(
+                session,
+                payment,
+                admin_comment=f"Platega status: {status}",
+            )
 
     async def complete_payment(
         self,

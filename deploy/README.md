@@ -57,6 +57,20 @@ PUBLIC_BASE_URL=https://arcaneai.online
 AI302_API_KEY=your-302ai-key
 AI302_BASE_URL=https://api.302.ai
 AI302_STT_MODEL=whisper-v3-turbo
+
+PLATEGA_MERCHANT_ID=your-merchant-uuid
+PLATEGA_API_KEY=your-platega-api-secret
+PLATEGA_PAYMENT_METHOD=10
 ```
+
+### Platega callback URL
+
+In the Platega merchant dashboard, set the callback (webhook) URL to:
+
+```
+https://arcaneai.online/callbacks/platega
+```
+
+Platega sends `POST` with headers `X-MerchantId` and `X-Secret` (same as API key). On `CONFIRMED`, the bot credits balance or activates a subscription automatically.
 
 On deploy, `AI302_API_KEY` is synced from GitHub secret `AI302_API_KEY` when set.

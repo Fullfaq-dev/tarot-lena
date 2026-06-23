@@ -12,6 +12,7 @@ from app.admin_api.auth import get_current_admin
 from app.core.config import get_settings
 from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, User
 from app.database.session import get_session
+from app.services.billing.platega_client import fetch_balances
 from app.services.billing.service import BillingService
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin)])
@@ -19,7 +20,18 @@ router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin)])
 
 @router.get("/dashboard")
 async def dashboard(session: AsyncSession = Depends(get_session)) -> dict:
-    return await admin_service.dashboard_stats(session)
+    stats = await admin_service.dashboard_stats(session)
+    balances, error = await fetch_balances()
+    stats["platega_balances"] = balances
+    if error:
+        stats["platega_balances_error"] = error
+    return stats
+
+
+@router.get("/platega/balances")
+async def platega_balances() -> dict:
+    balances, error = await fetch_balances()
+    return {"balances": balances, "error": error}
 
 
 @router.get("/stats/signups")

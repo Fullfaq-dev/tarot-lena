@@ -50,8 +50,15 @@ class Settings(BaseSettings):
     support_telegram_url: str = "https://t.me/OnePage_support"
 
     platega_merchant_id: str = Field(default="", alias="PLATEGA_MERCHANT_ID")
-    platega_api_key: str = ""
-    platega_webhook_secret: str = ""
+    platega_api_key: str = Field(default="", alias="PLATEGA_API_KEY")
+    platega_webhook_secret: str = Field(default="", alias="PLATEGA_WEBHOOK_SECRET")
+    platega_payment_method: int = Field(default=10, alias="PLATEGA_PAYMENT_METHOD")
+    platega_return_url: str = Field(default="", alias="PLATEGA_RETURN_URL")
+    platega_failed_url: str = Field(default="", alias="PLATEGA_FAILED_URL")
+
+    @property
+    def platega_callback_url(self) -> str:
+        return f"{self.public_base_url.rstrip('/')}/callbacks/platega"
 
     media_storage_dir: Path = Path("backend/static/generated")
     tarot_cards_dir: Path = Path("Cards-jpg")

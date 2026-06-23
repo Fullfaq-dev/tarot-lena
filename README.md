@@ -63,13 +63,13 @@ TAROT_CARDS_DIR=Cards-jpg
 
 ## Platega
 
-Сейчас платежи идут через интерфейс `PaymentProvider` и тестовый `PlategaProvider`. Когда будет Python SDK, нужно заменить реализацию в:
+Платежи через `platega-sdk-python` и `PlategaProvider` (`backend/app/services/billing/providers.py`).
 
-```text
-backend/app/services/billing/providers.py
-```
+Переменные окружения: `PLATEGA_MERCHANT_ID`, `PLATEGA_API_KEY`, опционально `PLATEGA_PAYMENT_METHOD` (2 = СБП, 10 = карты RUB).
 
-Остальной биллинг менять не нужно: тарифы, баланс, usage accounting и платежные записи уже отделены от провайдера.
+Callback URL: `https://<your-domain>/callbacks/platega`
+
+Балансы мерчанта отображаются в админ-панели (раздел «Статистика»).
 
 ## Production
 

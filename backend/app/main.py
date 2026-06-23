@@ -13,6 +13,7 @@ from app.admin_api.auth_router import router as admin_auth_router
 from app.admin_api.auth import ensure_bootstrap_admin
 from app.api.health import router as health_router
 from app.api.kie_callbacks import router as kie_callbacks_router
+from app.api.platega_callbacks import router as platega_callbacks_router
 from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.services.tarot.seed import ensure_tarot_cards_seeded
@@ -76,6 +77,7 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(kie_callbacks_router)
+app.include_router(platega_callbacks_router)
 app.include_router(admin_auth_router, prefix="/admin-api/auth")
 app.include_router(admin_router, prefix="/admin-api")
 

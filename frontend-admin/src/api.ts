@@ -60,8 +60,32 @@ export async function login(email: string, password: string) {
   return res.json() as Promise<{ access_token: string; email: string }>;
 }
 
+export type PlategaBalance = {
+  amount: number;
+  currency: string;
+  frozen_balance: number;
+};
+
+export type DashboardStats = {
+  users: number;
+  onboarded_users: number;
+  readings: number;
+  payments_count: number;
+  payments_total_rub: string;
+  dau: number;
+  wau: number;
+  mau: number;
+  active_users: number;
+  inactive_users: number;
+  plus_subscribers: number;
+  premium_subscribers: number;
+  pending_withdrawals: number;
+  platega_balances?: PlategaBalance[];
+  platega_balances_error?: string;
+};
+
 export const api = {
-  dashboard: () => get<Record<string, number | string>>("/dashboard"),
+  dashboard: () => get<DashboardStats>("/dashboard"),
   signups: (days = 30) => get<{ date: string; count: number }[]>(`/stats/signups?days=${days}`),
   tokenStats: (days = 30, dateFrom?: string, dateTo?: string) => {
     const params = new URLSearchParams({ days: String(days) });

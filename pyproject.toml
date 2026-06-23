@@ -12,6 +12,7 @@ dependencies = [
     "greenlet>=3.1.0",
     "httpx>=0.28.0",
     "jinja2>=3.1.0",
+    "platega @ file:./platega-sdk-python",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",
     "python-jose>=3.3.0",
@@ -21,6 +22,13 @@ dependencies = [
     "sqlalchemy>=2.0.36",
     "uvicorn[standard]>=0.34.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
 
 [project.optional-dependencies]
 dev = [

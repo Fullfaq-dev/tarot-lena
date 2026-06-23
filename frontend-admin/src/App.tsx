@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api, getToken, login, setToken, BillingData, BillingUsageRow, LogRow, MemoryRow, MessageRow, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
+import { api, getToken, login, setToken, BillingData, BillingUsageRow, DashboardStats, LogRow, MemoryRow, MessageRow, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
 
 type Route =
   | { page: "dashboard" }
@@ -122,7 +122,7 @@ function NavItem({ active, onClick, children }: { active: boolean; onClick: () =
 }
 
 function DashboardPage() {
-  const [stats, setStats] = useState<Record<string, number | string> | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [signups, setSignups] = useState<{ date: string; count: number }[]>([]);
 
   useEffect(() => {
@@ -131,6 +131,13 @@ function DashboardPage() {
   }, []);
 
   const maxSignup = Math.max(...signups.map((s) => s.count), 1);
+  const plategaBalances = stats?.platega_balances ?? [];
+
+  const formatPlategaAmount = (value: number, currency: string) => {
+    const formatted = value.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
+    if (currency === "RUB") return `${formatted} ₽`;
+    return `${formatted} ${currency}`;
+  };
 
   return (
     <>
@@ -149,6 +156,31 @@ function DashboardPage() {
         <Metric title="Premium" value={Number(stats?.premium_subscribers ?? 0)} />
         <Metric title="Заявки на вывод" value={Number(stats?.pending_withdrawals ?? 0)} />
       </div>
+
+      <section className="panel">
+        <h2>Балансы Platega</h2>
+        {stats?.platega_balances_error && (
+          <p className="error">{stats.platega_balances_error}</p>
+        )}
+        {plategaBalances.length > 0 ? (
+          <div className="cards grid-4">
+            {plategaBalances.map((balance) => (
+              <Metric
+                key={balance.currency}
+                title={balance.currency}
+                value={formatPlategaAmount(balance.amount, balance.currency)}
+                hint={
+                  balance.frozen_balance > 0
+                    ? `Заморожено: ${formatPlategaAmount(balance.frozen_balance, balance.currency)}`
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          !stats?.platega_balances_error && <p className="muted">Нет данных по балансам</p>
+        )}
+      </section>
 
       <section className="panel">
         <h2>Новые пользователи за 30 дней</h2>
@@ -819,8 +851,14 @@ function TarotPage() {
   );
 }
 
-function Metric({ title, value }: { title: string; value: number | string }) {
-  return <article className="metric"><span>{title}</span><strong>{value}</strong></article>;
+function Metric({ title, value, hint }: { title: string; value: number | string; hint?: string }) {
+  return (
+    <article className="metric">
+      <span>{title}</span>
+      <strong>{value}</strong>
+      {hint && <small className="muted">{hint}</small>}
+    </article>
+  );
 }
 
 function MiniTable({ rows }: { rows: string[][] }) {
