@@ -407,25 +407,26 @@ class BillingService:
                 )
             return "\n".join(lines), page, total_pages
 
-    async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> str:
+    async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> tuple[str, str]:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             lang = await self._user_lang(session, user.id) if user else "en"
             if user is None:
-                return t("error_need_start", lang)
+                return t("error_need_start", lang), ""
             intent = await self.create_topup(session, user, amount)
-            return t("billing_topup_link", lang, amount=amount, url=intent.payment_url)
+            text = t("billing_topup_link", lang, amount=amount, url=intent.payment_url)
+            return text, intent.payment_url
 
-    async def create_subscription_for_telegram(self, telegram_id: int, tier: str) -> str:
+    async def create_subscription_for_telegram(self, telegram_id: int, tier: str) -> tuple[str, str]:
         amount = SUBSCRIPTION_PRICES_RUB.get(tier)
         if amount is None:
-            return t("billing_unknown_tier", "en")
+            return t("billing_unknown_tier", "en"), ""
 
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             lang = await self._user_lang(session, user.id) if user else "en"
             if user is None:
-                return t("error_need_start", lang)
+                return t("error_need_start", lang), ""
 
             intent = await self._initiate_platega_payment(
                 session,
@@ -434,7 +435,8 @@ class BillingService:
                 f"subscription_{tier}",
             )
             label = "Plus" if tier == "plus" else "Premium"
-            return t("billing_sub_link", lang, label=label, amount=amount, url=intent.payment_url)
+            text = t("billing_sub_link", lang, label=label, amount=amount, url=intent.payment_url)
+            return text, intent.payment_url
 
     async def admin_topup_balance(
         self,
@@ -481,12 +483,16 @@ class BillingService:
         await session.flush()
 
         description = _PAYMENT_DESCRIPTIONS.get(purpose, f"Оплата Arcana AI ({purpose})")
-        intent = await self.provider.create_payment(
-            payment_id=str(payment.id),
-            amount_rub=amount,
-            purpose=purpose,
-            description=description,
-        )
+        try:
+            intent = await self.provider.create_payment(
+                payment_id=str(payment.id),
+                amount_rub=amount,
+                purpose=purpose,
+                description=description,
+            )
+        except Exception:
+            await session.rollback()
+            raise
         payment.provider_payment_id = intent.provider_payment_id
         payment.payload = {"payment_url": intent.payment_url}
         await session.commit()

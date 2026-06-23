@@ -29,6 +29,7 @@ from app.bot.keyboards import (
     inline_memory_detail_menu,
     inline_memory_empty_menu,
     inline_memory_list_menu,
+    inline_payment_menu,
     inline_photo_mode_menu,
     inline_profile_edit_menu,
     inline_profile_menu,
@@ -57,6 +58,8 @@ from app.services.billing.limits import (
     free_messages_left,
 )
 from app.services.billing.tokens import format_balance
+from platega.exceptions import PlategaAPIError
+
 from app.services.billing.service import BillingService
 from app.services.memory.panel import MemoryPanelService
 from app.services.onboarding.service import ONBOARDING_STEPS, OnboardingService
@@ -1034,29 +1037,45 @@ async def referral_wallet_new_callback(callback: CallbackQuery, state: FSMContex
 @router.callback_query(F.data.startswith("bill:"))
 async def billing_callback(callback: CallbackQuery) -> None:
     lang = await _user_language(callback.from_user.id)
-    await callback.answer()
     billing = BillingService()
     parts = callback.data.split(":")
     if len(parts) < 3:
+        await callback.answer()
         return
 
     _, action, value = parts[0], parts[1], parts[2]
     if action == "spend":
+        await callback.answer()
         page = int(value)
         text, page, total_pages = await billing.spending_history_page(callback.from_user.id, page)
         markup = inline_spending_menu(page, max(total_pages, 1), lang)
         await safe_edit(callback.message, text, markup, parse_mode=None)
         return
 
-    if action == "topup":
-        text = await billing.create_topup_for_telegram(callback.from_user.id, Decimal(value))
-        await callback.message.answer(text, reply_markup=await _user_main_menu(callback.from_user.id))
+    try:
+        if action == "topup":
+            text, pay_url = await billing.create_topup_for_telegram(
+                callback.from_user.id, Decimal(value)
+            )
+        elif action == "sub":
+            text, pay_url = await billing.create_subscription_for_telegram(
+                callback.from_user.id, value
+            )
+        else:
+            await callback.answer()
+            return
+    except PlategaAPIError as exc:
+        logger.warning("Platega payment creation failed: %s", exc)
+        await callback.answer(t("billing_payment_failed", lang), show_alert=True)
+        return
+    except Exception:
+        logger.exception("billing callback failed")
+        await callback.answer(t("error_generic", lang), show_alert=True)
         return
 
-    if action == "sub":
-        text = await billing.create_subscription_for_telegram(callback.from_user.id, value)
-        await callback.message.answer(text, reply_markup=await _user_main_menu(callback.from_user.id))
-        return
+    await callback.answer()
+    markup = inline_payment_menu(pay_url, lang) if pay_url else await _user_main_menu(callback.from_user.id)
+    await callback.message.answer(text, reply_markup=markup, parse_mode=None)
 
 
 @router.callback_query(F.data == "nav:readings")

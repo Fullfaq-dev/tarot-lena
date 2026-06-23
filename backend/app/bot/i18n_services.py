@@ -155,6 +155,18 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "es": "Plan desconocido.",
         "pt": "Plano desconhecido.",
     },
+    "billing_payment_failed": {
+        "ru": "Не удалось создать ссылку на оплату. Попробуй через минуту или напиши в поддержку.",
+        "en": "Could not create a payment link. Try again in a minute or contact support.",
+        "es": "No se pudo crear el enlace de pago. Inténtalo en un minuto.",
+        "pt": "Não foi possível criar o link de pagamento. Tente em um minuto.",
+    },
+    "btn_pay_now": {
+        "ru": "💳 Перейти к оплате",
+        "en": "💳 Pay now",
+        "es": "💳 Pagar ahora",
+        "pt": "💳 Pagar agora",
+    },
     "spend_chat": {"ru": "Чат", "en": "Chat", "es": "Chat", "pt": "Chat"},
     "spend_tarot": {"ru": "Расклад", "en": "Reading", "es": "Tirada", "pt": "Leitura"},
     "spend_aura": {"ru": "Аура", "en": "Aura", "es": "Aura", "pt": "Aura"},

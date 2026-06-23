@@ -59,7 +59,7 @@ jobs:
             if [ -n "${PLATEGA_MERCHANT_ID:-}" ] && [ -n "${PLATEGA_API_KEY:-}" ]; then
               set_env PLATEGA_MERCHANT_ID "${PLATEGA_MERCHANT_ID}"
               set_env PLATEGA_API_KEY "${PLATEGA_API_KEY}"
-              set_env PLATEGA_PAYMENT_METHOD "10"
+              set_env PLATEGA_PAYMENT_METHOD "0"
               set_env PUBLIC_BASE_URL "https://arcaneai.online"
               set_env APP_ENV "production"
               RECREATE_API=1

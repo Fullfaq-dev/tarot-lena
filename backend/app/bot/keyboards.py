@@ -357,6 +357,15 @@ def inline_billing_menu(lang: str = "ru") -> InlineKeyboardMarkup:
     )
 
 
+def inline_payment_menu(pay_url: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t("btn_pay_now", lang), url=pay_url)],
+            [_home_button(lang)],
+        ]
+    )
+
+
 def inline_spending_menu(page: int, total_pages: int, lang: str = "ru") -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     nav = _pagination_buttons("bill:spend", page, total_pages, lang)

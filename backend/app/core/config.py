@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     platega_merchant_id: str = Field(default="", alias="PLATEGA_MERCHANT_ID")
     platega_api_key: str = Field(default="", alias="PLATEGA_API_KEY")
     platega_webhook_secret: str = Field(default="", alias="PLATEGA_WEBHOOK_SECRET")
-    platega_payment_method: int = Field(default=10, alias="PLATEGA_PAYMENT_METHOD")
+    platega_payment_method: int = Field(default=0, alias="PLATEGA_PAYMENT_METHOD")
     platega_return_url: str = Field(default="", alias="PLATEGA_RETURN_URL")
     platega_failed_url: str = Field(default="", alias="PLATEGA_FAILED_URL")
 

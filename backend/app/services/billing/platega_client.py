@@ -60,18 +60,34 @@ async def create_platega_payment(
     settings = get_settings()
     client = require_platega_client()
     base = settings.public_base_url.rstrip("/")
-    result = await asyncio.to_thread(
-        client.create_payment,
-        float(amount_rub),
-        "RUB",
-        settings.platega_payment_method,
-        description=description,
-        return_url=settings.platega_return_url or f"{base}/",
-        failed_url=settings.platega_failed_url or f"{base}/",
-        payload=payment_id,
-    )
-    transaction_id = str(result.get("transactionId", ""))
-    redirect = str(result.get("redirect", ""))
-    if not transaction_id or not redirect:
-        raise PlategaAPIError("Platega returned incomplete payment response", response_data=result)
-    return {"transaction_id": transaction_id, "redirect": redirect}
+    return_url = settings.platega_return_url or f"{base}/"
+    failed_url = settings.platega_failed_url or f"{base}/"
+
+    def _call() -> dict[str, str]:
+        data: dict[str, object] = {
+            "paymentDetails": {
+                "amount": float(amount_rub),
+                "currency": "RUB",
+            },
+            "description": description,
+            "return": return_url,
+            "failedUrl": failed_url,
+            "payload": payment_id,
+        }
+        if settings.platega_payment_method > 0:
+            data["paymentMethod"] = settings.platega_payment_method
+
+        # v2 — единая форма оплаты; v1 + карты часто даёт 400 «Wrong input parameters».
+        result = client._request("POST", "/v2/transaction/process", data)
+        transaction_id = str(
+            result.get("transactionId") or result.get("id") or ""
+        )
+        redirect = str(result.get("url") or result.get("redirect") or "")
+        if not transaction_id or not redirect:
+            raise PlategaAPIError(
+                "Platega returned incomplete payment response",
+                response_data=result,
+            )
+        return {"transaction_id": transaction_id, "redirect": redirect}
+
+    return await asyncio.to_thread(_call)
