@@ -150,6 +150,7 @@ def menu_actions(lang: str = "ru") -> dict[str, str]:
         btn_support(lang): "support",
         btn_settings(lang): "settings",
         btn_language(lang): "language",
+        t("btn_home", lang): "home",
         # Старые подписи для пользователей со старой клавиатурой
         "🔮 Сделать расклад": "readings",
         "🌅 Карта дня": "daily",

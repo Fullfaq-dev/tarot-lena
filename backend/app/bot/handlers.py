@@ -155,19 +155,22 @@ async def _user_main_menu(telegram_id: int):
 
 
 async def _refresh_reply_keyboard(message: Message, telegram_id: int) -> None:
-    await message.answer(
-        "\u2800",
-        reply_markup=await _user_main_menu(telegram_id),
-        disable_notification=True,
-    )
+    try:
+        await message.answer(
+            "·",
+            reply_markup=await _user_main_menu(telegram_id),
+            disable_notification=True,
+        )
+    except Exception as exc:
+        logger.warning("reply keyboard refresh failed for telegram_id=%s: %s", telegram_id, exc)
 
 
 async def _go_home(message: Message, state: FSMContext) -> None:
     await state.clear()
     telegram_id = message.from_user.id
-    await _refresh_reply_keyboard(message, telegram_id)
     menu_text, menu_markup = await _main_menu_inline(telegram_id)
     await message.answer(menu_text, reply_markup=menu_markup)
+    await _refresh_reply_keyboard(message, telegram_id)
 
 
 async def _main_menu_inline(telegram_id: int):
@@ -1753,6 +1756,11 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     lang = await _user_language(message.from_user.id)
     await _refresh_reply_keyboard(message, message.from_user.id)
     action = menu_actions(lang).get(text) or MENU_ACTIONS.get(text)
+
+    if action == "home":
+        await _go_home(message, state)
+        await _track(None, "bot.menu", {"item": "home"})
+        return
 
     if action == "zen":
         from app.bot.keyboards import inline_zen_menu
