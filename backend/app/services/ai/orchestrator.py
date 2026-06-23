@@ -9,6 +9,7 @@ from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
 from app.services.analytics.tracker import track_event
 from app.services.billing.service import BillingService
+from app.services.billing.limits import FREE_READINGS_PER_MONTH
 from app.services.billing.tokens import merge_api_usage, provider_cost_rub
 from app.services.memory.extractor import MemoryExtractor
 from app.services.energy.service import BraceletSlot, DrawnRune, EnergyService
@@ -435,13 +436,20 @@ class AIOrchestrator:
             messages = await self.context_builder.build(session, user, user_query=question)
             messages.append({"role": "user", "content": [{"type": "text", "text": reading_prompt}]})
 
+            await self.billing.sync_free_limits_month(session, user)
+            readings_exhausted = user.free_readings_used_month >= FREE_READINGS_PER_MONTH
+
             allowed, reason, billing_mode = await self.billing.ensure_can_use_chat(
-                session, user, context_messages=messages
+                session,
+                user,
+                context_messages=messages,
+                allow_free_slot=not readings_exhausted,
             )
             if not allowed:
                 return None, None, reason, None, billing_mode
 
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
+            billing_mode = await self.billing.reserve_reading_slot(session, user, billing_mode)
 
             user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored_user_text)
             session.add(user_message)

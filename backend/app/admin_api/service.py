@@ -268,6 +268,7 @@ async def user_detail(session: AsyncSession, user_id: str) -> dict[str, Any] | N
         "balance_rub": _dec(user.balance_rub),
         "free_messages_used_month": user.free_messages_used_month,
         "free_readings_used_month": user.free_readings_used_month,
+        "free_limits_month": user.free_limits_month,
         "tier": sub.tier if sub else "free",
         "subscription_status": sub.status if sub else None,
         "subscription_expires_at": _dt(sub.expires_at) if sub else None,

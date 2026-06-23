@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from app.bot.i18n_services import SPENDING_FEATURE_I18N
 from app.services.billing.limits import (
     AI_MODEL_NAME,
     FREE_CHAT_MESSAGES_PER_MONTH,
+    FREE_READINGS_PER_MONTH,
     SPENDING_PAGE_SIZE,
     SUBSCRIPTION_PRICES_RUB,
     free_messages_left,
@@ -80,6 +82,56 @@ class BillingService:
             return None
         return {"telegram_id": user.telegram_id, "text": text}
 
+    @staticmethod
+    def _quota_month_for_timezone(timezone_name: str) -> str:
+        try:
+            now = datetime.now(ZoneInfo(timezone_name))
+        except Exception:
+            now = datetime.now(timezone.utc)
+        return now.strftime("%Y-%m")
+
+    async def sync_free_limits_month(self, session: AsyncSession, user: User) -> None:
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+        timezone_name = settings.timezone if settings else "Europe/Moscow"
+        month = self._quota_month_for_timezone(timezone_name)
+        if user.free_limits_month == month:
+            return
+
+        if user.free_limits_month is None:
+            try:
+                tz = ZoneInfo(timezone_name)
+            except Exception:
+                tz = timezone.utc
+            now = datetime.now(tz)
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+            from app.database.models import TarotReading
+
+            readings = await session.scalar(
+                select(func.count())
+                .select_from(TarotReading)
+                .where(
+                    TarotReading.user_id == user.id,
+                    TarotReading.created_at >= month_start,
+                )
+            )
+            messages = await session.scalar(
+                select(func.count())
+                .select_from(UsageRecord)
+                .where(
+                    UsageRecord.user_id == user.id,
+                    UsageRecord.created_at >= month_start,
+                    UsageRecord.charged_rub == 0,
+                )
+            )
+            user.free_readings_used_month = int(readings or 0)
+            user.free_messages_used_month = int(messages or 0)
+        elif user.free_limits_month is not None:
+            user.free_messages_used_month = 0
+            user.free_readings_used_month = 0
+
+        user.free_limits_month = month
+        await session.flush()
+
     async def ensure_can_use_chat(
         self,
         session: AsyncSession,
@@ -87,11 +139,13 @@ class BillingService:
         *,
         context_messages: list[dict] | None = None,
         answer_preview: str = "",
+        allow_free_slot: bool = True,
     ) -> tuple[bool, str, str]:
         """
         Возвращает (разрешено, сообщение_об_ошибке, режим).
         Режим: unlimited | free | balance | blocked
         """
+        await self.sync_free_limits_month(session, user)
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
         lang = await self._user_lang(session, user.id)
@@ -99,7 +153,7 @@ class BillingService:
         if is_unlimited_chat(tier):
             return True, "", "unlimited"
 
-        if user.free_messages_used_month < FREE_CHAT_MESSAGES_PER_MONTH:
+        if allow_free_slot and user.free_messages_used_month < FREE_CHAT_MESSAGES_PER_MONTH:
             return True, "", "free"
 
         estimated_charge = self._estimate_charge(context_messages, answer_preview)
@@ -133,6 +187,7 @@ class BillingService:
 
     async def reserve_chat_slot(self, session: AsyncSession, user: User, mode: str) -> str:
         """Списывает бесплатный слот только в режиме free."""
+        await self.sync_free_limits_month(session, user)
         if mode != "free":
             return mode
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
@@ -141,6 +196,20 @@ class BillingService:
             return "unlimited"
         if user.free_messages_used_month < FREE_CHAT_MESSAGES_PER_MONTH:
             user.free_messages_used_month += 1
+            await session.flush()
+        return "free"
+
+    async def reserve_reading_slot(self, session: AsyncSession, user: User, mode: str) -> str:
+        """Списывает бесплатный расклад только в режиме free."""
+        await self.sync_free_limits_month(session, user)
+        if mode != "free":
+            return mode
+        subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
+        tier = subscription.tier if subscription else "free"
+        if is_unlimited_chat(tier):
+            return "unlimited"
+        if user.free_readings_used_month < FREE_READINGS_PER_MONTH:
+            user.free_readings_used_month += 1
             await session.flush()
         return "free"
 
@@ -153,6 +222,7 @@ class BillingService:
         vision_mode: str | None = None,
         context_messages: list[dict] | None = None,
     ) -> tuple[bool, str, str]:
+        await self.sync_free_limits_month(session, user)
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
         lang = await self._user_lang(session, user.id)
@@ -371,6 +441,7 @@ class BillingService:
             if user is None:
                 return t("error_need_start", lang)
 
+            await self.sync_free_limits_month(session, user)
             subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
             tier = subscription.tier if subscription else "free"
             free_left = free_messages_left(user.free_messages_used_month)

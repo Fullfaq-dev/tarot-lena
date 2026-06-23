@@ -252,6 +252,18 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "es": "Límite diario de {limit} tiradas alcanzado. Mañana habrá más.",
         "pt": "Limite diário de {limit} leituras atingido. Amanhã haverá mais.",
     },
+    "tarot_readings_monthly_limit": {
+        "ru": (
+            "Бесплатные расклады на этот месяц закончились ({limit} из {limit}). "
+            "Пополни баланс — нажми «Баланс» (на балансе {balance})."
+        ),
+        "en": (
+            "Free readings for this month are used up ({limit}/{limit}). "
+            "Top up your balance via «Balance» ({balance} available)."
+        ),
+        "es": "Tiradas gratis del mes agotadas ({limit}). Recarga saldo ({balance}).",
+        "pt": "Leituras grátis do mês esgotadas ({limit}). Recarregue saldo ({balance}).",
+    },
     "tarot_local_interpretation": {
         "ru": (
             "Вопрос: {question}\n"

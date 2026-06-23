@@ -7,7 +7,10 @@ from sqlalchemy import func, select
 from app.database.models import DailyPrediction, Message, MessageRole, TarotCard, TarotReading, User
 from app.database.session import AsyncSessionLocal
 from app.core.config import get_settings
-from app.services.billing.limits import DAILY_READINGS_LIMIT, HISTORY_PAGE_SIZE
+from app.services.billing.limits import FREE_READINGS_PER_MONTH, HISTORY_PAGE_SIZE
+from app.services.billing.limits import is_unlimited_chat
+from app.services.billing.service import BillingService
+from app.services.billing.tokens import format_balance
 from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
 from app.services.tarot.cards import FULL_DECK, storage_image_path
@@ -191,39 +194,53 @@ class TarotService:
         now = datetime.now(UTC)
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
+    async def _subscription_tier(self, session, user: User) -> str:
+        from app.database.models import Subscription
+
+        subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
+        return subscription.tier if subscription else "free"
+
     async def ensure_can_read_today(self, telegram_id: int) -> tuple[bool, str | None]:
         lang = await self._lang(telegram_id)
+        billing = BillingService()
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
                 return False, t("error_need_start", lang)
-            count = await session.scalar(
-                select(func.count())
-                .select_from(TarotReading)
-                .where(
-                    TarotReading.user_id == user.id,
-                    TarotReading.created_at >= self._today_start_utc(),
-                )
+
+            await billing.sync_free_limits_month(session, user)
+            tier = await self._subscription_tier(session, user)
+            if is_unlimited_chat(tier):
+                return True, None
+
+            if user.free_readings_used_month < FREE_READINGS_PER_MONTH:
+                return True, None
+
+            allowed, reason, _ = await billing.ensure_can_use_chat(
+                session,
+                user,
+                allow_free_slot=False,
             )
-            used = int(count or 0)
-            if used >= DAILY_READINGS_LIMIT:
-                return False, t("tarot_readings_limit", lang, limit=DAILY_READINGS_LIMIT)
-            return True, None
+            if allowed:
+                return True, None
+            return False, t(
+                "tarot_readings_monthly_limit",
+                lang,
+                limit=FREE_READINGS_PER_MONTH,
+                balance=format_balance(user.balance_rub),
+            )
 
     async def readings_left_today(self, telegram_id: int) -> int:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
                 return 0
-            count = await session.scalar(
-                select(func.count())
-                .select_from(TarotReading)
-                .where(
-                    TarotReading.user_id == user.id,
-                    TarotReading.created_at >= self._today_start_utc(),
-                )
-            )
-            return max(0, DAILY_READINGS_LIMIT - int(count or 0))
+            billing = BillingService()
+            await billing.sync_free_limits_month(session, user)
+            tier = await self._subscription_tier(session, user)
+            if is_unlimited_chat(tier):
+                return FREE_READINGS_PER_MONTH
+            return max(0, FREE_READINGS_PER_MONTH - user.free_readings_used_month)
 
     async def create_reading(
         self,

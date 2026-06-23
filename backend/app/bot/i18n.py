@@ -548,6 +548,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "es": "Tiradas restantes hoy: {left} de {limit}.",
         "pt": "Leituras restantes hoje: {left} de {limit}.",
     },
+    "readings_left_month": {
+        "ru": "Бесплатных раскладов в этом месяце: {left} из {limit}.",
+        "en": "Free readings left this month: {left} of {limit}.",
+        "es": "Tiradas gratis este mes: {left} de {limit}.",
+        "pt": "Leituras grátis neste mês: {left} de {limit}.",
+    },
     "btn_topup": {
         "ru": "💳 Пополнить баланс",
         "en": "💳 Top up balance",

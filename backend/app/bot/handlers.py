@@ -55,8 +55,8 @@ from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
 from app.services.analytics.tracker import track_event
 from app.services.billing.limits import (
-    DAILY_READINGS_LIMIT,
     FREE_CHAT_MESSAGES_PER_MONTH,
+    FREE_READINGS_PER_MONTH,
     can_use_premium_voice,
     free_messages_left,
 )
@@ -191,7 +191,7 @@ async def _readings_menu_text(telegram_id: int) -> str:
     left = await TarotService().readings_left_today(telegram_id)
     return (
         f"{t('readings_menu_text', lang)}\n\n"
-        f"{t('readings_left_today', lang).format(left=left, limit=DAILY_READINGS_LIMIT)}"
+        f"{t('readings_left_month', lang, left=left, limit=FREE_READINGS_PER_MONTH)}"
     )
 
 
