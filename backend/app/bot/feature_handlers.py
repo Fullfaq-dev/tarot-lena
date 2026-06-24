@@ -8,8 +8,9 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from app.bot.helpers import safe_callback_answer, safe_edit
+from app.bot.helpers import safe_callback_answer
 from app.bot.i18n import t
+from app.bot.rich_messages import present_rich_panel
 from app.bot.keyboards import (
     inline_bracelet_prompt,
     inline_energy_menu,
@@ -49,7 +50,12 @@ async def nav_zen(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.clear()
     lang = await _lang(callback.from_user.id)
-    await safe_edit(callback.message, t("zen_menu_text", lang), inline_zen_menu(lang))
+    await present_rich_panel(
+        callback.message,
+        t("zen_menu_text", lang),
+        reply_markup=inline_zen_menu(lang),
+        edit_message=callback.message,
+    )
 
 
 @router.callback_query(F.data == "nav:zen:daily")
@@ -63,7 +69,9 @@ async def nav_zen_daily(callback: CallbackQuery, state: FSMContext) -> None:
     text = f"{zen.daily_intro(lang)}\n\n**{prompt}**"
     await state.set_state(BotStates.waiting_zen_question)
     await state.update_data(zen_mode="daily")
-    await safe_edit(callback.message, text, inline_zen_prompt(lang))
+    await present_rich_panel(
+        callback.message, text, reply_markup=inline_zen_prompt(lang), edit_message=callback.message
+    )
 
 
 @router.callback_query(F.data == "nav:zen:ask")
@@ -74,7 +82,12 @@ async def nav_zen_ask(callback: CallbackQuery, state: FSMContext) -> None:
     lang = await _lang(callback.from_user.id)
     await state.set_state(BotStates.waiting_zen_question)
     await state.update_data(zen_mode="ask")
-    await safe_edit(callback.message, t("zen_ask_prompt", lang), inline_zen_prompt(lang))
+    await present_rich_panel(
+        callback.message,
+        t("zen_ask_prompt", lang),
+        reply_markup=inline_zen_prompt(lang),
+        edit_message=callback.message,
+    )
 
 
 @router.callback_query(F.data == "nav:energy")
@@ -84,7 +97,12 @@ async def nav_energy(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.clear()
     lang = await _lang(callback.from_user.id)
-    await safe_edit(callback.message, t("energy_menu_text", lang), inline_energy_menu(lang))
+    await present_rich_panel(
+        callback.message,
+        t("energy_menu_text", lang),
+        reply_markup=inline_energy_menu(lang),
+        edit_message=callback.message,
+    )
 
 
 @router.callback_query(F.data == "nav:energy:runes")
@@ -94,7 +112,12 @@ async def nav_energy_runes(callback: CallbackQuery, state: FSMContext) -> None:
         return
     lang = await _lang(callback.from_user.id)
     await state.set_state(BotStates.waiting_rune_question)
-    await safe_edit(callback.message, t("rune_ask_prompt", lang), inline_rune_prompt(lang))
+    await present_rich_panel(
+        callback.message,
+        t("rune_ask_prompt", lang),
+        reply_markup=inline_rune_prompt(lang),
+        edit_message=callback.message,
+    )
 
 
 @router.callback_query(F.data == "nav:energy:stones")
@@ -104,7 +127,12 @@ async def nav_energy_stones(callback: CallbackQuery, state: FSMContext) -> None:
         return
     lang = await _lang(callback.from_user.id)
     await state.set_state(BotStates.waiting_stone_query)
-    await safe_edit(callback.message, t("stone_ask_prompt", lang), inline_stone_prompt(lang))
+    await present_rich_panel(
+        callback.message,
+        t("stone_ask_prompt", lang),
+        reply_markup=inline_stone_prompt(lang),
+        edit_message=callback.message,
+    )
 
 
 @router.callback_query(F.data == "nav:energy:bracelet")
@@ -114,7 +142,12 @@ async def nav_energy_bracelet(callback: CallbackQuery, state: FSMContext) -> Non
         return
     lang = await _lang(callback.from_user.id)
     await state.set_state(BotStates.waiting_bracelet_query)
-    await safe_edit(callback.message, t("bracelet_ask_prompt", lang), inline_bracelet_prompt(lang))
+    await present_rich_panel(
+        callback.message,
+        t("bracelet_ask_prompt", lang),
+        reply_markup=inline_bracelet_prompt(lang),
+        edit_message=callback.message,
+    )
 
 
 async def handle_zen_question(message: Message, text: str, state: FSMContext) -> None:

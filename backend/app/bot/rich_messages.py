@@ -10,8 +10,13 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import ChatIdUnion, Message, ReplyMarkupUnion, ReplyParameters
 
-from app.bot.formatting import prepare_rich_markdown, to_telegram_html
-from app.bot.telegram_rich import InputRichMessage, SendRichMessage, SendRichMessageDraft
+from app.bot.formatting import html_to_rich_markdown, prepare_rich_markdown, to_telegram_html
+from app.bot.telegram_rich import (
+    EditRichMessage,
+    InputRichMessage,
+    SendRichMessage,
+    SendRichMessageDraft,
+)
 
 if TYPE_CHECKING:
     pass
@@ -60,6 +65,11 @@ def is_parse_entities_error(exc: TelegramBadRequest) -> bool:
 
 def _input_rich_message(text: str) -> InputRichMessage:
     markdown = truncate_rich_text(prepare_rich_markdown(text))
+    return InputRichMessage(markdown=markdown)
+
+
+def _input_rich_message_html(html: str) -> InputRichMessage:
+    markdown = truncate_rich_text(prepare_rich_markdown(html_to_rich_markdown(html)))
     return InputRichMessage(markdown=markdown)
 
 
@@ -147,6 +157,80 @@ async def edit_or_answer_rich_message(
             await _send_legacy_formatted(message, text, edit=True, reply_markup=reply_markup)
             return None
     return await answer_rich_message(message, text, reply_markup=reply_markup)
+
+
+async def present_rich_panel(
+    message: Message,
+    html_text: str,
+    *,
+    reply_markup: ReplyMarkupUnion | None = None,
+    edit_message: Message | None = None,
+) -> Message | None:
+    """Render a curated bot panel (HTML source) as a rich message.
+
+    When ``edit_message`` is provided the existing menu message is edited in
+    place via editMessageText with a rich payload; otherwise a fresh rich
+    message is sent. Falls back to legacy HTML on older Bot API servers.
+    """
+    if not html_text.strip():
+        return None
+
+    if edit_message is not None:
+        try:
+            return await message.bot(
+                EditRichMessage(
+                    chat_id=edit_message.chat.id,
+                    message_id=edit_message.message_id,
+                    rich_message=_input_rich_message_html(html_text),
+                    reply_markup=reply_markup,
+                )
+            )
+        except TelegramBadRequest as exc:
+            error = str(exc).lower()
+            if "message is not modified" in error:
+                return edit_message
+            if not is_rich_message_unsupported(exc) and not is_parse_entities_error(exc):
+                logger.warning("Rich panel edit failed: %s", exc)
+            await _edit_legacy_html(edit_message, html_text, reply_markup=reply_markup)
+            return None
+
+    try:
+        return await message.bot(
+            SendRichMessage(
+                chat_id=message.chat.id,
+                rich_message=_input_rich_message_html(html_text),
+                reply_markup=reply_markup,
+                message_thread_id=message.message_thread_id,
+            )
+        )
+    except TelegramBadRequest as exc:
+        if not is_rich_message_unsupported(exc) and not is_parse_entities_error(exc):
+            logger.warning("Rich panel send failed: %s", exc)
+        payload = truncate_text(html_text)
+        try:
+            return await message.answer(
+                payload, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+            )
+        except TelegramBadRequest:
+            return await message.answer(payload, parse_mode=None, reply_markup=reply_markup)
+
+
+async def _edit_legacy_html(
+    message: Message,
+    html_text: str,
+    *,
+    reply_markup: ReplyMarkupUnion | None = None,
+) -> None:
+    payload = truncate_text(html_text)
+    try:
+        await message.edit_text(payload, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        if "message is not modified" in str(exc).lower():
+            return
+        try:
+            await message.answer(payload, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        except TelegramBadRequest:
+            logger.warning("Legacy panel edit fallback failed")
 
 
 async def _answer_legacy_html(

@@ -15,7 +15,7 @@ from app.bot.audio_media import send_voice_from_url
 from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
-from app.bot.rich_messages import answer_rich_message, truncate_text
+from app.bot.rich_messages import answer_rich_message, present_rich_panel, truncate_text
 from app.core.config import get_settings
 from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
 from app.bot.i18n import all_menu_texts, main_menu_text, menu_actions, normalize_language, reading_label, t
@@ -159,7 +159,7 @@ async def _go_home(message: Message, state: FSMContext) -> None:
     await state.clear()
     telegram_id = message.from_user.id
     menu_text, menu_markup = await _main_menu_inline(telegram_id)
-    await message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
+    await present_rich_panel(message, menu_text, reply_markup=menu_markup)
 
 
 async def _main_menu_inline(telegram_id: int):
@@ -174,10 +174,7 @@ async def _open_billing(message: Message, *, edit_message: Message | None = None
     lang = await _user_language(message.from_user.id)
     text = await BillingService().panel_text(message.from_user.id)
     markup = inline_billing_menu(lang)
-    if edit_message is not None:
-        await safe_edit(edit_message, text, markup, parse_mode=ParseMode.HTML)
-    else:
-        await message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    await present_rich_panel(message, text, reply_markup=markup, edit_message=edit_message)
 
 
 async def _readings_menu_text(telegram_id: int) -> str:
@@ -247,10 +244,7 @@ async def _open_referrals(
     text = await ReferralService().panel_text(actor_id, bot_username=username)
     share_link = ReferralService().build_referral_link(username, actor_id)
     markup = inline_referral_menu(share_link=share_link, lang=lang)
-    if edit_message is not None:
-        await safe_edit(edit_message, text, markup, parse_mode=ParseMode.HTML)
-    else:
-        await message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    await present_rich_panel(message, text, reply_markup=markup, edit_message=edit_message)
 
 
 async def _with_typing(message: Message, coro):
@@ -665,7 +659,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
         if onboarded:
             await message.answer(text, reply_markup=await _user_main_menu(message.from_user.id))
             menu_text, menu_markup = await _main_menu_inline(message.from_user.id)
-            await message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
+            await present_rich_panel(message, menu_text, reply_markup=menu_markup)
         else:
             step_key = await service.get_current_step_key(message.from_user) or ONBOARDING_STEPS[0][0]
             markup = onboarding_keyboard(step_key, lang)
@@ -698,14 +692,17 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
 
     if target == "main":
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
-        await safe_edit(callback.message, menu_text, menu_markup, parse_mode=ParseMode.HTML)
+        await present_rich_panel(
+            callback.message, menu_text, reply_markup=menu_markup, edit_message=callback.message
+        )
         return
 
     if target == "readings":
-        await safe_edit(
+        await present_rich_panel(
             callback.message,
             await _readings_menu_text(callback.from_user.id),
-            inline_readings_menu(lang),
+            reply_markup=inline_readings_menu(lang),
+            edit_message=callback.message,
         )
         return
 
@@ -713,14 +710,24 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
         lang = await _user_language(callback.from_user.id)
         from app.bot.keyboards import inline_zen_menu
 
-        await safe_edit(callback.message, t("zen_menu_text", lang), inline_zen_menu(lang))
+        await present_rich_panel(
+            callback.message,
+            t("zen_menu_text", lang),
+            reply_markup=inline_zen_menu(lang),
+            edit_message=callback.message,
+        )
         return
 
     if target == "energy":
         lang = await _user_language(callback.from_user.id)
         from app.bot.keyboards import inline_energy_menu
 
-        await safe_edit(callback.message, t("energy_menu_text", lang), inline_energy_menu(lang))
+        await present_rich_panel(
+            callback.message,
+            t("energy_menu_text", lang),
+            reply_markup=inline_energy_menu(lang),
+            edit_message=callback.message,
+        )
         return
 
 
@@ -906,20 +913,27 @@ async def settings_callback(callback: CallbackQuery) -> None:
     elif action.startswith("lang:"):
         lang = action.removeprefix("lang:")
         text = await service.set_ui_language(callback.from_user.id, lang)
-        await callback.message.answer(
+        await present_rich_panel(
+            callback.message,
             text,
             reply_markup=await _user_main_menu(callback.from_user.id),
-            parse_mode=ParseMode.HTML,
         )
         lang = await service.get_ui_language(callback.from_user.id)
-        await safe_edit(callback.message, t("choose_language", lang), inline_language_menu(lang))
+        await present_rich_panel(
+            callback.message,
+            t("choose_language", lang),
+            reply_markup=inline_language_menu(lang),
+            edit_message=callback.message,
+        )
         await _track(None, "bot.settings", {"action": "language", "lang": lang})
         return
     else:
         text = await service.get_panel_text(callback.from_user.id)
 
     lang = await service.get_ui_language(callback.from_user.id)
-    await safe_edit(callback.message, text, inline_settings_menu(lang), parse_mode=ParseMode.HTML)
+    await present_rich_panel(
+        callback.message, text, reply_markup=inline_settings_menu(lang), edit_message=callback.message
+    )
     await _track(None, "bot.settings", {"action": action})
 
 
@@ -940,7 +954,9 @@ async def referral_stats_callback(callback: CallbackQuery) -> None:
     lang = await _user_language(callback.from_user.id)
     await callback.answer()
     text = await ReferralService().stats_panel_text(callback.from_user.id)
-    await safe_edit(callback.message, text, inline_referral_stats_menu(lang), parse_mode=None)
+    await present_rich_panel(
+        callback.message, text, reply_markup=inline_referral_stats_menu(lang), edit_message=callback.message
+    )
     await _track(None, "bot.referral", {"action": "stats"})
 
 
@@ -1130,7 +1146,7 @@ async def billing_callback(callback: CallbackQuery) -> None:
 
     await callback.answer()
     markup = inline_payment_menu(pay_url, lang) if pay_url else await _user_main_menu(callback.from_user.id)
-    await callback.message.answer(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    await present_rich_panel(callback.message, text, reply_markup=markup)
 
 
 @router.callback_query(F.data == "nav:readings")
@@ -1152,10 +1168,11 @@ async def _open_readings_menu(callback: CallbackQuery, state: FSMContext) -> Non
             return
         await state.clear()
         await safe_callback_answer(callback)
-        await safe_edit(
+        await present_rich_panel(
             callback.message,
             await _readings_menu_text(callback.from_user.id),
-            inline_readings_menu(lang),
+            reply_markup=inline_readings_menu(lang),
+            edit_message=callback.message,
         )
         await _track(None, "bot.menu", {"item": "readings"})
     except Exception as exc:
@@ -1182,10 +1199,11 @@ async def _open_reading_type(callback: CallbackQuery, state: FSMContext, reading
         await state.set_state(BotStates.waiting_reading_question)
         await state.update_data(reading_type=reading_type)
         await safe_callback_answer(callback)
-        await safe_edit(
+        await present_rich_panel(
             callback.message,
             t("reading_ask_question", lang, label=label),
-            inline_reading_prompt(reading_type, lang),
+            reply_markup=inline_reading_prompt(reading_type, lang),
+            edit_message=callback.message,
         )
     except Exception as exc:
         logger.exception("open_reading_type failed")
@@ -1208,13 +1226,17 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "main":
         await state.clear()
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
-        await safe_edit(callback.message, menu_text, menu_markup, parse_mode=ParseMode.HTML)
+        await present_rich_panel(
+            callback.message, menu_text, reply_markup=menu_markup, edit_message=callback.message
+        )
         return
 
     if action == "daily":
         await _send_daily_card(callback.message, callback.from_user.id)
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
-        await safe_edit(callback.message, menu_text, menu_markup, parse_mode=ParseMode.HTML)
+        await present_rich_panel(
+            callback.message, menu_text, reply_markup=menu_markup, edit_message=callback.message
+        )
         await _track(None, "bot.daily_card", {"telegram_id": callback.from_user.id})
         return
 
@@ -1231,7 +1253,12 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "billing":
         text = await BillingService().panel_text(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_billing_menu(lang), parse_mode=ParseMode.HTML)
+        await present_rich_panel(
+            callback.message,
+            text,
+            reply_markup=inline_billing_menu(lang),
+            edit_message=callback.message,
+        )
         await _track(None, "bot.menu", {"item": "billing"})
         return
 
@@ -1247,18 +1274,33 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "settings":
         lang = await SettingsService().get_ui_language(callback.from_user.id)
         text = await SettingsService().get_panel_text(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_settings_menu(lang), parse_mode=ParseMode.HTML)
+        await present_rich_panel(
+            callback.message,
+            text,
+            reply_markup=inline_settings_menu(lang),
+            edit_message=callback.message,
+        )
         await _track(None, "bot.menu", {"item": "settings"})
         return
 
     if action == "language":
         lang = await SettingsService().get_ui_language(callback.from_user.id)
-        await safe_edit(callback.message, t("choose_language", lang), inline_language_menu(lang))
+        await present_rich_panel(
+            callback.message,
+            t("choose_language", lang),
+            reply_markup=inline_language_menu(lang),
+            edit_message=callback.message,
+        )
         await _track(None, "bot.menu", {"item": "language"})
         return
 
     if action == "info":
-        await safe_edit(callback.message, info_panel_text(lang), inline_info_menu(lang), parse_mode=ParseMode.HTML)
+        await present_rich_panel(
+            callback.message,
+            info_panel_text(lang),
+            reply_markup=inline_info_menu(lang),
+            edit_message=callback.message,
+        )
         await _track(None, "bot.menu", {"item": "info"})
         return
 
@@ -1393,7 +1435,7 @@ async def _process_onboarding_answer(
             await source.message.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
             await _send_daily_card(source.message, telegram_user.id)
             menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
-            await source.message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
+            await present_rich_panel(source.message, menu_text, reply_markup=menu_markup)
         elif edit:
             await safe_edit(source.message, reply_text, markup)
         else:
@@ -1404,7 +1446,7 @@ async def _process_onboarding_answer(
             await source.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
             await _send_daily_card(source, telegram_user.id)
             menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
-            await source.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
+            await present_rich_panel(source, menu_text, reply_markup=menu_markup)
         else:
             await source.answer(reply_text, reply_markup=markup)
 
@@ -1749,14 +1791,14 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     if action == "zen":
         from app.bot.keyboards import inline_zen_menu
 
-        await message.answer(t("zen_menu_text", lang), reply_markup=inline_zen_menu(lang))
+        await present_rich_panel(message, t("zen_menu_text", lang), reply_markup=inline_zen_menu(lang))
         await _track(None, "bot.menu", {"item": "zen"})
         return
 
     if action == "energy":
         from app.bot.keyboards import inline_energy_menu
 
-        await message.answer(t("energy_menu_text", lang), reply_markup=inline_energy_menu(lang))
+        await present_rich_panel(message, t("energy_menu_text", lang), reply_markup=inline_energy_menu(lang))
         await _track(None, "bot.menu", {"item": "energy"})
         return
 
@@ -1766,7 +1808,8 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         return
 
     if action == "readings":
-        await message.answer(
+        await present_rich_panel(
+            message,
             await _readings_menu_text(message.from_user.id),
             reply_markup=inline_readings_menu(lang),
         )
@@ -1793,39 +1836,39 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         return
 
     if action == "settings":
-        await message.answer(
+        await present_rich_panel(
+            message,
             await SettingsService().get_panel_text(message.from_user.id),
             reply_markup=inline_settings_menu(lang),
-            parse_mode=ParseMode.HTML,
         )
         await _track(None, "bot.menu", {"item": text})
         return
 
     if action == "language":
-        await message.answer(t("choose_language", lang), reply_markup=inline_language_menu(lang))
+        await present_rich_panel(message, t("choose_language", lang), reply_markup=inline_language_menu(lang))
         await _track(None, "bot.menu", {"item": "language"})
         return
 
     if action == "info":
-        await message.answer(info_panel_text(lang), reply_markup=inline_info_menu(lang), parse_mode=ParseMode.HTML)
+        await present_rich_panel(message, info_panel_text(lang), reply_markup=inline_info_menu(lang))
         await _track(None, "bot.menu", {"item": text})
         return
 
     if action == "support":
-        await message.answer(
+        await present_rich_panel(
+            message,
             t("support_message", lang),
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text=t("btn_open_support", lang), url=support_url())]
                 ]
             ),
-            parse_mode=ParseMode.HTML,
         )
         await _track(None, "bot.menu", {"item": text})
         return
 
     menu_text, menu_markup = await _main_menu_inline(message.from_user.id)
-    await message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
+    await present_rich_panel(message, menu_text, reply_markup=menu_markup)
 
 
 @router.message(F.sticker)

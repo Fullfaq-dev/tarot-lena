@@ -69,6 +69,38 @@ class SendRichMessage(TelegramMethod[Message]):
             )
 
 
+class EditRichMessage(TelegramMethod[Message]):
+    __returning__ = Message
+    __api_method__ = "editMessageText"
+
+    chat_id: ChatIdUnion
+    message_id: int
+    rich_message: InputRichMessage
+    business_connection_id: Optional[str] = None
+    reply_markup: Optional[ReplyMarkupUnion] = None
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            __pydantic__self__,
+            *,
+            chat_id: ChatIdUnion,
+            message_id: int,
+            rich_message: InputRichMessage,
+            business_connection_id: Optional[str] = None,
+            reply_markup: Optional[ReplyMarkupUnion] = None,
+            **__pydantic_kwargs: Any,
+        ) -> None:
+            super().__init__(
+                chat_id=chat_id,
+                message_id=message_id,
+                rich_message=rich_message,
+                business_connection_id=business_connection_id,
+                reply_markup=reply_markup,
+                **__pydantic_kwargs,
+            )
+
+
 class SendRichMessageDraft(TelegramMethod[bool]):
     __returning__ = bool
     __api_method__ = "sendRichMessageDraft"
