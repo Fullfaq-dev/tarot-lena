@@ -211,6 +211,7 @@ async def _show_memory_list(
     *,
     edit_message: Message | None = None,
 ) -> None:
+    lang = await _user_language(telegram_id)
     service = MemoryPanelService()
     text, memories, page, total_pages = await service.list_page(telegram_id, page)
     if memories:

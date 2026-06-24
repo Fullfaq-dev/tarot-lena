@@ -726,24 +726,23 @@ class BillingService:
                 .limit(SPENDING_PAGE_SIZE)
             )
 
-            lines = [
-                t("billing_spending_title", lang),
-                t("history_page", lang, page=page + 1, total=total_pages) + "\n",
-            ]
-            for record in records:
+            from app.bot.rich_layouts import format_spending_history_rich
+
+            table_rows: list[list[str]] = []
+            for index, record in enumerate(records, start=offset + 1):
                 feature_key = SPENDING_FEATURE_I18N.get(record.feature)
                 label = t(feature_key, lang) if feature_key else record.feature
                 when = record.created_at.strftime("%d.%m %H:%M")
-                lines.append(
-                    t(
-                        "billing_spending_line",
-                        lang,
-                        when=when,
-                        label=label,
-                        amount=format_balance(record.charged_rub),
-                    )
+                table_rows.append(
+                    [str(index), when, label, format_balance(record.charged_rub)]
                 )
-            return "\n".join(lines), page, total_pages
+
+            text = format_spending_history_rich(
+                lang=lang,
+                page_label=t("history_page", lang, page=page + 1, total=total_pages),
+                rows=table_rows,
+            )
+            return text, page, total_pages
 
     async def create_topup_for_telegram(self, telegram_id: int, amount: Decimal) -> tuple[str, str]:
         async with AsyncSessionLocal() as session:

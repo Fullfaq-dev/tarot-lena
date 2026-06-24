@@ -55,21 +55,30 @@ class MemoryPanelService:
             )
             items = list(memories)
 
-            header = t(
-                "memory_list_header",
-                lang,
-                page=t("history_page", lang, page=page + 1, total=total_pages),
-            )
-            lines = [header.rstrip("\n")]
+            from app.bot.rich_layouts import format_memory_list_rich
+
+            table_rows: list[list[str]] = []
             for index, memory in enumerate(items, start=offset + 1):
                 preview = memory.description.strip().replace("\n", " ")
-                if len(preview) > 72:
-                    preview = preview[:72] + "…"
+                if len(preview) > 60:
+                    preview = preview[:60] + "…"
                 type_label = self._type_label(memory.type, lang)
-                lines.append(
-                    f"{index}. {format_importance(memory.importance)} · {type_label}\n   {preview}"
+                table_rows.append(
+                    [
+                        str(index),
+                        format_importance(memory.importance),
+                        type_label,
+                        preview,
+                    ]
                 )
-            return "\n\n".join(lines), items, page, total_pages
+
+            text = format_memory_list_rich(
+                lang=lang,
+                page_label=t("history_page", lang, page=page + 1, total=total_pages),
+                hint=t("memory_hint", lang),
+                rows=table_rows,
+            )
+            return text, items, page, total_pages
 
     async def detail_text(self, telegram_id: int, memory_id: str) -> str | None:
         async with AsyncSessionLocal() as session:

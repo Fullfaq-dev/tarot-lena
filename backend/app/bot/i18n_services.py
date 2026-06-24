@@ -303,16 +303,16 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "billing_spending_empty": {
         "ru": (
-            "📋 История трат\n\n"
+            "### 📋 История трат\n\n"
             "Пока списаний с баланса нет — траты появятся после платных ответов, "
             "раскладов и генерации инфографики."
         ),
         "en": (
-            "📋 Spending history\n\n"
+            "### 📋 Spending history\n\n"
             "No charges yet — they appear after paid replies, readings, and infographics."
         ),
-        "es": "📋 Historial de gastos\n\nAún no hay cargos.",
-        "pt": "📋 Histórico de gastos\n\nAinda não há cobranças.",
+        "es": "### 📋 Historial de gastos\n\nAún no hay cargos.",
+        "pt": "### 📋 Histórico de gastos\n\nAinda não há cobranças.",
     },
     "billing_spending_title": {
         "ru": "📋 История трат",
@@ -567,11 +567,11 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "es": "### 🧠 Mi memoria\n\nSin entradas aún — el bot recuerda automáticamente.",
         "pt": "### 🧠 Minha memória\n\nSem registros ainda — o bot lembra automaticamente.",
     },
-    "memory_list_header": {
-        "ru": "### 🧠 Память обо мне\n\nСортировка: сначала более важные записи.\n\n{page}\n\nНажми на запись, чтобы открыть полностью:",
-        "en": "### 🧠 My memory\n\nSorted by importance.\n\n{page}\n\nTap an entry to open:",
-        "es": "### 🧠 Mi memoria\n\nOrdenadas por importancia.\n\n{page}\n\nToca una entrada:",
-        "pt": "### 🧠 Minha memória\n\nOrdenadas por importância.\n\n{page}\n\nToque um registro:",
+    "memory_hint": {
+        "ru": "Нажми на запись, чтобы открыть полностью:",
+        "en": "Tap an entry to open:",
+        "es": "Toca una entrada para abrirla:",
+        "pt": "Toque um registro para abrir:",
     },
     "memory_detail": {
         "ru": (

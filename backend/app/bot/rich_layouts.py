@@ -432,6 +432,58 @@ def format_referral_stats_rich(
     )
 
 
+def format_memory_list_rich(
+    *,
+    lang: str,
+    page_label: str,
+    hint: str,
+    rows: list[list[str]],
+) -> str:
+    lang = normalize_language(lang)
+    title = {
+        "ru": "🧠 Память обо мне",
+        "en": "🧠 My memory",
+        "es": "🧠 Mi memoria",
+        "pt": "🧠 Minha memória",
+    }.get(lang, "🧠 My memory")
+    sort_note = {
+        "ru": "Сортировка: сначала более важные записи.",
+        "en": "Sorted by importance.",
+        "es": "Ordenadas por importancia.",
+        "pt": "Ordenadas por importância.",
+    }.get(lang, "Sorted by importance.")
+    headers = {
+        "ru": ["#", "Важность", "Тип", "Запись"],
+        "en": ["#", "Importance", "Type", "Entry"],
+        "es": ["#", "Importancia", "Tipo", "Entrada"],
+        "pt": ["#", "Importância", "Tipo", "Registro"],
+    }.get(lang, ["#", "Importance", "Type", "Entry"])
+    parts = [f"### {title}", "", sort_note, "", page_label, "", hint, ""]
+    if rows:
+        parts.extend([markdown_table(headers, rows), ""])
+    return "\n".join(parts)
+
+
+def format_spending_history_rich(
+    *,
+    lang: str,
+    page_label: str,
+    rows: list[list[str]],
+) -> str:
+    lang = normalize_language(lang)
+    title = t("billing_spending_title", lang)
+    headers = {
+        "ru": ["#", "Дата", "Операция", "Сумма"],
+        "en": ["#", "Date", "Operation", "Amount"],
+        "es": ["#", "Fecha", "Operación", "Importe"],
+        "pt": ["#", "Data", "Operação", "Valor"],
+    }.get(lang, ["#", "Date", "Operation", "Amount"])
+    parts = [f"### {title}", "", page_label, ""]
+    if rows:
+        parts.extend([markdown_table(headers, rows), ""])
+    return "\n".join(parts)
+
+
 def format_referral_list_rich(
     *,
     lang: str,
