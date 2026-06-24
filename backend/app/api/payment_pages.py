@@ -22,7 +22,6 @@ def _bot_url(request: Request) -> str | None:
 def _page_context(request: Request) -> dict:
     settings = get_settings()
     return {
-        "request": request,
         "bot_url": _bot_url(request),
         "support_url": settings.support_telegram_url,
         "site_url": settings.public_base_url.rstrip("/"),
@@ -32,6 +31,7 @@ def _page_context(request: Request) -> dict:
 @router.get("/payment/success", response_class=HTMLResponse)
 async def payment_success(request: Request) -> HTMLResponse:
     return _templates.TemplateResponse(
+        request,
         "payment/success.html",
         _page_context(request),
     )
@@ -40,6 +40,7 @@ async def payment_success(request: Request) -> HTMLResponse:
 @router.get("/payment/failed", response_class=HTMLResponse)
 async def payment_failed(request: Request) -> HTMLResponse:
     return _templates.TemplateResponse(
+        request,
         "payment/failed.html",
         _page_context(request),
     )
