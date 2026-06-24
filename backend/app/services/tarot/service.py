@@ -311,16 +311,21 @@ class TarotService:
             )
             items = list(readings)
 
-            lines = [
-                f"### {t('history_title', lang)}",
-                t("history_page", lang, page=page + 1, total=total_pages),
-                t("history_hint", lang),
-            ]
+            table_rows: list[list[str]] = []
             for index, reading in enumerate(items, start=offset + 1):
                 label = reading_label(reading.reading_type, lang)
                 question = reading.question[:60] + ("…" if len(reading.question) > 60 else "")
-                lines.append(f"{index}. {label} — «{question}»")
-            return "\n\n".join(lines), items, page, total_pages
+                table_rows.append([str(index), label, f"«{question}»"])
+
+            from app.bot.rich_layouts import format_reading_history_rich
+
+            text = format_reading_history_rich(
+                lang=lang,
+                page_label=t("history_page", lang, page=page + 1, total=total_pages),
+                hint=t("history_hint", lang),
+                rows=table_rows,
+            )
+            return text, items, page, total_pages
 
     async def history_entries(self, telegram_id: int) -> tuple[str, list[TarotReading]]:
         text, items, _, _ = await self.history_page(telegram_id, page=0)

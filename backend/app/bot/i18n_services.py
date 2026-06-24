@@ -200,10 +200,10 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         ),
     },
     "profile_status_title": {
-        "ru": "— — —\n💼 Подписка и лимиты",
-        "en": "— — —\n💼 Subscription & limits",
-        "es": "— — —\n💼 Suscripción y límites",
-        "pt": "— — —\n💼 Assinatura e limites",
+        "ru": "\n\n\n\n---\n\n\n\n### 💼 Подписка и лимиты",
+        "en": "\n\n\n\n---\n\n\n\n### 💼 Subscription & limits",
+        "es": "\n\n\n\n---\n\n\n\n### 💼 Suscripción y límites",
+        "pt": "\n\n\n\n---\n\n\n\n### 💼 Assinatura e limites",
     },
     "profile_status_balance": {
         "ru": "💳 Баланс: {balance}",
@@ -1229,7 +1229,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Часовой пояс: <b>{timezone}</b>\n\n"
             "🌙 Тихие часы: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Карта дня по утрам: <b>{daily}</b>\n\n"
-            "💌 Заботливые сообщения: <b>{proactive}</b>\n\n\n---\n\n\n"
+            "💌 Заботливые сообщения: <b>{proactive}</b>\n\n\n\n---\n\n\n\n"
             "<i>Карта дня</i> — каждое утро присылаю персональную карту с коротким разбором.\n\n"
             "<i>Заботливые сообщения</i> — иногда напоминаю о себе и предлагаю заглянуть, "
             "если давно не общались. В тихие часы не беспокою.\n\n"
@@ -1241,7 +1241,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Timezone: <b>{timezone}</b>\n\n"
             "🌙 Quiet hours: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Morning daily card: <b>{daily}</b>\n\n"
-            "💌 Caring messages: <b>{proactive}</b>\n\n\n---\n\n\n"
+            "💌 Caring messages: <b>{proactive}</b>\n\n\n\n---\n\n\n\n"
             "<i>Daily card</i> — every morning I send a personal card with a short reading.\n\n"
             "<i>Caring messages</i> — once in a while I check in if we haven't talked for a bit. "
             "I stay silent during quiet hours.\n\n"
@@ -1253,7 +1253,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Zona horaria: <b>{timezone}</b>\n\n"
             "🌙 Horas silenciosas: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Carta del día por la mañana: <b>{daily}</b>\n\n"
-            "💌 Mensajes de cuidado: <b>{proactive}</b>\n\n\n---\n\n\n"
+            "💌 Mensajes de cuidado: <b>{proactive}</b>\n\n\n\n---\n\n\n\n"
             "<i>Carta del día</i> — cada mañana envío una carta personal con una breve lectura.\n\n"
             "<i>Mensajes de cuidado</i> — de vez en cuando te escribo si llevamos tiempo sin hablar. "
             "No molesto en horas silenciosas.\n\n"
@@ -1265,7 +1265,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Fuso horário: <b>{timezone}</b>\n\n"
             "🌙 Horário silencioso: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Carta do dia de manhã: <b>{daily}</b>\n\n"
-            "💌 Mensagens de cuidado: <b>{proactive}</b>\n\n\n---\n\n\n"
+            "💌 Mensagens de cuidado: <b>{proactive}</b>\n\n\n\n---\n\n\n\n"
             "<i>Carta do dia</i> — toda manhã envio uma carta pessoal com uma breve leitura.\n\n"
             "<i>Mensagens de cuidado</i> — de vez em quando escrevo se ficamos um tempo sem falar. "
             "Não incomodo no horário silencioso.\n\n"

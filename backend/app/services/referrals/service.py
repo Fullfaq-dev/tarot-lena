@@ -309,6 +309,8 @@ class ReferralService:
         return f"https://t.me/{username}?start=ref_{telegram_id}"
 
     async def panel_text(self, telegram_id: int, *, bot_username: str | None = None) -> str:
+        from app.bot.rich_layouts import format_referral_panel_rich
+
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
@@ -322,9 +324,8 @@ class ReferralService:
                 else f"ref_{telegram_id}"
             )
 
-            return t(
-                "referral_panel",
-                lang,
+            return format_referral_panel_rich(
+                lang=lang,
                 available=format_balance(stats["available"]),
                 total=format_balance(stats["total_accrued"]),
                 count=stats["referred_count"],

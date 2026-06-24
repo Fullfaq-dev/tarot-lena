@@ -10,6 +10,9 @@ from app.services.energy.catalog import Stone
 from app.services.energy.localize import localize_rune, localize_stone
 from app.services.energy.service import DrawnRune
 
+# Blank lines before/after --- so RichBlockDivider has breathing room.
+RICH_DIVIDER = "\n\n\n\n---\n\n\n\n"
+
 _READING_POSITIONS: dict[str, dict[str, list[str]]] = {
     "day": {
         "ru": ["Карта дня"],
@@ -156,13 +159,9 @@ def format_tarot_reading_rich(
                 [t("table_position", lang), t("table_card", lang)],
                 rows,
             ),
-            "",
-            "---",
-            "",
-            interpretation.strip(),
         ]
     )
-    return "\n".join(parts)
+    return "\n".join(parts) + RICH_DIVIDER + interpretation.strip()
 
 
 def format_runes_table_rich(
@@ -227,6 +226,153 @@ def format_stones_table_rich(
     if reason:
         parts.extend([f"_{reason}_", ""])
     return "\n".join(parts)
+
+
+def format_reading_history_rich(
+    *,
+    lang: str,
+    page_label: str,
+    hint: str,
+    rows: list[list[str]],
+) -> str:
+    lang = normalize_language(lang)
+    title = {
+        "ru": "📜 История раскладов",
+        "en": "📜 Reading history",
+        "es": "📜 Historial de tiradas",
+        "pt": "📜 Histórico de leituras",
+    }.get(lang, "📜 Reading history")
+    headers = {
+        "ru": ["#", "Тема", "Вопрос"],
+        "en": ["#", "Theme", "Question"],
+        "es": ["#", "Tema", "Pregunta"],
+        "pt": ["#", "Tema", "Pergunta"],
+    }.get(lang, ["#", "Theme", "Question"])
+    parts = [f"### {title}", "", page_label, "", hint, ""]
+    if rows:
+        parts.extend([markdown_table(headers, rows), ""])
+    return "\n".join(parts)
+
+
+def format_referral_panel_rich(
+    *,
+    lang: str,
+    available: str,
+    total: str,
+    count: int,
+    percent: int,
+    min_withdraw: str,
+    link: str,
+) -> str:
+    lang = normalize_language(lang)
+    title = {
+        "ru": "🤝 Реферальная программа",
+        "en": "🤝 Referral program",
+        "es": "🤝 Programa de referidos",
+        "pt": "🤝 Programa de indicação",
+    }.get(lang, "🤝 Referral program")
+    subtitle = {
+        "ru": "Приглашай друзей и получай процент с их оплат.",
+        "en": "Invite friends and earn a share of their payments.",
+        "es": "Invita amigos y gana un porcentaje de sus pagos.",
+        "pt": "Convide amigos e ganhe uma parte dos pagamentos deles.",
+    }.get(lang, "Invite friends and earn a share of their payments.")
+    param_header = {
+        "ru": "Показатель",
+        "en": "Metric",
+        "es": "Indicador",
+        "pt": "Indicador",
+    }.get(lang, "Metric")
+    value_header = {
+        "ru": "Значение",
+        "en": "Value",
+        "es": "Valor",
+        "pt": "Valor",
+    }.get(lang, "Value")
+    available_label = {
+        "ru": "Доступно к выводу",
+        "en": "Available to withdraw",
+        "es": "Disponible para retiro",
+        "pt": "Disponível para saque",
+    }.get(lang, "Available to withdraw")
+    total_label = {
+        "ru": "Всего заработано",
+        "en": "Total earned",
+        "es": "Total ganado",
+        "pt": "Total ganho",
+    }.get(lang, "Total earned")
+    invited_label = {
+        "ru": "Приглашено",
+        "en": "Invited",
+        "es": "Invitados",
+        "pt": "Convidados",
+    }.get(lang, "Invited")
+    how_title = {
+        "ru": "Как это работает",
+        "en": "How it works",
+        "es": "Cómo funciona",
+        "pt": "Como funciona",
+    }.get(lang, "How it works")
+    steps = {
+        "ru": (
+            "1. Отправь другу свою ссылку.\n\n"
+            "2. Друг регистрируется и пополняет баланс или оформляет подписку.\n\n"
+            f"3. Тебе начисляется **{percent}%** с каждой его оплаты."
+        ),
+        "en": (
+            "1. Send your link to a friend.\n\n"
+            "2. They sign up and top up or subscribe.\n\n"
+            f"3. You receive **{percent}%** of each payment."
+        ),
+        "es": (
+            "1. Envía tu enlace a un amigo.\n\n"
+            "2. Se registra y recarga o se suscribe.\n\n"
+            f"3. Recibes **{percent}%** de cada pago."
+        ),
+        "pt": (
+            "1. Envie seu link para um amigo.\n\n"
+            "2. Ele se cadastra e recarrega ou assina.\n\n"
+            f"3. Você recebe **{percent}%** de cada pagamento."
+        ),
+    }.get(lang, f"Share your link. You receive **{percent}%** of each payment.")
+    withdraw = {
+        "ru": f"💸 Вывод от **{min_withdraw}** на USDT TRC-20. Выплаты — по пятницам.",
+        "en": f"💸 Withdraw from **{min_withdraw}** in USDT TRC-20. Payouts on Fridays.",
+        "es": f"💸 Retiro desde **{min_withdraw}** en USDT TRC-20.",
+        "pt": f"💸 Saque a partir de **{min_withdraw}** em USDT TRC-20.",
+    }.get(lang, f"Withdraw from **{min_withdraw}** in USDT TRC-20.")
+    link_title = {
+        "ru": "Твоя ссылка",
+        "en": "Your link",
+        "es": "Tu enlace",
+        "pt": "Seu link",
+    }.get(lang, "Your link")
+    return "\n\n".join(
+        [
+            f"### {title}",
+            "",
+            f"_{subtitle}_",
+            "",
+            markdown_table(
+                [param_header, value_header],
+                [
+                    [available_label, available],
+                    [total_label, total],
+                    [invited_label, str(count)],
+                ],
+            ),
+            "",
+            f"### {how_title}",
+            "",
+            steps,
+            "",
+            withdraw,
+            "",
+            f"**{link_title}**",
+            "",
+            f"`{link}`",
+        ]
+    )
 
 
 def format_referral_stats_rich(

@@ -15,6 +15,7 @@ from app.bot.audio_media import send_voice_from_url
 from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
+from app.bot.rich_layouts import RICH_DIVIDER
 from app.bot.rich_messages import answer_rich_message, present_rich_panel, present_rich_text, truncate_text
 from app.core.config import get_settings
 from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
@@ -166,7 +167,7 @@ async def _main_menu_inline(telegram_id: int):
     lang = await _user_language(telegram_id)
     status = await BillingService().home_status_text(telegram_id)
     body = main_menu_text(lang)
-    text = f"{status}\n\n\n---\n\n\n{body}" if status else body
+    text = f"{status}{RICH_DIVIDER}{body}" if status else body
     return text, inline_main_menu(lang)
 
 
@@ -244,7 +245,7 @@ async def _open_referrals(
     text = await ReferralService().panel_text(actor_id, bot_username=username)
     share_link = ReferralService().build_referral_link(username, actor_id)
     markup = inline_referral_menu(share_link=share_link, lang=lang)
-    await present_rich_panel(message, text, reply_markup=markup, edit_message=edit_message)
+    await present_rich_text(message, text, reply_markup=markup, edit_message=edit_message)
 
 
 async def _with_typing(message: Message, coro):
