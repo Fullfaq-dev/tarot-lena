@@ -26,66 +26,265 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "es": "Saldo {balance} — insuficiente para foto. Recarga en «Saldo».",
         "pt": "Saldo {balance} — insuficiente para foto. Recarregue em «Saldo».",
     },
-    "billing_panel": {
+    "billing_panel_header": {
         "ru": (
-            "<b>💳 Баланс и подписка</b>\n"
-            "<i>Здесь видно, что доступно сейчас и сколько стоит продолжить.</i>\n\n"
-            "<pre>"
-            "Тариф              {tier}\n"
-            "Баланс             {balance}\n"
-            "Реферальный баланс {ref_balance}\n"
-            "</pre>\n\n"
-            "<b>Бесплатный лимит на месяц</b>\n"
-            "💬 Сообщения в AI-чате: <b>{free_left}/{free_limit}</b>\n"
-            "🔮 Расклады таро: <b>{readings_left}/3</b>\n\n"
-            "<b>Если лимит закончился</b>\n"
-            "• Ответ AI списывает с баланса примерно <b>5–30 ₽</b> — зависит от длины диалога.\n"
-            "• Фото с инфографикой по ауре или ладони стоит <b>100 ₽</b>.\n\n"
-            "<b>Подписки</b>\n"
-            "✨ <b>Plus</b> — {plus_price}/мес: безлимитный AI-чат без списаний.\n"
-            "👑 <b>Premium</b> — {premium_price}/мес: безлимитный чат + голосовые ответы.\n\n"
-            "🤝 Приглашай друзей и получай <b>40%</b> с их оплат. Вывод от {min_withdraw} в USDT."
+            "<b>💳 Баланс и подписка</b>\n\n"
+            "🎫 Тариф: <b>{tier}</b>\n"
+            "💰 Баланс: <b>{balance}</b>\n"
+            "🤝 Реферальный баланс: <b>{ref_balance}</b>"
         ),
         "en": (
             "<b>💳 Balance & subscription</b>\n\n"
-            "<pre>"
-            "Plan             {tier}\n"
-            "Balance          {balance}\n"
-            "Referral balance {ref_balance}\n"
-            "</pre>\n\n"
-            "<b>Monthly free quota</b>\n"
-            "💬 AI chat: <b>{free_left}/{free_limit}</b>\n"
-            "🔮 Tarot readings: <b>{readings_left}/3</b>\n\n"
-            "After the free quota, AI replies charge <b>5–30 ₽</b> from balance.\n"
-            "Photo aura/palm infographic costs <b>100 ₽</b>.\n\n"
-            "✨ <b>Plus</b> — {plus_price}/mo: unlimited AI chat.\n"
-            "👑 <b>Premium</b> — {premium_price}/mo: unlimited chat + voice replies.\n\n"
-            "🤝 Invite friends and get <b>40%</b> of their payments. Withdraw from {min_withdraw} USDT."
+            "🎫 Plan: <b>{tier}</b>\n"
+            "💰 Balance: <b>{balance}</b>\n"
+            "🤝 Referral balance: <b>{ref_balance}</b>"
         ),
         "es": (
             "<b>💳 Suscripción y saldo</b>\n\n"
-            "Plan: <b>{tier}</b>\n"
-            "Saldo: <b>{balance}</b>\n"
-            "Referidos: <b>{ref_balance}</b>\n\n"
-            "💬 Mensajes gratis: <b>{free_left}/{free_limit}</b>\n"
-            "🔮 Tiradas gratis: <b>{readings_left}/3</b>\n\n"
-            "Tras el límite: 5–30 ₽ por respuesta IA. Foto con infografía — 100 ₽.\n\n"
-            "✨ <b>Plus</b> — {plus_price}/mes: chat ilimitado.\n"
-            "👑 <b>Premium</b> — {premium_price}/mes: chat ilimitado + voz."
+            "🎫 Plan: <b>{tier}</b>\n"
+            "💰 Saldo: <b>{balance}</b>\n"
+            "🤝 Saldo de referidos: <b>{ref_balance}</b>"
         ),
         "pt": (
             "<b>💳 Assinatura e saldo</b>\n\n"
-            "Plano: <b>{tier}</b>\n"
-            "Saldo: <b>{balance}</b>\n"
-            "Indicação: <b>{ref_balance}</b>\n\n"
-            "💬 Mensagens grátis: <b>{free_left}/{free_limit}</b>\n"
-            "🔮 Leituras grátis: <b>{readings_left}/3</b>\n\n"
-            "Após o limite: 5–30 ₽ por resposta IA. Foto com infográfico — 100 ₽.\n\n"
-            "✨ <b>Plus</b> — {plus_price}/mês: chat ilimitado.\n"
-            "👑 <b>Premium</b> — {premium_price}/mês: chat ilimitado + voz."
+            "🎫 Plano: <b>{tier}</b>\n"
+            "💰 Saldo: <b>{balance}</b>\n"
+            "🤝 Saldo de indicação: <b>{ref_balance}</b>"
         ),
     },
+    "billing_compare_table": {
+        "ru": (
+            "<b>Сравнение тарифов</b>\n"
+            "<pre>"
+            "Возможность   Free   Plus    Premium\n"
+            "AI-чат        10/мес  ∞       ∞\n"
+            "Расклады      3/мес   ∞       ∞\n"
+            "Голос ответы  —       —       ✓\n"
+            "Инфографика   100 ₽   100 ₽   50/мес\n"
+            "Цена/мес      0 ₽     999 ₽   2999 ₽\n"
+            "</pre>"
+        ),
+        "en": (
+            "<b>Plan comparison</b>\n"
+            "<pre>"
+            "Feature       Free   Plus    Premium\n"
+            "AI chat       10/mo   ∞       ∞\n"
+            "Readings      3/mo    ∞       ∞\n"
+            "Voice replies —       —       ✓\n"
+            "Infographics  100 ₽   100 ₽   50/mo\n"
+            "Price/mo      0 ₽     999 ₽   2999 ₽\n"
+            "</pre>"
+        ),
+        "es": (
+            "<b>Comparación de planes</b>\n"
+            "<pre>"
+            "Función       Free   Plus    Premium\n"
+            "Chat IA       10/mes  ∞       ∞\n"
+            "Tiradas       3/mes   ∞       ∞\n"
+            "Voz           —       —       ✓\n"
+            "Infografías   100 ₽   100 ₽   50/mes\n"
+            "Precio/mes    0 ₽     999 ₽   2999 ₽\n"
+            "</pre>"
+        ),
+        "pt": (
+            "<b>Comparação de planos</b>\n"
+            "<pre>"
+            "Recurso       Free   Plus    Premium\n"
+            "Chat IA       10/mês  ∞       ∞\n"
+            "Leituras      3/mês   ∞       ∞\n"
+            "Voz           —       —       ✓\n"
+            "Infográficos  100 ₽   100 ₽   50/mês\n"
+            "Preço/mês     0 ₽     999 ₽   2999 ₽\n"
+            "</pre>"
+        ),
+    },
+    "billing_panel_free_quota": {
+        "ru": (
+            "<b>Сейчас доступно бесплатно</b>\n"
+            "💬 Сообщения в AI-чате: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Расклады таро: <b>{readings_left}/3</b>\n\n"
+            "<i>Когда лимит закончится:</i> ответ AI спишет <b>5–30 ₽</b> с баланса, "
+            "а фото-инфографика по ауре/ладони — <b>100 ₽</b>."
+        ),
+        "en": (
+            "<b>Free right now</b>\n"
+            "💬 AI chat: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Tarot readings: <b>{readings_left}/3</b>\n\n"
+            "<i>After the free quota:</i> an AI reply costs <b>5–30 ₽</b>, "
+            "an aura/palm infographic — <b>100 ₽</b>."
+        ),
+        "es": (
+            "<b>Gratis ahora</b>\n"
+            "💬 Chat IA: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Tiradas: <b>{readings_left}/3</b>\n\n"
+            "<i>Tras el límite:</i> respuesta IA <b>5–30 ₽</b>, infografía — <b>100 ₽</b>."
+        ),
+        "pt": (
+            "<b>Grátis agora</b>\n"
+            "💬 Chat IA: <b>{free_left}/{free_limit}</b>\n"
+            "🔮 Leituras: <b>{readings_left}/3</b>\n\n"
+            "<i>Após o limite:</i> resposta IA <b>5–30 ₽</b>, infográfico — <b>100 ₽</b>."
+        ),
+    },
+    "billing_panel_premium_quota": {
+        "ru": "👑 Premium активен: чат и расклады без лимитов, инфографика — <b>{info_left}/{info_limit}</b> в этом месяце.",
+        "en": "👑 Premium active: unlimited chat & readings, infographics — <b>{info_left}/{info_limit}</b> this month.",
+        "es": "👑 Premium activo: chat y tiradas ilimitados, infografías — <b>{info_left}/{info_limit}</b> este mes.",
+        "pt": "👑 Premium ativo: chat e leituras ilimitados, infográficos — <b>{info_left}/{info_limit}</b> este mês.",
+    },
+    "billing_panel_subs": {
+        "ru": (
+            "✨ <b>Plus</b> — {plus_price}/мес: безлимитный AI-чат и расклады, без списаний с баланса.\n"
+            "👑 <b>Premium</b> — {premium_price}/мес: всё из Plus + голосовые ответы и "
+            "<b>50 инфографик в месяц бесплатно</b>."
+        ),
+        "en": (
+            "✨ <b>Plus</b> — {plus_price}/mo: unlimited AI chat & readings, no balance charges.\n"
+            "👑 <b>Premium</b> — {premium_price}/mo: everything in Plus + voice replies and "
+            "<b>50 free infographics per month</b>."
+        ),
+        "es": (
+            "✨ <b>Plus</b> — {plus_price}/mes: chat y tiradas ilimitados.\n"
+            "👑 <b>Premium</b> — {premium_price}/mes: todo de Plus + voz y "
+            "<b>50 infografías gratis al mes</b>."
+        ),
+        "pt": (
+            "✨ <b>Plus</b> — {plus_price}/mês: chat e leituras ilimitados.\n"
+            "👑 <b>Premium</b> — {premium_price}/mês: tudo do Plus + voz e "
+            "<b>50 infográficos grátis por mês</b>."
+        ),
+    },
+    "billing_panel_referral": {
+        "ru": "🤝 Приглашай друзей и получай <b>40%</b> с их оплат. Вывод от {min_withdraw} в USDT.",
+        "en": "🤝 Invite friends and get <b>40%</b> of their payments. Withdraw from {min_withdraw} in USDT.",
+        "es": "🤝 Invita amigos y gana <b>40%</b> de sus pagos. Retiro desde {min_withdraw} en USDT.",
+        "pt": "🤝 Convide amigos e ganhe <b>40%</b> dos pagamentos. Saque a partir de {min_withdraw} em USDT.",
+    },
     "tier_free": {"ru": "Бесплатный", "en": "Free", "es": "Gratis", "pt": "Grátis"},
+    "proactive_nudge": {
+        "ru": (
+            "✨ Давно не виделись. Звёзды кое-что подсказали о твоём ближайшем цикле — "
+            "хочешь, вытяну карту дня или разберём, что тебя сейчас волнует?\n\n"
+            "Просто напиши мне или нажми «🏠 На главную»."
+        ),
+        "en": (
+            "✨ It's been a while. The cards have something to say about your current cycle — "
+            "want a card of the day or to talk through what's on your mind?\n\n"
+            "Just message me or tap «🏠 Home»."
+        ),
+        "es": (
+            "✨ Hace tiempo que no hablamos. Las cartas tienen algo que decir sobre tu ciclo actual. "
+            "¿Quieres una carta del día o hablar de lo que te preocupa?\n\n"
+            "Solo escríbeme."
+        ),
+        "pt": (
+            "✨ Faz tempo que não nos falamos. As cartas têm algo a dizer sobre seu ciclo atual. "
+            "Quer uma carta do dia ou conversar sobre o que te preocupa?\n\n"
+            "É só me escrever."
+        ),
+    },
+    "profile_status_title": {
+        "ru": "— — —\n💼 Подписка и лимиты",
+        "en": "— — —\n💼 Subscription & limits",
+        "es": "— — —\n💼 Suscripción y límites",
+        "pt": "— — —\n💼 Assinatura e limites",
+    },
+    "profile_status_balance": {
+        "ru": "💳 Баланс: {balance}",
+        "en": "💳 Balance: {balance}",
+        "es": "💳 Saldo: {balance}",
+        "pt": "💳 Saldo: {balance}",
+    },
+    "profile_status_tier_free": {
+        "ru": "🎫 Тариф: Бесплатный",
+        "en": "🎫 Plan: Free",
+        "es": "🎫 Plan: Gratis",
+        "pt": "🎫 Plano: Grátis",
+    },
+    "profile_status_tier_paid": {
+        "ru": "🎫 Тариф: {tier} (активен до {expires})",
+        "en": "🎫 Plan: {tier} (active until {expires})",
+        "es": "🎫 Plan: {tier} (activo hasta {expires})",
+        "pt": "🎫 Plano: {tier} (ativo até {expires})",
+    },
+    "profile_status_messages": {
+        "ru": "💬 Сообщений осталось: {left}/{limit}",
+        "en": "💬 Messages left: {left}/{limit}",
+        "es": "💬 Mensajes restantes: {left}/{limit}",
+        "pt": "💬 Mensagens restantes: {left}/{limit}",
+    },
+    "profile_status_readings": {
+        "ru": "🔮 Раскладов осталось: {left}/{limit}",
+        "en": "🔮 Readings left: {left}/{limit}",
+        "es": "🔮 Tiradas restantes: {left}/{limit}",
+        "pt": "🔮 Leituras restantes: {left}/{limit}",
+    },
+    "profile_status_infographics": {
+        "ru": "🖼️ Инфографик в подарок: {left}/{limit} в этом месяце",
+        "en": "🖼️ Included infographics: {left}/{limit} this month",
+        "es": "🖼️ Infografías incluidas: {left}/{limit} este mes",
+        "pt": "🖼️ Infográficos incluídos: {left}/{limit} este mês",
+    },
+    "profile_status_reset": {
+        "ru": "🔄 Лимиты обновятся {date}",
+        "en": "🔄 Limits reset on {date}",
+        "es": "🔄 Límites se renuevan el {date}",
+        "pt": "🔄 Limites renovam em {date}",
+    },
+    "home_greeting": {
+        "ru": "👋 С возвращением, <b>{name}</b>!",
+        "en": "👋 Welcome back, <b>{name}</b>!",
+        "es": "👋 ¡Bienvenido de nuevo, <b>{name}</b>!",
+        "pt": "👋 Bem-vindo de volta, <b>{name}</b>!",
+    },
+    "home_greeting_anon": {
+        "ru": "👋 С возвращением!",
+        "en": "👋 Welcome back!",
+        "es": "👋 ¡Bienvenido de nuevo!",
+        "pt": "👋 Bem-vindo de volta!",
+    },
+    "home_balance": {
+        "ru": "💳 Баланс: <b>{balance}</b>",
+        "en": "💳 Balance: <b>{balance}</b>",
+        "es": "💳 Saldo: <b>{balance}</b>",
+        "pt": "💳 Saldo: <b>{balance}</b>",
+    },
+    "home_tier_free": {
+        "ru": "🎫 Тариф: <b>Бесплатный</b>",
+        "en": "🎫 Plan: <b>Free</b>",
+        "es": "🎫 Plan: <b>Gratis</b>",
+        "pt": "🎫 Plano: <b>Grátis</b>",
+    },
+    "home_tier_paid": {
+        "ru": "🎫 Тариф: <b>{tier}</b> · активен до <b>{expires}</b>",
+        "en": "🎫 Plan: <b>{tier}</b> · active until <b>{expires}</b>",
+        "es": "🎫 Plan: <b>{tier}</b> · activo hasta <b>{expires}</b>",
+        "pt": "🎫 Plano: <b>{tier}</b> · ativo até <b>{expires}</b>",
+    },
+    "home_free_messages": {
+        "ru": "💬 Бесплатные сообщения: <b>{left}/{limit}</b>",
+        "en": "💬 Free messages: <b>{left}/{limit}</b>",
+        "es": "💬 Mensajes gratis: <b>{left}/{limit}</b>",
+        "pt": "💬 Mensagens grátis: <b>{left}/{limit}</b>",
+    },
+    "home_free_readings": {
+        "ru": "🔮 Бесплатные расклады: <b>{left}/{limit}</b>",
+        "en": "🔮 Free readings: <b>{left}/{limit}</b>",
+        "es": "🔮 Tiradas gratis: <b>{left}/{limit}</b>",
+        "pt": "🔮 Leituras grátis: <b>{left}/{limit}</b>",
+    },
+    "home_infographics": {
+        "ru": "🖼️ Инфографика в подарок: <b>{left}/{limit}</b> в этом месяце",
+        "en": "🖼️ Infographics included: <b>{left}/{limit}</b> this month",
+        "es": "🖼️ Infografías incluidas: <b>{left}/{limit}</b> este mes",
+        "pt": "🖼️ Infográficos incluídos: <b>{left}/{limit}</b> este mês",
+    },
+    "home_reset": {
+        "ru": "🔄 Лимиты обновятся <b>{date}</b>",
+        "en": "🔄 Limits reset on <b>{date}</b>",
+        "es": "🔄 Los límites se renuevan el <b>{date}</b>",
+        "pt": "🔄 Os limites renovam em <b>{date}</b>",
+    },
     "billing_spending_empty": {
         "ru": (
             "📋 История трат\n\n"
@@ -1009,43 +1208,51 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "settings_panel": {
         "ru": (
-            "Настройки\n\n"
-            "Язык: {language}\n"
-            "Голос ответов: {voice}\n"
-            "Часовой пояс: {timezone}\n"
-            "Тихие часы: {quiet_start} – {quiet_end}\n"
-            "Карта дня утром: {daily}\n"
-            "Проактивные сообщения: {proactive}\n\n"
+            "<b>⚙️ Настройки</b>\n\n"
+            "🌐 Язык: <b>{language}</b>\n"
+            "🕒 Часовой пояс: <b>{timezone}</b>\n"
+            "🌙 Тихие часы: <b>{quiet_start} – {quiet_end}</b>\n"
+            "🔮 Карта дня по утрам: <b>{daily}</b>\n"
+            "💌 Заботливые сообщения: <b>{proactive}</b>\n\n"
+            "<i>Карта дня</i> — каждое утро присылаю персональную карту с коротким разбором.\n"
+            "<i>Заботливые сообщения</i> — иногда напоминаю о себе и предлагаю заглянуть, "
+            "если давно не общались. В тихие часы не беспокою.\n\n"
             "Нажми кнопку ниже, чтобы изменить параметр или данные анкеты."
         ),
         "en": (
-            "Settings\n\n"
-            "Language: {language}\n"
-            "Voice: {voice}\n"
-            "Timezone: {timezone}\n"
-            "Quiet hours: {quiet_start} – {quiet_end}\n"
-            "Morning daily card: {daily}\n"
-            "Proactive messages: {proactive}\n\n"
+            "<b>⚙️ Settings</b>\n\n"
+            "🌐 Language: <b>{language}</b>\n"
+            "🕒 Timezone: <b>{timezone}</b>\n"
+            "🌙 Quiet hours: <b>{quiet_start} – {quiet_end}</b>\n"
+            "🔮 Morning daily card: <b>{daily}</b>\n"
+            "💌 Caring messages: <b>{proactive}</b>\n\n"
+            "<i>Daily card</i> — every morning I send a personal card with a short reading.\n"
+            "<i>Caring messages</i> — once in a while I check in if we haven't talked for a bit. "
+            "I stay silent during quiet hours.\n\n"
             "Tap a button below to change a setting or profile data."
         ),
         "es": (
-            "Ajustes\n\n"
-            "Idioma: {language}\n"
-            "Voz: {voice}\n"
-            "Zona horaria: {timezone}\n"
-            "Horas silenciosas: {quiet_start} – {quiet_end}\n"
-            "Carta del día por la mañana: {daily}\n"
-            "Mensajes proactivos: {proactive}\n\n"
+            "<b>⚙️ Ajustes</b>\n\n"
+            "🌐 Idioma: <b>{language}</b>\n"
+            "🕒 Zona horaria: <b>{timezone}</b>\n"
+            "🌙 Horas silenciosas: <b>{quiet_start} – {quiet_end}</b>\n"
+            "🔮 Carta del día por la mañana: <b>{daily}</b>\n"
+            "💌 Mensajes de cuidado: <b>{proactive}</b>\n\n"
+            "<i>Carta del día</i> — cada mañana envío una carta personal con una breve lectura.\n"
+            "<i>Mensajes de cuidado</i> — de vez en cuando te escribo si llevamos tiempo sin hablar. "
+            "No molesto en horas silenciosas.\n\n"
             "Toca un botón abajo para cambiar un ajuste o los datos del perfil."
         ),
         "pt": (
-            "Configurações\n\n"
-            "Idioma: {language}\n"
-            "Voz: {voice}\n"
-            "Fuso horário: {timezone}\n"
-            "Horário silencioso: {quiet_start} – {quiet_end}\n"
-            "Carta do dia de manhã: {daily}\n"
-            "Mensagens proativas: {proactive}\n\n"
+            "<b>⚙️ Configurações</b>\n\n"
+            "🌐 Idioma: <b>{language}</b>\n"
+            "🕒 Fuso horário: <b>{timezone}</b>\n"
+            "🌙 Horário silencioso: <b>{quiet_start} – {quiet_end}</b>\n"
+            "🔮 Carta do dia de manhã: <b>{daily}</b>\n"
+            "💌 Mensagens de cuidado: <b>{proactive}</b>\n\n"
+            "<i>Carta do dia</i> — toda manhã envio uma carta pessoal com uma breve leitura.\n"
+            "<i>Mensagens de cuidado</i> — de vez em quando escrevo se ficamos um tempo sem falar. "
+            "Não incomodo no horário silencioso.\n\n"
             "Toque um botão abaixo para alterar uma configuração ou os dados do perfil."
         ),
     },

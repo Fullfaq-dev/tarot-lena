@@ -3,6 +3,8 @@ from decimal import Decimal
 FREE_CHAT_MESSAGES_PER_MONTH = 10
 FREE_READINGS_PER_MONTH = 3
 DAILY_READINGS_LIMIT = 5
+# Premium ("top") subscribers get this many infographics per month at no extra cost.
+FREE_INFOGRAPHICS_PREMIUM_PER_MONTH = 50
 HISTORY_PAGE_SIZE = 5
 SPENDING_PAGE_SIZE = 5
 MEMORY_PAGE_SIZE = 5
@@ -48,6 +50,10 @@ def is_unlimited_chat(tier: str) -> bool:
 
 
 def can_use_premium_voice(tier: str) -> bool:
+    return tier == "premium"
+
+
+def includes_free_infographics(tier: str) -> bool:
     return tier == "premium"
 
 

@@ -6,7 +6,15 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import BalanceTransaction, Payment, Subscription, UsageRecord, User, UserSettings
+from app.database.models import (
+    BalanceTransaction,
+    Payment,
+    SoulProfile,
+    Subscription,
+    UsageRecord,
+    User,
+    UserSettings,
+)
 from app.database.session import AsyncSessionLocal
 from app.core.config import get_settings
 from app.bot.i18n import normalize_language, t
@@ -14,10 +22,12 @@ from app.bot.i18n_services import SPENDING_FEATURE_I18N
 from app.services.billing.limits import (
     AI_MODEL_NAME,
     FREE_CHAT_MESSAGES_PER_MONTH,
+    FREE_INFOGRAPHICS_PREMIUM_PER_MONTH,
     FREE_READINGS_PER_MONTH,
     SPENDING_PAGE_SIZE,
     SUBSCRIPTION_PRICES_RUB,
     free_messages_left,
+    includes_free_infographics,
     is_unlimited_chat,
 )
 from app.services.billing.providers import PaymentIntent, PlategaProvider
@@ -125,9 +135,11 @@ class BillingService:
             )
             user.free_readings_used_month = int(readings or 0)
             user.free_messages_used_month = int(messages or 0)
+            user.free_infographics_used_month = 0
         elif user.free_limits_month is not None:
             user.free_messages_used_month = 0
             user.free_readings_used_month = 0
+            user.free_infographics_used_month = 0
 
         user.free_limits_month = month
         await session.flush()
@@ -228,16 +240,21 @@ class BillingService:
         lang = await self._user_lang(session, user.id)
 
         image_charge = vision_infographic_charge_rub(vision_mode) if with_infographic else Decimal("0")
+        infographic_free = (
+            with_infographic
+            and includes_free_infographics(tier)
+            and user.free_infographics_used_month < FREE_INFOGRAPHICS_PREMIUM_PER_MONTH
+        )
 
         if is_unlimited_chat(tier):
-            if not with_infographic or user.balance_rub >= image_charge:
+            if not with_infographic or infographic_free or user.balance_rub >= image_charge:
                 return True, "", "unlimited"
             return (
                 False,
                 t("billing_infographic_needed", lang, amount=format_balance(image_charge)),
                 "blocked",
             )
-        if with_infographic and user.balance_rub < image_charge:
+        if with_infographic and not infographic_free and user.balance_rub < image_charge:
             return (
                 False,
                 t("billing_infographic_needed", lang, amount=format_balance(image_charge)),
@@ -399,8 +416,17 @@ class BillingService:
         chat_charged = Decimal(str(usage["charged_rub"]))
         chat_cost_usd = Decimal(str(usage["provider_cost_usd"]))
         image_charged = Decimal("0")
+        image_free = False
 
-        if user.balance_rub >= image_charge:
+        subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
+        tier = subscription.tier if subscription else "free"
+        if (
+            includes_free_infographics(tier)
+            and user.free_infographics_used_month < FREE_INFOGRAPHICS_PREMIUM_PER_MONTH
+        ):
+            user.free_infographics_used_month += 1
+            image_free = True
+        elif user.balance_rub >= image_charge:
             user.balance_rub -= image_charge
             session.add(
                 BalanceTransaction(user_id=user.id, amount_rub=-image_charge, reason="vision_infographic")
@@ -420,6 +446,7 @@ class BillingService:
                 "image_model": "gpt-image-2-image-to-image",
                 "image_provider_cost_usd": str(image_cost_usd),
                 "image_charged_rub": str(image_charged),
+                "image_free_premium": image_free,
                 "chat_charged_rub": str(chat_charged),
                 "chat_provider_cost_usd": str(chat_cost_usd),
             }
@@ -454,19 +481,221 @@ class BillingService:
             }.get(tier, tier)
 
             ref_stats = await ReferralService().get_stats(session, user)
-            return t(
-                "billing_panel",
-                lang,
-                tier=tier_label,
-                balance=format_balance(user.balance_rub),
-                ref_balance=format_balance(ref_stats["available"]),
-                free_left=free_left,
-                free_limit=FREE_CHAT_MESSAGES_PER_MONTH,
-                readings_left=readings_left,
-                plus_price=format_balance(SUBSCRIPTION_PRICES_RUB["plus"]),
-                premium_price=format_balance(SUBSCRIPTION_PRICES_RUB["premium"]),
-                min_withdraw=format_balance(MIN_WITHDRAWAL_RUB),
+            parts = [
+                t(
+                    "billing_panel_header",
+                    lang,
+                    tier=tier_label,
+                    balance=format_balance(user.balance_rub),
+                    ref_balance=format_balance(ref_stats["available"]),
+                ),
+                t("billing_compare_table", lang),
+            ]
+            if tier == "free":
+                parts.append(
+                    t(
+                        "billing_panel_free_quota",
+                        lang,
+                        free_left=free_left,
+                        free_limit=FREE_CHAT_MESSAGES_PER_MONTH,
+                        readings_left=readings_left,
+                    )
+                )
+            elif tier == "premium":
+                info_left = max(
+                    0,
+                    FREE_INFOGRAPHICS_PREMIUM_PER_MONTH - user.free_infographics_used_month,
+                )
+                parts.append(
+                    t(
+                        "billing_panel_premium_quota",
+                        lang,
+                        info_left=info_left,
+                        info_limit=FREE_INFOGRAPHICS_PREMIUM_PER_MONTH,
+                    )
+                )
+            parts.append(
+                t(
+                    "billing_panel_subs",
+                    lang,
+                    plus_price=format_balance(SUBSCRIPTION_PRICES_RUB["plus"]),
+                    premium_price=format_balance(SUBSCRIPTION_PRICES_RUB["premium"]),
+                )
             )
+            parts.append(
+                t(
+                    "billing_panel_referral",
+                    lang,
+                    min_withdraw=format_balance(MIN_WITHDRAWAL_RUB),
+                )
+            )
+            return "\n\n".join(p for p in parts if p)
+
+    @staticmethod
+    def _next_month_reset(timezone_name: str) -> str:
+        try:
+            tz = ZoneInfo(timezone_name)
+        except Exception:
+            tz = timezone.utc
+        now = datetime.now(tz)
+        if now.month == 12:
+            nxt = now.replace(year=now.year + 1, month=1, day=1)
+        else:
+            nxt = now.replace(month=now.month + 1, day=1)
+        return nxt.strftime("%d.%m.%Y")
+
+    async def home_status_text(self, telegram_id: int) -> str:
+        from html import escape
+
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return ""
+            lang = await self._user_lang(session, user.id)
+            await self.sync_free_limits_month(session, user)
+            await session.commit()
+
+            subscription = await session.scalar(
+                select(Subscription).where(Subscription.user_id == user.id)
+            )
+            tier = subscription.tier if subscription else "free"
+            settings = await session.scalar(
+                select(UserSettings).where(UserSettings.user_id == user.id)
+            )
+            timezone_name = settings.timezone if settings else "Europe/Moscow"
+            profile = await session.scalar(
+                select(SoulProfile).where(SoulProfile.user_id == user.id)
+            )
+            name = (profile.name if profile and profile.name else user.first_name) or ""
+
+            lines: list[str] = []
+            if name.strip():
+                lines.append(t("home_greeting", lang, name=escape(name.strip())))
+            else:
+                lines.append(t("home_greeting_anon", lang))
+            lines.append("")
+            lines.append(t("home_balance", lang, balance=format_balance(user.balance_rub)))
+
+            if tier in ("plus", "premium"):
+                label = "Plus" if tier == "plus" else "Premium"
+                expires = "—"
+                if subscription and subscription.expires_at:
+                    try:
+                        expires = subscription.expires_at.astimezone(
+                            ZoneInfo(timezone_name)
+                        ).strftime("%d.%m.%Y")
+                    except Exception:
+                        expires = subscription.expires_at.strftime("%d.%m.%Y")
+                lines.append(t("home_tier_paid", lang, tier=label, expires=expires))
+                if tier == "premium":
+                    info_left = max(
+                        0,
+                        FREE_INFOGRAPHICS_PREMIUM_PER_MONTH - user.free_infographics_used_month,
+                    )
+                    lines.append(
+                        t(
+                            "home_infographics",
+                            lang,
+                            left=info_left,
+                            limit=FREE_INFOGRAPHICS_PREMIUM_PER_MONTH,
+                        )
+                    )
+            else:
+                lines.append(t("home_tier_free", lang))
+                free_left = free_messages_left(user.free_messages_used_month)
+                readings_left = max(
+                    0, FREE_READINGS_PER_MONTH - user.free_readings_used_month
+                )
+                lines.append(
+                    t(
+                        "home_free_messages",
+                        lang,
+                        left=free_left,
+                        limit=FREE_CHAT_MESSAGES_PER_MONTH,
+                    )
+                )
+                lines.append(
+                    t(
+                        "home_free_readings",
+                        lang,
+                        left=readings_left,
+                        limit=FREE_READINGS_PER_MONTH,
+                    )
+                )
+                lines.append(
+                    t("home_reset", lang, date=self._next_month_reset(timezone_name))
+                )
+
+            return "\n".join(lines)
+
+    async def profile_status_block(self, telegram_id: int) -> str:
+        """Plain-text subscription/limits block for the profile panel."""
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is None:
+                return ""
+            lang = await self._user_lang(session, user.id)
+            await self.sync_free_limits_month(session, user)
+            await session.commit()
+
+            subscription = await session.scalar(
+                select(Subscription).where(Subscription.user_id == user.id)
+            )
+            tier = subscription.tier if subscription else "free"
+            settings = await session.scalar(
+                select(UserSettings).where(UserSettings.user_id == user.id)
+            )
+            timezone_name = settings.timezone if settings else "Europe/Moscow"
+
+            lines = [t("profile_status_title", lang)]
+            lines.append(t("profile_status_balance", lang, balance=format_balance(user.balance_rub)))
+
+            if tier in ("plus", "premium"):
+                label = "Plus" if tier == "plus" else "Premium"
+                expires = "—"
+                if subscription and subscription.expires_at:
+                    try:
+                        expires = subscription.expires_at.astimezone(
+                            ZoneInfo(timezone_name)
+                        ).strftime("%d.%m.%Y")
+                    except Exception:
+                        expires = subscription.expires_at.strftime("%d.%m.%Y")
+                lines.append(t("profile_status_tier_paid", lang, tier=label, expires=expires))
+                if tier == "premium":
+                    info_left = max(
+                        0,
+                        FREE_INFOGRAPHICS_PREMIUM_PER_MONTH - user.free_infographics_used_month,
+                    )
+                    lines.append(
+                        t(
+                            "profile_status_infographics",
+                            lang,
+                            left=info_left,
+                            limit=FREE_INFOGRAPHICS_PREMIUM_PER_MONTH,
+                        )
+                    )
+            else:
+                lines.append(t("profile_status_tier_free", lang))
+                lines.append(
+                    t(
+                        "profile_status_messages",
+                        lang,
+                        left=free_messages_left(user.free_messages_used_month),
+                        limit=FREE_CHAT_MESSAGES_PER_MONTH,
+                    )
+                )
+                lines.append(
+                    t(
+                        "profile_status_readings",
+                        lang,
+                        left=max(0, FREE_READINGS_PER_MONTH - user.free_readings_used_month),
+                        limit=FREE_READINGS_PER_MONTH,
+                    )
+                )
+                lines.append(
+                    t("profile_status_reset", lang, date=self._next_month_reset(timezone_name))
+                )
+            return "\n".join(lines)
 
     async def spending_history_page(
         self, telegram_id: int, page: int = 0

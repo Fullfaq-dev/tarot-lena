@@ -224,7 +224,6 @@ def inline_settings_menu(lang: str = "ru") -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text=t("btn_profile_data", lang), callback_data="nav:profile_edit")],
             [InlineKeyboardButton(text=btn_language(lang), callback_data="nav:language")],
             [InlineKeyboardButton(text=t("btn_memory", lang), callback_data="mem:page:0")],
-            [InlineKeyboardButton(text=t("btn_change_voice", lang), callback_data="set:voice")],
             [InlineKeyboardButton(text=t("btn_change_timezone", lang), callback_data="set:timezone")],
             [
                 InlineKeyboardButton(text=t("btn_toggle_daily", lang), callback_data="set:toggle:daily"),
@@ -347,13 +346,13 @@ def inline_billing_menu(lang: str = "ru") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🟢 Пополнить 100 ₽", callback_data="bill:topup:100"),
-                InlineKeyboardButton(text="🟢 300 ₽", callback_data="bill:topup:300"),
-                InlineKeyboardButton(text="🟢 500 ₽", callback_data="bill:topup:500"),
+                InlineKeyboardButton(text="💰 100 ₽", callback_data="bill:topup:100"),
+                InlineKeyboardButton(text="💰 300 ₽", callback_data="bill:topup:300"),
+                InlineKeyboardButton(text="💰 500 ₽", callback_data="bill:topup:500"),
             ],
             [
                 InlineKeyboardButton(text="✨ Plus · безлимит", callback_data="bill:sub:plus"),
-                InlineKeyboardButton(text="👑 Premium · голос", callback_data="bill:sub:premium"),
+                InlineKeyboardButton(text="👑 Premium · всё включено", callback_data="bill:sub:premium"),
             ],
             [InlineKeyboardButton(text=t("btn_spending_history", lang), callback_data="bill:spend:0")],
             [_support_button(lang)],

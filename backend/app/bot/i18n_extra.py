@@ -733,15 +733,17 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
     "ai_stone_prompt": {
         "ru": (
             "Ты уже подобрал для этого пользователя камни из каталога.{reason_hint}\n"
-            "Запрос: {query}\nКамни:\n{stones}\n\n"
-            "Объясни персонально (до 6 предложений): почему именно они этому человеку с учётом профиля, "
-            "как их энергии дополняют друг друга, как носить или использовать."
+            "Запрос пользователя: «{query}»\nКамни:\n{stones}\n\n"
+            "В первом предложении прямо свяжи подбор с этим запросом. "
+            "Затем объясни персонально (всего до 6 предложений): почему именно эти камни под этот запрос "
+            "и профиль человека, как их энергии дополняют друг друга, как носить или использовать."
         ),
         "en": (
             "You already picked stones from the catalog for this user.{reason_hint}\n"
-            "Request: {query}\nStones:\n{stones}\n\n"
-            "Explain personally (up to 6 sentences): why these stones fit this person, "
-            "how their energies complement each other, how to wear or use them."
+            "User's request: \"{query}\"\nStones:\n{stones}\n\n"
+            "In the first sentence directly tie the pick to this request. "
+            "Then explain personally (up to 6 sentences total): why these stones fit this request "
+            "and this person, how their energies complement each other, how to wear or use them."
         ),
         "es": (
             "Ya elegiste piedras del catálogo para este usuario.{reason_hint}\n"
@@ -781,15 +783,17 @@ EXTRA_STRINGS: dict[str, dict[str, str]] = {
     "ai_bracelet_prompt": {
         "ru": (
             "Ты подобрал схему браслета для этого пользователя.{reason_hint}\n"
-            "Намерение: {query}\nРасположение:\n{layout}\n\n"
-            "Объясни (до 7 предложений): почему камни и руна стоят именно так для этого человека, "
-            "как сочетать, на что обратить внимание при ношении."
+            "Запрос пользователя (его цель браслета): «{query}»\nРасположение:\n{layout}\n\n"
+            "В первом предложении прямо свяжи браслет с этой целью пользователя. "
+            "Затем объясни (всего до 7 предложений): почему камни и руна стоят именно так "
+            "именно под этот запрос, как сочетать, на что обратить внимание при ношении."
         ),
         "en": (
             "You picked a bracelet layout for this user.{reason_hint}\n"
-            "Intention: {query}\nLayout:\n{layout}\n\n"
-            "Explain (up to 7 sentences): why stones and rune are placed this way, "
-            "how to combine them, what to notice when wearing."
+            "User's request (their goal for the bracelet): \"{query}\"\nLayout:\n{layout}\n\n"
+            "In the first sentence directly tie the bracelet to this goal. "
+            "Then explain (up to 7 sentences total): why stones and rune are placed this way "
+            "specifically for this request, how to combine them, what to notice when wearing."
         ),
         "es": (
             "Elegiste un diseño de pulsera para este usuario.{reason_hint}\n"

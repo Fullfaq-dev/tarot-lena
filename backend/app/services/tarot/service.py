@@ -413,6 +413,10 @@ class TarotService:
             t("profile_line", lang, label=t("profile_summary_archetype", lang), value=profile.archetype or "—"),
             t("profile_summary_memories", lang, count=memories_count),
         ]
+        status_block = await BillingService().profile_status_block(telegram_id)
+        if status_block:
+            extra_lines.append("")
+            extra_lines.append(status_block)
         extra = "\n\n" + "\n".join(extra_lines)
         return t("profile_title", lang, base=base, extra=extra)
 

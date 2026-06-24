@@ -64,6 +64,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     balance_rub: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     free_messages_used_month: Mapped[int] = mapped_column(Integer, default=0)
     free_readings_used_month: Mapped[int] = mapped_column(Integer, default=0)
+    free_infographics_used_month: Mapped[int] = mapped_column(Integer, default=0)
     free_limits_month: Mapped[str | None] = mapped_column(String(7))
     usdt_trc20_wallet: Mapped[str | None] = mapped_column(String(64))
 

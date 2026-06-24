@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import select
 
 from app.bot.content import info_panel_text, support_url
+from app.bot.audio_media import send_voice_from_url
 from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
@@ -158,12 +159,15 @@ async def _go_home(message: Message, state: FSMContext) -> None:
     await state.clear()
     telegram_id = message.from_user.id
     menu_text, menu_markup = await _main_menu_inline(telegram_id)
-    await message.answer(menu_text, reply_markup=menu_markup)
+    await message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
 
 
 async def _main_menu_inline(telegram_id: int):
     lang = await _user_language(telegram_id)
-    return main_menu_text(lang), inline_main_menu(lang)
+    status = await BillingService().home_status_text(telegram_id)
+    body = main_menu_text(lang)
+    text = f"{status}\n\n{body}" if status else body
+    return text, inline_main_menu(lang)
 
 
 async def _open_billing(message: Message, *, edit_message: Message | None = None) -> None:
@@ -661,7 +665,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
         if onboarded:
             await message.answer(text, reply_markup=await _user_main_menu(message.from_user.id))
             menu_text, menu_markup = await _main_menu_inline(message.from_user.id)
-            await message.answer(menu_text, reply_markup=menu_markup)
+            await message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
         else:
             step_key = await service.get_current_step_key(message.from_user) or ONBOARDING_STEPS[0][0]
             markup = onboarding_keyboard(step_key, lang)
@@ -694,7 +698,7 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
 
     if target == "main":
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
-        await safe_edit(callback.message, menu_text, menu_markup)
+        await safe_edit(callback.message, menu_text, menu_markup, parse_mode=ParseMode.HTML)
         return
 
     if target == "readings":
@@ -893,9 +897,7 @@ async def settings_callback(callback: CallbackQuery) -> None:
     service = SettingsService()
     action = callback.data.removeprefix("set:")
 
-    if action == "voice":
-        text = await service.cycle_voice(callback.from_user.id)
-    elif action == "timezone":
+    if action == "timezone":
         text = await service.cycle_timezone(callback.from_user.id)
     elif action == "toggle:daily":
         text = await service.toggle_daily_card(callback.from_user.id)
@@ -907,7 +909,7 @@ async def settings_callback(callback: CallbackQuery) -> None:
         await callback.message.answer(
             text,
             reply_markup=await _user_main_menu(callback.from_user.id),
-            parse_mode=None,
+            parse_mode=ParseMode.HTML,
         )
         lang = await service.get_ui_language(callback.from_user.id)
         await safe_edit(callback.message, t("choose_language", lang), inline_language_menu(lang))
@@ -917,7 +919,7 @@ async def settings_callback(callback: CallbackQuery) -> None:
         text = await service.get_panel_text(callback.from_user.id)
 
     lang = await service.get_ui_language(callback.from_user.id)
-    await safe_edit(callback.message, text, inline_settings_menu(lang))
+    await safe_edit(callback.message, text, inline_settings_menu(lang), parse_mode=ParseMode.HTML)
     await _track(None, "bot.settings", {"action": action})
 
 
@@ -1206,13 +1208,13 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "main":
         await state.clear()
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
-        await safe_edit(callback.message, menu_text, menu_markup)
+        await safe_edit(callback.message, menu_text, menu_markup, parse_mode=ParseMode.HTML)
         return
 
     if action == "daily":
         await _send_daily_card(callback.message, callback.from_user.id)
         menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
-        await safe_edit(callback.message, menu_text, menu_markup)
+        await safe_edit(callback.message, menu_text, menu_markup, parse_mode=ParseMode.HTML)
         await _track(None, "bot.daily_card", {"telegram_id": callback.from_user.id})
         return
 
@@ -1229,7 +1231,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "billing":
         text = await BillingService().panel_text(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_billing_menu(lang))
+        await safe_edit(callback.message, text, inline_billing_menu(lang), parse_mode=ParseMode.HTML)
         await _track(None, "bot.menu", {"item": "billing"})
         return
 
@@ -1245,7 +1247,7 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
     if action == "settings":
         lang = await SettingsService().get_ui_language(callback.from_user.id)
         text = await SettingsService().get_panel_text(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_settings_menu(lang))
+        await safe_edit(callback.message, text, inline_settings_menu(lang), parse_mode=ParseMode.HTML)
         await _track(None, "bot.menu", {"item": "settings"})
         return
 
@@ -1391,7 +1393,7 @@ async def _process_onboarding_answer(
             await source.message.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
             await _send_daily_card(source.message, telegram_user.id)
             menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
-            await source.message.answer(menu_text, reply_markup=menu_markup)
+            await source.message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
         elif edit:
             await safe_edit(source.message, reply_text, markup)
         else:
@@ -1402,7 +1404,7 @@ async def _process_onboarding_answer(
             await source.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
             await _send_daily_card(source, telegram_user.id)
             menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
-            await source.answer(menu_text, reply_markup=menu_markup)
+            await source.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
         else:
             await source.answer(reply_text, reply_markup=markup)
 
@@ -1410,20 +1412,20 @@ async def _process_onboarding_answer(
     await _track(user_id, event, {"text": answer[:200]})
 
 
+# Single supported voice for spoken replies (selection removed from settings).
+DEFAULT_VOICE_PRESET = "female_mystical"
+
+
 async def _user_voice_settings(telegram_id: int) -> tuple[str, str]:
     async with AsyncSessionLocal() as session:
         user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
         if user is None:
-            return "free", "female_mystical"
+            return "free", DEFAULT_VOICE_PRESET
         subscription = await session.scalar(
             select(Subscription).where(Subscription.user_id == user.id)
         )
-        settings = await session.scalar(
-            select(UserSettings).where(UserSettings.user_id == user.id)
-        )
         tier = subscription.tier if subscription else "free"
-        preset = settings.voice_preset if settings else "female_mystical"
-        return tier, preset
+        return tier, DEFAULT_VOICE_PRESET
 
 
 @router.message(F.voice)
@@ -1794,7 +1796,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         await message.answer(
             await SettingsService().get_panel_text(message.from_user.id),
             reply_markup=inline_settings_menu(lang),
-            parse_mode=None,
+            parse_mode=ParseMode.HTML,
         )
         await _track(None, "bot.menu", {"item": text})
         return
@@ -1823,7 +1825,7 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
         return
 
     menu_text, menu_markup = await _main_menu_inline(message.from_user.id)
-    await message.answer(menu_text, reply_markup=menu_markup)
+    await message.answer(menu_text, reply_markup=menu_markup, parse_mode=ParseMode.HTML)
 
 
 @router.message(F.sticker)

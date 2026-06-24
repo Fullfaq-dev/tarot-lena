@@ -3,14 +3,7 @@ from sqlalchemy import select
 from app.database.models import User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.bot.i18n import LANGUAGE_LABELS, normalize_language, t
-from app.bot.i18n_services import VOICE_PRESET_I18N
 from app.services.locale.service import LocaleService
-
-VOICE_PRESETS = [
-    ("female_mystical", "voice_preset_female"),
-    ("male_calm", "voice_preset_male"),
-    ("neutral_soft", "voice_preset_neutral"),
-]
 
 TIMEZONE_OPTIONS = [
     ("Europe/Moscow", "Москва"),
@@ -47,17 +40,6 @@ class SettingsService:
         return await self._mutate(telegram_id, lambda settings: setattr(
             settings, "proactive_messages_enabled", not settings.proactive_messages_enabled
         ))
-
-    async def cycle_voice(self, telegram_id: int) -> str:
-        def mutate(settings: UserSettings) -> None:
-            presets = [preset for preset, _ in VOICE_PRESETS]
-            try:
-                index = presets.index(settings.voice_preset)
-            except ValueError:
-                index = 0
-            settings.voice_preset = presets[(index + 1) % len(presets)]
-
-        return await self._mutate(telegram_id, mutate)
 
     async def cycle_timezone(self, telegram_id: int) -> str:
         def mutate(settings: UserSettings) -> None:
@@ -98,10 +80,6 @@ class SettingsService:
 
     def _format_panel(self, settings: UserSettings) -> str:
         lang = normalize_language(settings.ui_language)
-        voice_label = t(
-            VOICE_PRESET_I18N.get(settings.voice_preset, "voice_preset_female"),
-            lang,
-        )
         tz_label = dict(TIMEZONE_OPTIONS).get(settings.timezone, settings.timezone)
         language_label = LANGUAGE_LABELS.get(lang, lang)
         daily = (
@@ -118,7 +96,6 @@ class SettingsService:
             "settings_panel",
             lang,
             language=language_label,
-            voice=voice_label,
             timezone=tz_label,
             quiet_start=settings.quiet_hours_start,
             quiet_end=settings.quiet_hours_end,
