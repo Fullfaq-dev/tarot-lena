@@ -573,7 +573,6 @@ class BillingService:
                 lines.append(t("home_greeting", lang, name=escape(name.strip())))
             else:
                 lines.append(t("home_greeting_anon", lang))
-            lines.append("")
             lines.append(t("home_balance", lang, balance=format_balance(user.balance_rub)))
 
             if tier in ("plus", "premium"):
@@ -626,7 +625,7 @@ class BillingService:
                     t("home_reset", lang, date=self._next_month_reset(timezone_name))
                 )
 
-            return "\n".join(lines)
+            return "\n\n".join(lines)
 
     async def profile_status_block(self, telegram_id: int) -> str:
         """Plain-text subscription/limits block for the profile panel."""

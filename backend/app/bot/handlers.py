@@ -166,7 +166,7 @@ async def _main_menu_inline(telegram_id: int):
     lang = await _user_language(telegram_id)
     status = await BillingService().home_status_text(telegram_id)
     body = main_menu_text(lang)
-    text = f"{status}\n\n{body}" if status else body
+    text = f"{status}\n\n---\n\n{body}" if status else body
     return text, inline_main_menu(lang)
 
 

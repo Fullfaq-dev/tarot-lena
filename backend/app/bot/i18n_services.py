@@ -29,26 +29,26 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     "billing_panel_header": {
         "ru": (
             "<b>💳 Баланс и подписка</b>\n\n"
-            "🎫 Тариф: <b>{tier}</b>\n"
-            "💰 Баланс: <b>{balance}</b>\n"
+            "🎫 Тариф: <b>{tier}</b>\n\n"
+            "💰 Баланс: <b>{balance}</b>\n\n"
             "🤝 Реферальный баланс: <b>{ref_balance}</b>"
         ),
         "en": (
             "<b>💳 Balance & subscription</b>\n\n"
-            "🎫 Plan: <b>{tier}</b>\n"
-            "💰 Balance: <b>{balance}</b>\n"
+            "🎫 Plan: <b>{tier}</b>\n\n"
+            "💰 Balance: <b>{balance}</b>\n\n"
             "🤝 Referral balance: <b>{ref_balance}</b>"
         ),
         "es": (
             "<b>💳 Suscripción y saldo</b>\n\n"
-            "🎫 Plan: <b>{tier}</b>\n"
-            "💰 Saldo: <b>{balance}</b>\n"
+            "🎫 Plan: <b>{tier}</b>\n\n"
+            "💰 Saldo: <b>{balance}</b>\n\n"
             "🤝 Saldo de referidos: <b>{ref_balance}</b>"
         ),
         "pt": (
             "<b>💳 Assinatura e saldo</b>\n\n"
-            "🎫 Plano: <b>{tier}</b>\n"
-            "💰 Saldo: <b>{balance}</b>\n"
+            "🎫 Plano: <b>{tier}</b>\n\n"
+            "💰 Saldo: <b>{balance}</b>\n\n"
             "🤝 Saldo de indicação: <b>{ref_balance}</b>"
         ),
     },
@@ -60,7 +60,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "| AI-чат | 10/мес | ∞ | ∞ |\n"
             "| Расклады | 3/мес | ∞ | ∞ |\n"
             "| Голос ответы | — | — | ✓ |\n"
-            "| Инфографика | 100 ₽ | 100 ₽ | 50/мес |\n"
+            "| Инфографика | 100 ₽ | 100 ₽ | 50 беспл., далее 100 ₽ |\n"
             "| Цена/мес | 0 ₽ | 999 ₽ | 2999 ₽ |"
         ),
         "en": (
@@ -70,7 +70,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "| AI chat | 10/mo | ∞ | ∞ |\n"
             "| Readings | 3/mo | ∞ | ∞ |\n"
             "| Voice replies | — | — | ✓ |\n"
-            "| Infographics | 100 ₽ | 100 ₽ | 50/mo |\n"
+            "| Infographics | 100 ₽ | 100 ₽ | 50 free, then 100 ₽ |\n"
             "| Price/mo | 0 ₽ | 999 ₽ | 2999 ₽ |"
         ),
         "es": (
@@ -80,7 +80,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "| Chat IA | 10/mes | ∞ | ∞ |\n"
             "| Tiradas | 3/mes | ∞ | ∞ |\n"
             "| Voz | — | — | ✓ |\n"
-            "| Infografías | 100 ₽ | 100 ₽ | 50/mes |\n"
+            "| Infografías | 100 ₽ | 100 ₽ | 50 gratis, luego 100 ₽ |\n"
             "| Precio/mes | 0 ₽ | 999 ₽ | 2999 ₽ |"
         ),
         "pt": (
@@ -90,64 +90,84 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "| Chat IA | 10/mês | ∞ | ∞ |\n"
             "| Leituras | 3/mês | ∞ | ∞ |\n"
             "| Voz | — | — | ✓ |\n"
-            "| Infográficos | 100 ₽ | 100 ₽ | 50/mês |\n"
+            "| Infográficos | 100 ₽ | 100 ₽ | 50 grátis, depois 100 ₽ |\n"
             "| Preço/mês | 0 ₽ | 999 ₽ | 2999 ₽ |"
         ),
     },
     "billing_panel_free_quota": {
         "ru": (
-            "<b>Сейчас доступно бесплатно</b>\n"
-            "💬 Сообщения в AI-чате: <b>{free_left}/{free_limit}</b>\n"
+            "<b>Сейчас доступно бесплатно</b>\n\n"
+            "💬 Сообщения в AI-чате: <b>{free_left}/{free_limit}</b>\n\n"
             "🔮 Расклады таро: <b>{readings_left}/3</b>\n\n"
             "<i>Когда лимит закончится:</i> ответ AI спишет <b>5–30 ₽</b> с баланса, "
             "а фото-инфографика по ауре/ладони — <b>100 ₽</b>."
         ),
         "en": (
-            "<b>Free right now</b>\n"
-            "💬 AI chat: <b>{free_left}/{free_limit}</b>\n"
+            "<b>Free right now</b>\n\n"
+            "💬 AI chat: <b>{free_left}/{free_limit}</b>\n\n"
             "🔮 Tarot readings: <b>{readings_left}/3</b>\n\n"
             "<i>After the free quota:</i> an AI reply costs <b>5–30 ₽</b>, "
             "an aura/palm infographic — <b>100 ₽</b>."
         ),
         "es": (
-            "<b>Gratis ahora</b>\n"
-            "💬 Chat IA: <b>{free_left}/{free_limit}</b>\n"
+            "<b>Gratis ahora</b>\n\n"
+            "💬 Chat IA: <b>{free_left}/{free_limit}</b>\n\n"
             "🔮 Tiradas: <b>{readings_left}/3</b>\n\n"
             "<i>Tras el límite:</i> respuesta IA <b>5–30 ₽</b>, infografía — <b>100 ₽</b>."
         ),
         "pt": (
-            "<b>Grátis agora</b>\n"
-            "💬 Chat IA: <b>{free_left}/{free_limit}</b>\n"
+            "<b>Grátis agora</b>\n\n"
+            "💬 Chat IA: <b>{free_left}/{free_limit}</b>\n\n"
             "🔮 Leituras: <b>{readings_left}/3</b>\n\n"
             "<i>Após o limite:</i> resposta IA <b>5–30 ₽</b>, infográfico — <b>100 ₽</b>."
         ),
     },
     "billing_panel_premium_quota": {
-        "ru": "👑 Premium активен: чат и расклады без лимитов, инфографика — <b>{info_left}/{info_limit}</b> в этом месяце.",
-        "en": "👑 Premium active: unlimited chat & readings, infographics — <b>{info_left}/{info_limit}</b> this month.",
-        "es": "👑 Premium activo: chat y tiradas ilimitados, infografías — <b>{info_left}/{info_limit}</b> este mes.",
-        "pt": "👑 Premium ativo: chat e leituras ilimitados, infográficos — <b>{info_left}/{info_limit}</b> este mês.",
+        "ru": (
+            "👑 <b>Premium активен</b>\n\n"
+            "💬 Чат и расклады — без лимитов\n\n"
+            "🖼️ Инфографика: <b>{info_left}/{info_limit}</b> в этом месяце "
+            "(50 бесплатно, далее <b>100 ₽</b> за каждую)"
+        ),
+        "en": (
+            "👑 <b>Premium active</b>\n\n"
+            "💬 Chat & readings — unlimited\n\n"
+            "🖼️ Infographics: <b>{info_left}/{info_limit}</b> this month "
+            "(50 free, then <b>100 ₽</b> each)"
+        ),
+        "es": (
+            "👑 <b>Premium activo</b>\n\n"
+            "💬 Chat y tiradas — ilimitados\n\n"
+            "🖼️ Infografías: <b>{info_left}/{info_limit}</b> este mes "
+            "(50 gratis, luego <b>100 ₽</b> cada una)"
+        ),
+        "pt": (
+            "👑 <b>Premium ativo</b>\n\n"
+            "💬 Chat e leituras — ilimitados\n\n"
+            "🖼️ Infográficos: <b>{info_left}/{info_limit}</b> este mês "
+            "(50 grátis, depois <b>100 ₽</b> cada)"
+        ),
     },
     "billing_panel_subs": {
         "ru": (
-            "✨ <b>Plus</b> — {plus_price}/мес: безлимитный AI-чат и расклады, без списаний с баланса.\n"
-            "👑 <b>Premium</b> — {premium_price}/мес: всё из Plus + голосовые ответы и "
-            "<b>50 инфографик в месяц бесплатно</b>."
+            "✨ <b>Plus</b> — {plus_price}/мес: безлимитный AI-чат и расклады, без списаний с баланса.\n\n"
+            "👑 <b>Premium</b> — {premium_price}/мес: всё из Plus + голосовые ответы.\n\n"
+            "🖼️ <b>50 инфографик в месяц бесплатно</b>, далее по <b>100 ₽</b> за каждую."
         ),
         "en": (
-            "✨ <b>Plus</b> — {plus_price}/mo: unlimited AI chat & readings, no balance charges.\n"
-            "👑 <b>Premium</b> — {premium_price}/mo: everything in Plus + voice replies and "
-            "<b>50 free infographics per month</b>."
+            "✨ <b>Plus</b> — {plus_price}/mo: unlimited AI chat & readings, no balance charges.\n\n"
+            "👑 <b>Premium</b> — {premium_price}/mo: everything in Plus + voice replies.\n\n"
+            "🖼️ <b>50 infographics per month free</b>, then <b>100 ₽</b> each."
         ),
         "es": (
-            "✨ <b>Plus</b> — {plus_price}/mes: chat y tiradas ilimitados.\n"
-            "👑 <b>Premium</b> — {premium_price}/mes: todo de Plus + voz y "
-            "<b>50 infografías gratis al mes</b>."
+            "✨ <b>Plus</b> — {plus_price}/mes: chat y tiradas ilimitados.\n\n"
+            "👑 <b>Premium</b> — {premium_price}/mes: todo de Plus + respuestas de voz.\n\n"
+            "🖼️ <b>50 infografías gratis al mes</b>, luego <b>100 ₽</b> cada una."
         ),
         "pt": (
-            "✨ <b>Plus</b> — {plus_price}/mês: chat e leituras ilimitados.\n"
-            "👑 <b>Premium</b> — {premium_price}/mês: tudo do Plus + voz e "
-            "<b>50 infográficos grátis por mês</b>."
+            "✨ <b>Plus</b> — {plus_price}/mês: chat e leituras ilimitados.\n\n"
+            "👑 <b>Premium</b> — {premium_price}/mês: tudo do Plus + respostas por voz.\n\n"
+            "🖼️ <b>50 infográficos grátis por mês</b>, depois <b>100 ₽</b> cada."
         ),
     },
     "billing_panel_referral": {
@@ -270,10 +290,10 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "pt": "🔮 Leituras grátis: <b>{left}/{limit}</b>",
     },
     "home_infographics": {
-        "ru": "🖼️ Инфографика в подарок: <b>{left}/{limit}</b> в этом месяце",
-        "en": "🖼️ Infographics included: <b>{left}/{limit}</b> this month",
-        "es": "🖼️ Infografías incluidas: <b>{left}/{limit}</b> este mes",
-        "pt": "🖼️ Infográficos incluídos: <b>{left}/{limit}</b> este mês",
+        "ru": "🖼️ Инфографика в подарок: <b>{left}/{limit}</b> в этом месяце (50 бесплатно, далее <b>100 ₽</b>)",
+        "en": "🖼️ Infographics included: <b>{left}/{limit}</b> this month (50 free, then <b>100 ₽</b>)",
+        "es": "🖼️ Infografías incluidas: <b>{left}/{limit}</b> este mes (50 gratis, luego <b>100 ₽</b>)",
+        "pt": "🖼️ Infográficos incluídos: <b>{left}/{limit}</b> este mês (50 grátis, depois <b>100 ₽</b>)",
     },
     "home_reset": {
         "ru": "🔄 Лимиты обновятся <b>{date}</b>",
@@ -1205,48 +1225,52 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     "settings_panel": {
         "ru": (
             "<b>⚙️ Настройки</b>\n\n"
-            "🌐 Язык: <b>{language}</b>\n"
-            "🕒 Часовой пояс: <b>{timezone}</b>\n"
-            "🌙 Тихие часы: <b>{quiet_start} – {quiet_end}</b>\n"
-            "🔮 Карта дня по утрам: <b>{daily}</b>\n"
+            "🌐 Язык: <b>{language}</b>\n\n"
+            "🕒 Часовой пояс: <b>{timezone}</b>\n\n"
+            "🌙 Тихие часы: <b>{quiet_start} – {quiet_end}</b>\n\n"
+            "🔮 Карта дня по утрам: <b>{daily}</b>\n\n"
             "💌 Заботливые сообщения: <b>{proactive}</b>\n\n"
-            "<i>Карта дня</i> — каждое утро присылаю персональную карту с коротким разбором.\n"
+            "---\n\n"
+            "<i>Карта дня</i> — каждое утро присылаю персональную карту с коротким разбором.\n\n"
             "<i>Заботливые сообщения</i> — иногда напоминаю о себе и предлагаю заглянуть, "
             "если давно не общались. В тихие часы не беспокою.\n\n"
             "Нажми кнопку ниже, чтобы изменить параметр или данные анкеты."
         ),
         "en": (
             "<b>⚙️ Settings</b>\n\n"
-            "🌐 Language: <b>{language}</b>\n"
-            "🕒 Timezone: <b>{timezone}</b>\n"
-            "🌙 Quiet hours: <b>{quiet_start} – {quiet_end}</b>\n"
-            "🔮 Morning daily card: <b>{daily}</b>\n"
+            "🌐 Language: <b>{language}</b>\n\n"
+            "🕒 Timezone: <b>{timezone}</b>\n\n"
+            "🌙 Quiet hours: <b>{quiet_start} – {quiet_end}</b>\n\n"
+            "🔮 Morning daily card: <b>{daily}</b>\n\n"
             "💌 Caring messages: <b>{proactive}</b>\n\n"
-            "<i>Daily card</i> — every morning I send a personal card with a short reading.\n"
+            "---\n\n"
+            "<i>Daily card</i> — every morning I send a personal card with a short reading.\n\n"
             "<i>Caring messages</i> — once in a while I check in if we haven't talked for a bit. "
             "I stay silent during quiet hours.\n\n"
             "Tap a button below to change a setting or profile data."
         ),
         "es": (
             "<b>⚙️ Ajustes</b>\n\n"
-            "🌐 Idioma: <b>{language}</b>\n"
-            "🕒 Zona horaria: <b>{timezone}</b>\n"
-            "🌙 Horas silenciosas: <b>{quiet_start} – {quiet_end}</b>\n"
-            "🔮 Carta del día por la mañana: <b>{daily}</b>\n"
+            "🌐 Idioma: <b>{language}</b>\n\n"
+            "🕒 Zona horaria: <b>{timezone}</b>\n\n"
+            "🌙 Horas silenciosas: <b>{quiet_start} – {quiet_end}</b>\n\n"
+            "🔮 Carta del día por la mañana: <b>{daily}</b>\n\n"
             "💌 Mensajes de cuidado: <b>{proactive}</b>\n\n"
-            "<i>Carta del día</i> — cada mañana envío una carta personal con una breve lectura.\n"
+            "---\n\n"
+            "<i>Carta del día</i> — cada mañana envío una carta personal con una breve lectura.\n\n"
             "<i>Mensajes de cuidado</i> — de vez en cuando te escribo si llevamos tiempo sin hablar. "
             "No molesto en horas silenciosas.\n\n"
             "Toca un botón abajo para cambiar un ajuste o los datos del perfil."
         ),
         "pt": (
             "<b>⚙️ Configurações</b>\n\n"
-            "🌐 Idioma: <b>{language}</b>\n"
-            "🕒 Fuso horário: <b>{timezone}</b>\n"
-            "🌙 Horário silencioso: <b>{quiet_start} – {quiet_end}</b>\n"
-            "🔮 Carta do dia de manhã: <b>{daily}</b>\n"
+            "🌐 Idioma: <b>{language}</b>\n\n"
+            "🕒 Fuso horário: <b>{timezone}</b>\n\n"
+            "🌙 Horário silencioso: <b>{quiet_start} – {quiet_end}</b>\n\n"
+            "🔮 Carta do dia de manhã: <b>{daily}</b>\n\n"
             "💌 Mensagens de cuidado: <b>{proactive}</b>\n\n"
-            "<i>Carta do dia</i> — toda manhã envio uma carta pessoal com uma breve leitura.\n"
+            "---\n\n"
+            "<i>Carta do dia</i> — toda manhã envio uma carta pessoal com uma breve leitura.\n\n"
             "<i>Mensagens de cuidado</i> — de vez em quando escrevo se ficamos um tempo sem falar. "
             "Não incomodo no horário silencioso.\n\n"
             "Toque um botão abaixo para alterar uma configuração ou os dados do perfil."
