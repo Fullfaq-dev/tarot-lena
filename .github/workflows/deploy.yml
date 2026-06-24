@@ -61,6 +61,8 @@ jobs:
               set_env PLATEGA_API_KEY "${PLATEGA_API_KEY}"
               set_env PLATEGA_PAYMENT_METHOD "0"
               set_env PUBLIC_BASE_URL "https://arcaneai.online"
+              set_env PLATEGA_RETURN_URL "https://arcaneai.online/payment/success"
+              set_env PLATEGA_FAILED_URL "https://arcaneai.online/payment/failed"
               set_env APP_ENV "production"
               RECREATE_API=1
             fi

@@ -22,6 +22,8 @@ ensure_env LEGAL_PAGE_URL "https://arcaneai.online/"
 ensure_env SUPPORT_TELEGRAM_URL "https://t.me/OnePage_support"
 ensure_env APP_ENV "production"
 ensure_env PUBLIC_BASE_URL "https://arcaneai.online"
+ensure_env PLATEGA_RETURN_URL "https://arcaneai.online/payment/success"
+ensure_env PLATEGA_FAILED_URL "https://arcaneai.online/payment/failed"
 ensure_env PLATEGA_PAYMENT_METHOD "0"
 if ! grep -q "^JWT_SECRET=" .env 2>/dev/null || grep -q "^JWT_SECRET=replace-me" .env 2>/dev/null; then
   ensure_env JWT_SECRET "$(openssl rand -hex 32)"

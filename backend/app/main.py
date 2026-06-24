@@ -13,6 +13,7 @@ from app.admin_api.auth_router import router as admin_auth_router
 from app.admin_api.auth import ensure_bootstrap_admin
 from app.api.health import router as health_router
 from app.api.kie_callbacks import router as kie_callbacks_router
+from app.api.payment_pages import router as payment_pages_router
 from app.api.platega_callbacks import router as platega_callbacks_router
 from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
@@ -46,6 +47,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await ensure_bootstrap_admin()
     app.state.bot = create_bot()
     app.state.dispatcher = create_dispatcher()
+    app.state.bot_username = None
+    if settings.telegram_bot_token != "replace-me":
+        try:
+            me = await app.state.bot.get_me()
+            app.state.bot_username = me.username
+        except Exception as exc:
+            logger.warning("Could not fetch Telegram bot username: %s", exc)
     if (
         settings.app_env != "local"
         and settings.telegram_bot_token != "replace-me"
@@ -76,6 +84,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(payment_pages_router)
 app.include_router(kie_callbacks_router)
 app.include_router(platega_callbacks_router)
 app.include_router(admin_auth_router, prefix="/admin-api/auth")

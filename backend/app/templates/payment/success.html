@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Оплата прошла · Arcana AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg0: #07060d;
+      --bg1: #12101f;
+      --card: rgba(22, 20, 36, 0.82);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #f2f0ff;
+      --muted: #a8a3c4;
+      --accent: #9b7bff;
+      --accent2: #5eead4;
+      --glow: rgba(155, 123, 255, 0.35);
+      --success: #6ee7a8;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "Manrope", -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(155, 123, 255, 0.18), transparent 60%),
+        radial-gradient(800px 500px at 100% 100%, rgba(94, 234, 212, 0.08), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      overflow-x: hidden;
+    }
+    .stars {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.55), transparent),
+        radial-gradient(1px 1px at 30% 70%, rgba(255,255,255,0.35), transparent),
+        radial-gradient(1px 1px at 70% 30%, rgba(255,255,255,0.45), transparent),
+        radial-gradient(1px 1px at 85% 80%, rgba(255,255,255,0.25), transparent),
+        radial-gradient(1px 1px at 55% 45%, rgba(255,255,255,0.3), transparent);
+      opacity: 0.7;
+      animation: drift 18s ease-in-out infinite alternate;
+    }
+    @keyframes drift {
+      from { transform: translateY(0); }
+      to { transform: translateY(-12px); }
+    }
+    .wrap {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 32px 16px 48px;
+      position: relative;
+      z-index: 1;
+    }
+    .card {
+      width: min(100%, 460px);
+      padding: 36px 28px 30px;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      backdrop-filter: blur(18px);
+      box-shadow:
+        0 24px 80px rgba(0, 0, 0, 0.45),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+        0 0 60px var(--glow);
+      text-align: center;
+      animation: rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(110, 231, 168, 0.25);
+      background: rgba(110, 231, 168, 0.08);
+      color: #b8f5d6;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      margin-bottom: 22px;
+    }
+    .icon {
+      width: 88px;
+      height: 88px;
+      margin: 0 auto 22px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), transparent 55%),
+        linear-gradient(145deg, rgba(110,231,168,0.25), rgba(155,123,255,0.18));
+      border: 1px solid rgba(110, 231, 168, 0.35);
+      box-shadow: 0 0 40px rgba(110, 231, 168, 0.18);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(110, 231, 168, 0.18); }
+      50% { transform: scale(1.03); box-shadow: 0 0 52px rgba(110, 231, 168, 0.28); }
+    }
+    .icon svg { width: 42px; height: 42px; stroke: var(--success); }
+    .brand {
+      font-family: "Cormorant Garamond", Georgia, serif;
+      font-size: 1.05rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.65rem, 4vw, 2rem);
+      line-height: 1.15;
+      font-weight: 700;
+    }
+    .lead {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.65;
+    }
+    .steps {
+      text-align: left;
+      margin: 0 0 26px;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 12px;
+    }
+    .steps li {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: #ddd8f3;
+      font-size: 0.94rem;
+      line-height: 1.5;
+    }
+    .steps span.num {
+      flex: 0 0 26px;
+      height: 26px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--accent2);
+      background: rgba(94, 234, 212, 0.1);
+      border: 1px solid rgba(94, 234, 212, 0.18);
+    }
+    .actions {
+      display: grid;
+      gap: 10px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 52px;
+      padding: 0 20px;
+      border-radius: 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+    .btn-primary {
+      color: #120f1f;
+      background: linear-gradient(135deg, #c4b5fd, #7dd3fc 55%, #6ee7a8);
+      box-shadow: 0 10px 30px rgba(155, 123, 255, 0.25);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 14px 36px rgba(155, 123, 255, 0.32); }
+    .btn-ghost {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: rgba(255, 255, 255, 0.07); }
+    .note {
+      margin-top: 18px;
+      font-size: 0.84rem;
+      color: #8f89ad;
+      line-height: 1.55;
+    }
+    .note a { color: #c4b5fd; text-decoration: none; }
+    .note a:hover { text-decoration: underline; }
+    footer {
+      margin-top: 22px;
+      font-size: 0.82rem;
+      color: #7d7799;
+    }
+    footer a { color: #a89fd4; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <main class="wrap">
+    <section class="card" aria-labelledby="title">
+      <div class="badge">✓ Платёж принят</div>
+      <div class="icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5"/>
+        </svg>
+      </div>
+      <div class="brand">Arcana AI</div>
+      <h1 id="title">Спасибо! Оплата прошла успешно</h1>
+      <p class="lead">
+        Баланс или подписка обновятся автоматически — обычно это занимает несколько секунд.
+        Я уже отправлю подтверждение в Telegram.
+      </p>
+      <ol class="steps">
+        <li><span class="num">1</span><span>Платёжная система передала нам успешный статус.</span></li>
+        <li><span class="num">2</span><span>В боте придёт сообщение с суммой и новым балансом или тарифом.</span></li>
+        <li><span class="num">3</span><span>Вернись в чат с ботом — можно сразу продолжать расклады и диалог.</span></li>
+      </ol>
+      <div class="actions">
+        {% if bot_url %}
+        <a class="btn btn-primary" href="{{ bot_url }}">Открыть бота в Telegram</a>
+        {% endif %}
+        <a class="btn btn-ghost" href="{{ site_url }}/">На сайт Arcana AI</a>
+      </div>
+      <p class="note">
+        Если уведомление не пришло в течение минуты — открой бота вручную или напиши в
+        <a href="{{ support_url }}">поддержку</a>.
+      </p>
+      <footer>
+        <a href="{{ site_url }}/">arcaneai.online</a> ·
+        <a href="{{ support_url }}">Поддержка</a>
+      </footer>
+    </section>
+  </main>
+</body>
+</html>

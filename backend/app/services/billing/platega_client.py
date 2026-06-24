@@ -60,8 +60,8 @@ async def create_platega_payment(
     settings = get_settings()
     client = require_platega_client()
     base = settings.public_base_url.rstrip("/")
-    return_url = settings.platega_return_url or f"{base}/"
-    failed_url = settings.platega_failed_url or f"{base}/"
+    return_url = settings.platega_return_url or f"{base}/payment/success"
+    failed_url = settings.platega_failed_url or f"{base}/payment/failed"
 
     def _call() -> dict[str, str]:
         data: dict[str, object] = {

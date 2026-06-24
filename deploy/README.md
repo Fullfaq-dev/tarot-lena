@@ -73,4 +73,9 @@ https://arcaneai.online/callbacks/platega
 
 Platega sends `POST` with headers `X-MerchantId` and `X-Secret` (same as API key). On `CONFIRMED`, the bot credits balance or activates a subscription automatically.
 
+After payment, users are redirected to:
+
+- Success: `https://arcaneai.online/payment/success`
+- Failed/cancelled: `https://arcaneai.online/payment/failed`
+
 On deploy, `AI302_API_KEY` is synced from GitHub secret `AI302_API_KEY` when set.
