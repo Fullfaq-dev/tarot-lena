@@ -69,7 +69,7 @@ class MemoryPanelService:
                 lines.append(
                     f"{index}. {format_importance(memory.importance)} · {type_label}\n   {preview}"
                 )
-            return "\n".join(lines), items, page, total_pages
+            return "\n\n".join(lines), items, page, total_pages
 
     async def detail_text(self, telegram_id: int, memory_id: str) -> str | None:
         async with AsyncSessionLocal() as session:

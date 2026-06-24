@@ -73,6 +73,67 @@ def _input_rich_message_html(html: str) -> InputRichMessage:
     return InputRichMessage(markdown=markdown)
 
 
+async def _delete_message_safe(bot: Bot, chat_id: int, message_id: int) -> None:
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        pass
+
+
+async def _send_rich_markdown(
+    bot: Bot,
+    chat_id: ChatIdUnion,
+    markdown: str,
+    *,
+    reply_markup: ReplyMarkupUnion | None = None,
+    message_thread_id: int | None = None,
+) -> Message:
+    return await bot(
+        SendRichMessage(
+            chat_id=chat_id,
+            rich_message=_input_rich_message(markdown),
+            reply_markup=reply_markup,
+            message_thread_id=message_thread_id,
+        )
+    )
+
+
+async def _replace_rich_panel(
+    bot: Bot,
+    *,
+    chat_id: ChatIdUnion,
+    message_id: int,
+    rich_message: InputRichMessage,
+    reply_markup: ReplyMarkupUnion | None,
+    resend_to: Message,
+) -> Message:
+    """Edit a rich inline panel, or delete and resend if edit is not possible."""
+    try:
+        return await bot(
+            EditRichMessage(
+                chat_id=chat_id,
+                message_id=message_id,
+                rich_message=rich_message,
+                reply_markup=reply_markup,
+            )
+        )
+    except TelegramBadRequest as exc:
+        error = str(exc).lower()
+        if "message is not modified" in error:
+            return resend_to
+        if not is_rich_message_unsupported(exc) and not is_parse_entities_error(exc):
+            logger.warning("Rich panel edit failed, replacing message: %s", exc)
+        await _delete_message_safe(bot, chat_id, message_id)
+        markdown = rich_message.markdown or ""
+        return await _send_rich_markdown(
+            bot,
+            resend_to.chat.id,
+            markdown,
+            reply_markup=reply_markup,
+            message_thread_id=resend_to.message_thread_id,
+        )
+
+
 async def send_rich_message(
     bot: Bot,
     chat_id: ChatIdUnion,
@@ -159,6 +220,51 @@ async def edit_or_answer_rich_message(
     return await answer_rich_message(message, text, reply_markup=reply_markup)
 
 
+async def present_rich_text(
+    message: Message,
+    text: str,
+    *,
+    reply_markup: ReplyMarkupUnion | None = None,
+    edit_message: Message | None = None,
+) -> Message | None:
+    """Send or replace an inline panel from rich markdown source text."""
+    if not text.strip():
+        return None
+
+    rich = _input_rich_message(text)
+    if edit_message is not None:
+        try:
+            return await _replace_rich_panel(
+                message.bot,
+                chat_id=edit_message.chat.id,
+                message_id=edit_message.message_id,
+                rich_message=rich,
+                reply_markup=reply_markup,
+                resend_to=edit_message,
+            )
+        except TelegramBadRequest as exc:
+            if not is_rich_message_unsupported(exc):
+                logger.warning("Rich text panel replace failed: %s", exc)
+            payload = truncate_text(text)
+            await _delete_message_safe(
+                message.bot, edit_message.chat.id, edit_message.message_id
+            )
+            return await message.answer(payload, reply_markup=reply_markup, parse_mode=None)
+
+    try:
+        return await _send_rich_markdown(
+            message.bot,
+            message.chat.id,
+            prepare_rich_markdown(text),
+            reply_markup=reply_markup,
+            message_thread_id=message.message_thread_id,
+        )
+    except TelegramBadRequest as exc:
+        if not is_rich_message_unsupported(exc) and not is_parse_entities_error(exc):
+            logger.warning("Rich text panel send failed: %s", exc)
+        return await message.answer(truncate_text(text), reply_markup=reply_markup, parse_mode=None)
+
+
 async def present_rich_panel(
     message: Message,
     html_text: str,
@@ -177,22 +283,27 @@ async def present_rich_panel(
 
     if edit_message is not None:
         try:
-            return await message.bot(
-                EditRichMessage(
-                    chat_id=edit_message.chat.id,
-                    message_id=edit_message.message_id,
-                    rich_message=_input_rich_message_html(html_text),
-                    reply_markup=reply_markup,
-                )
+            return await _replace_rich_panel(
+                message.bot,
+                chat_id=edit_message.chat.id,
+                message_id=edit_message.message_id,
+                rich_message=_input_rich_message_html(html_text),
+                reply_markup=reply_markup,
+                resend_to=edit_message,
             )
         except TelegramBadRequest as exc:
-            error = str(exc).lower()
-            if "message is not modified" in error:
-                return edit_message
-            if not is_rich_message_unsupported(exc) and not is_parse_entities_error(exc):
-                logger.warning("Rich panel edit failed: %s", exc)
-            await _edit_legacy_html(edit_message, html_text, reply_markup=reply_markup)
-            return None
+            if not is_rich_message_unsupported(exc):
+                logger.warning("Rich panel replace failed: %s", exc)
+            payload = truncate_text(html_text)
+            await _delete_message_safe(
+                message.bot, edit_message.chat.id, edit_message.message_id
+            )
+            try:
+                return await message.answer(
+                    payload, parse_mode=ParseMode.HTML, reply_markup=reply_markup
+                )
+            except TelegramBadRequest:
+                return await message.answer(payload, reply_markup=reply_markup, parse_mode=None)
 
     try:
         return await message.bot(

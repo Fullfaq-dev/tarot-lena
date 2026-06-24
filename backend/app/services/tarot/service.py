@@ -312,15 +312,15 @@ class TarotService:
             items = list(readings)
 
             lines = [
-                t("history_title", lang),
-                t("history_page", lang, page=page + 1, total=total_pages) + "\n",
-                t("history_hint", lang) + "\n",
+                f"### {t('history_title', lang)}",
+                t("history_page", lang, page=page + 1, total=total_pages),
+                t("history_hint", lang),
             ]
             for index, reading in enumerate(items, start=offset + 1):
                 label = reading_label(reading.reading_type, lang)
                 question = reading.question[:60] + ("…" if len(reading.question) > 60 else "")
                 lines.append(f"{index}. {label} — «{question}»")
-            return "\n".join(lines), items, page, total_pages
+            return "\n\n".join(lines), items, page, total_pages
 
     async def history_entries(self, telegram_id: int) -> tuple[str, list[TarotReading]]:
         text, items, _, _ = await self.history_page(telegram_id, page=0)

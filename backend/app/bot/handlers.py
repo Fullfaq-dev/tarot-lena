@@ -15,7 +15,7 @@ from app.bot.audio_media import send_voice_from_url
 from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.media import send_photo_from_url
 from app.bot.formatting import to_telegram_html
-from app.bot.rich_messages import answer_rich_message, present_rich_panel, truncate_text
+from app.bot.rich_messages import answer_rich_message, present_rich_panel, present_rich_text, truncate_text
 from app.core.config import get_settings
 from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
 from app.bot.i18n import all_menu_texts, main_menu_text, menu_actions, normalize_language, reading_label, t
@@ -166,7 +166,7 @@ async def _main_menu_inline(telegram_id: int):
     lang = await _user_language(telegram_id)
     status = await BillingService().home_status_text(telegram_id)
     body = main_menu_text(lang)
-    text = f"{status}\n\n---\n\n{body}" if status else body
+    text = f"{status}\n\n\n---\n\n\n{body}" if status else body
     return text, inline_main_menu(lang)
 
 
@@ -198,9 +198,9 @@ async def _show_reading_history(
     text, readings, page, total_pages = await tarot.history_page(telegram_id, page, lang=lang)
     markup = inline_history_menu(readings, page, total_pages, lang) if readings else None
     if edit_message is not None:
-        await safe_edit(edit_message, text, markup, parse_mode=None)
+        await present_rich_text(message, text, reply_markup=markup, edit_message=edit_message)
     else:
-        await message.answer(text, reply_markup=markup, parse_mode=None)
+        await present_rich_text(message, text, reply_markup=markup)
 
 
 async def _show_memory_list(
@@ -217,9 +217,9 @@ async def _show_memory_list(
     else:
         markup = inline_memory_empty_menu(lang)
     if edit_message is not None:
-        await safe_edit(edit_message, text, markup, parse_mode=None)
+        await present_rich_text(message, text, reply_markup=markup, edit_message=edit_message)
     else:
-        await message.answer(text, reply_markup=markup, parse_mode=None)
+        await present_rich_text(message, text, reply_markup=markup)
 
 
 async def _open_referrals(
@@ -237,7 +237,7 @@ async def _open_referrals(
     if not username:
         text = t("error_generic", lang)
         if edit_message is not None:
-            await safe_edit(edit_message, text)
+            await present_rich_text(message, text, edit_message=edit_message)
         else:
             await message.answer(text)
         return
@@ -764,7 +764,7 @@ async def _show_profile_edit(target: Message, telegram_id: int, *, prefix: str =
         await target.answer(error)
         return
     text = t("profile_edit_header", lang, prefix=prefix)
-    await safe_edit(target, text, inline_profile_edit_menu(rows, lang))
+    await present_rich_text(target, text, reply_markup=inline_profile_edit_menu(rows, lang))
 
 
 @router.callback_query(F.data.startswith("set:prof:"))
@@ -777,19 +777,21 @@ async def profile_field_edit_start(callback: CallbackQuery, state: FSMContext) -
     prompt = service.prompt_for_field(field_key, lang)
 
     if field_key in ONBOARDING_CHOICE_STEPS:
-        await safe_edit(
+        await present_rich_text(
             callback.message,
             t("profile_pick_value", lang, prompt=prompt),
-            profile_field_keyboard(field_key, lang),
+            reply_markup=profile_field_keyboard(field_key, lang),
+            edit_message=callback.message,
         )
         return
 
     await state.set_state(BotStates.waiting_profile_field)
     await state.update_data(profile_field=field_key)
-    await safe_edit(
+    await present_rich_text(
         callback.message,
         t("profile_type_value", lang, prompt=prompt),
-        profile_field_keyboard(field_key, lang),
+        reply_markup=profile_field_keyboard(field_key, lang),
+        edit_message=callback.message,
     )
 
 
@@ -809,14 +811,15 @@ async def profile_field_pick(callback: CallbackQuery, state: FSMContext) -> None
     }:
         await state.set_state(BotStates.waiting_profile_field)
         await state.update_data(profile_field=field_key)
-        await safe_edit(
+        await present_rich_text(
             callback.message,
             t("profile_concern_other", lang),
-            InlineKeyboardMarkup(
+            reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text=t("btn_back", lang), callback_data="nav:profile_edit")]
                 ]
             ),
+            edit_message=callback.message,
         )
         return
 
@@ -859,11 +862,11 @@ async def memory_callback(callback: CallbackQuery, state: FSMContext) -> None:
             await safe_callback_answer(callback, t("memory_not_found", lang), show_alert=True)
             return
         await safe_callback_answer(callback)
-        await safe_edit(
+        await present_rich_text(
             callback.message,
             text,
-            inline_memory_detail_menu(memory_id, page, lang),
-            parse_mode=None,
+            reply_markup=inline_memory_detail_menu(memory_id, page, lang),
+            edit_message=callback.message,
         )
         await _track(None, "bot.memory", {"action": "open", "memory_id": memory_id})
         return
@@ -954,7 +957,7 @@ async def referral_stats_callback(callback: CallbackQuery) -> None:
     lang = await _user_language(callback.from_user.id)
     await callback.answer()
     text = await ReferralService().stats_panel_text(callback.from_user.id)
-    await present_rich_panel(
+    await present_rich_text(
         callback.message, text, reply_markup=inline_referral_stats_menu(lang), edit_message=callback.message
     )
     await _track(None, "bot.referral", {"action": "stats"})
@@ -983,11 +986,8 @@ async def referral_list_callback(callback: CallbackQuery) -> None:
         markup = inline_referral_stats_menu(lang)
     else:
         markup = inline_referral_list_menu(page, total_pages, sort=sort, lang=lang)
-    await safe_edit(
-        callback.message,
-        text,
-        markup,
-        parse_mode=None,
+    await present_rich_text(
+        callback.message, text, reply_markup=markup, edit_message=callback.message
     )
     await _track(None, "bot.referral", {"action": "list", "page": page, "sort": sort})
 
@@ -1120,7 +1120,9 @@ async def billing_callback(callback: CallbackQuery) -> None:
         page = int(value)
         text, page, total_pages = await billing.spending_history_page(callback.from_user.id, page)
         markup = inline_spending_menu(page, max(total_pages, 1), lang)
-        await safe_edit(callback.message, text, markup, parse_mode=None)
+        await present_rich_text(
+            callback.message, text, reply_markup=markup, edit_message=callback.message
+        )
         return
 
     try:
@@ -1247,7 +1249,12 @@ async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
     if action == "profile":
         text = await tarot.profile_extended_for_telegram(callback.from_user.id)
-        await safe_edit(callback.message, text, inline_profile_menu(lang), parse_mode=None)
+        await present_rich_text(
+            callback.message,
+            text,
+            reply_markup=inline_profile_menu(lang),
+            edit_message=callback.message,
+        )
         await _track(None, "bot.menu", {"item": "profile"})
         return
 

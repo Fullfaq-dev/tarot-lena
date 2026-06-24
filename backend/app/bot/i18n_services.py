@@ -555,23 +555,23 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     # Memory
     "memory_empty": {
         "ru": (
-            "🧠 Память обо мне\n\n"
+            "### 🧠 Память обо мне\n\n"
             "Пока записей нет — бот запоминает важное из переписки автоматически. "
             "Можешь добавить факты вручную кнопкой ниже."
         ),
         "en": (
-            "🧠 My memory\n\n"
+            "### 🧠 My memory\n\n"
             "No entries yet — the bot remembers important things from chat automatically. "
             "You can add facts manually below."
         ),
-        "es": "🧠 Mi memoria\n\nSin entradas aún — el bot recuerda automáticamente.",
-        "pt": "🧠 Minha memória\n\nSem registros ainda — o bot lembra automaticamente.",
+        "es": "### 🧠 Mi memoria\n\nSin entradas aún — el bot recuerda automáticamente.",
+        "pt": "### 🧠 Minha memória\n\nSem registros ainda — o bot lembra automaticamente.",
     },
     "memory_list_header": {
-        "ru": "🧠 Память обо мне\nСортировка: сначала более важные записи.\n{page}\n\nНажми на запись, чтобы открыть полностью:\n",
-        "en": "🧠 My memory\nSorted by importance.\n{page}\n\nTap an entry to open:\n",
-        "es": "🧠 Mi memoria\nOrdenadas por importancia.\n{page}\n\nToca una entrada:\n",
-        "pt": "🧠 Minha memória\nOrdenadas por importância.\n{page}\n\nToque um registro:\n",
+        "ru": "### 🧠 Память обо мне\n\nСортировка: сначала более важные записи.\n\n{page}\n\nНажми на запись, чтобы открыть полностью:",
+        "en": "### 🧠 My memory\n\nSorted by importance.\n\n{page}\n\nTap an entry to open:",
+        "es": "### 🧠 Mi memoria\n\nOrdenadas por importancia.\n\n{page}\n\nToca una entrada:",
+        "pt": "### 🧠 Minha memória\n\nOrdenadas por importância.\n\n{page}\n\nToque um registro:",
     },
     "memory_detail": {
         "ru": (
@@ -785,15 +785,15 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     },
     "profile_edit_header": {
         "ru": (
-            "{prefix}Данные анкеты\n\n"
+            "{prefix}### Данные анкеты\n\n"
             "Нажми поле, которое хочешь изменить. Новое значение сразу попадёт в профиль и в контекст ИИ."
         ),
         "en": (
-            "{prefix}Profile data\n\n"
+            "{prefix}### Profile data\n\n"
             "Tap a field to edit. The new value goes to your profile and AI context."
         ),
-        "es": "{prefix}Datos del perfil\n\nToca un campo para editar.",
-        "pt": "{prefix}Dados do perfil\n\nToque um campo para editar.",
+        "es": "{prefix}### Datos del perfil\n\nToca un campo para editar.",
+        "pt": "{prefix}### Dados do perfil\n\nToque um campo para editar.",
     },
     "profile_pick_value": {
         "ru": "Выбери новое значение.\n{prompt}",
@@ -1229,8 +1229,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Часовой пояс: <b>{timezone}</b>\n\n"
             "🌙 Тихие часы: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Карта дня по утрам: <b>{daily}</b>\n\n"
-            "💌 Заботливые сообщения: <b>{proactive}</b>\n\n"
-            "---\n\n"
+            "💌 Заботливые сообщения: <b>{proactive}</b>\n\n\n---\n\n\n"
             "<i>Карта дня</i> — каждое утро присылаю персональную карту с коротким разбором.\n\n"
             "<i>Заботливые сообщения</i> — иногда напоминаю о себе и предлагаю заглянуть, "
             "если давно не общались. В тихие часы не беспокою.\n\n"
@@ -1242,8 +1241,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Timezone: <b>{timezone}</b>\n\n"
             "🌙 Quiet hours: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Morning daily card: <b>{daily}</b>\n\n"
-            "💌 Caring messages: <b>{proactive}</b>\n\n"
-            "---\n\n"
+            "💌 Caring messages: <b>{proactive}</b>\n\n\n---\n\n\n"
             "<i>Daily card</i> — every morning I send a personal card with a short reading.\n\n"
             "<i>Caring messages</i> — once in a while I check in if we haven't talked for a bit. "
             "I stay silent during quiet hours.\n\n"
@@ -1255,8 +1253,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Zona horaria: <b>{timezone}</b>\n\n"
             "🌙 Horas silenciosas: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Carta del día por la mañana: <b>{daily}</b>\n\n"
-            "💌 Mensajes de cuidado: <b>{proactive}</b>\n\n"
-            "---\n\n"
+            "💌 Mensajes de cuidado: <b>{proactive}</b>\n\n\n---\n\n\n"
             "<i>Carta del día</i> — cada mañana envío una carta personal con una breve lectura.\n\n"
             "<i>Mensajes de cuidado</i> — de vez en cuando te escribo si llevamos tiempo sin hablar. "
             "No molesto en horas silenciosas.\n\n"
@@ -1268,8 +1265,7 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
             "🕒 Fuso horário: <b>{timezone}</b>\n\n"
             "🌙 Horário silencioso: <b>{quiet_start} – {quiet_end}</b>\n\n"
             "🔮 Carta do dia de manhã: <b>{daily}</b>\n\n"
-            "💌 Mensagens de cuidado: <b>{proactive}</b>\n\n"
-            "---\n\n"
+            "💌 Mensagens de cuidado: <b>{proactive}</b>\n\n\n---\n\n\n"
             "<i>Carta do dia</i> — toda manhã envio uma carta pessoal com uma breve leitura.\n\n"
             "<i>Mensagens de cuidado</i> — de vez em quando escrevo se ficamos um tempo sem falar. "
             "Não incomodo no horário silencioso.\n\n"

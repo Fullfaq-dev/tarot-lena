@@ -215,6 +215,8 @@ class ReferralService:
         }
 
     async def stats_panel_text(self, telegram_id: int) -> str:
+        from app.bot.rich_layouts import format_referral_stats_rich
+
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             if user is None:
@@ -222,9 +224,8 @@ class ReferralService:
             lang = await self._user_lang(session, user)
             totals = await self.get_stats(session, user)
             daily = await self.get_daily_stats(session, user)
-            return t(
-                "referral_stats_panel",
-                lang,
+            return format_referral_stats_rich(
+                lang=lang,
                 joined_today=daily["joined_today"],
                 earned_today=format_balance(daily["earned_today"]),
                 count=totals["referred_count"],
@@ -279,27 +280,29 @@ class ReferralService:
             if total_count == 0:
                 return t("referral_list_empty", lang), [], page, total_pages
 
+            from app.bot.rich_layouts import format_referral_list_rich
+
             sort_label = t("referral_sort_newest", lang) if sort_newest_first else t("referral_sort_oldest", lang)
-            lines = [
-                t("referral_list_title", lang),
-                t("history_page", lang, page=page + 1, total=total_pages),
-                t("referral_list_sort", lang, sort=sort_label),
-                "",
-            ]
             start_index = offset + 1
+            table_rows: list[list[str]] = []
             for index, item in enumerate(items, start=start_index):
                 joined = item.joined_at.strftime("%d.%m.%Y")
-                lines.append(
-                    t(
-                        "referral_list_line",
-                        lang,
-                        index=index,
-                        name=item.name,
-                        date=joined,
-                        earned=format_balance(item.earned_rub),
-                    )
+                table_rows.append(
+                    [
+                        str(index),
+                        item.name,
+                        joined,
+                        f"+{format_balance(item.earned_rub)}",
+                    ]
                 )
-            return "\n".join(lines), items, page, total_pages
+            text = format_referral_list_rich(
+                lang=lang,
+                title=t("referral_list_title", lang),
+                page_label=t("history_page", lang, page=page + 1, total=total_pages),
+                sort_label=t("referral_list_sort", lang, sort=sort_label),
+                rows=table_rows,
+            )
+            return text, items, page, total_pages
 
     def build_referral_link(self, bot_username: str, telegram_id: int) -> str:
         username = bot_username.lstrip("@")

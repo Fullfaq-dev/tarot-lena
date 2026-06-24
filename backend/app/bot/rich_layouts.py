@@ -227,3 +227,81 @@ def format_stones_table_rich(
     if reason:
         parts.extend([f"_{reason}_", ""])
     return "\n".join(parts)
+
+
+def format_referral_stats_rich(
+    *,
+    lang: str,
+    joined_today: int,
+    earned_today: str,
+    count: int,
+    total: str,
+    available: str,
+) -> str:
+    lang = normalize_language(lang)
+    headers = {
+        "ru": ["Период", "Приглашено", "Заработано"],
+        "en": ["Period", "Invited", "Earned"],
+        "es": ["Periodo", "Invitados", "Ganado"],
+        "pt": ["Período", "Convidados", "Ganho"],
+    }.get(lang, ["Period", "Invited", "Earned"])
+    today = {
+        "ru": "Сегодня",
+        "en": "Today",
+        "es": "Hoy",
+        "pt": "Hoje",
+    }.get(lang, "Today")
+    total_label = {
+        "ru": "Всего",
+        "en": "All time",
+        "es": "Total",
+        "pt": "Total",
+    }.get(lang, "All time")
+    available_label = {
+        "ru": "Доступно к выводу",
+        "en": "Available to withdraw",
+        "es": "Disponible para retiro",
+        "pt": "Disponível para saque",
+    }.get(lang, "Available to withdraw")
+    title = {
+        "ru": "📊 Статистика рефералки",
+        "en": "📊 Referral statistics",
+        "es": "📊 Estadísticas de referidos",
+        "pt": "📊 Estatísticas de indicação",
+    }.get(lang, "📊 Referral statistics")
+    return "\n\n".join(
+        [
+            f"### {title}",
+            "",
+            markdown_table(
+                headers,
+                [
+                    [today, str(joined_today), earned_today],
+                    [total_label, str(count), total],
+                ],
+            ),
+            "",
+            f"💵 **{available_label}:** {available}",
+        ]
+    )
+
+
+def format_referral_list_rich(
+    *,
+    lang: str,
+    title: str,
+    page_label: str,
+    sort_label: str,
+    rows: list[list[str]],
+) -> str:
+    lang = normalize_language(lang)
+    headers = {
+        "ru": ["#", "Имя", "Дата", "Заработано"],
+        "en": ["#", "Name", "Date", "Earned"],
+        "es": ["#", "Nombre", "Fecha", "Ganado"],
+        "pt": ["#", "Nome", "Data", "Ganho"],
+    }.get(lang, ["#", "Name", "Date", "Earned"])
+    parts = [f"### {title}", "", page_label, "", sort_label, ""]
+    if rows:
+        parts.extend([markdown_table(headers, rows), ""])
+    return "\n".join(parts)
