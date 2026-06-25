@@ -1,9 +1,8 @@
 import logging
 import uuid
 
-import httpx
-
 from app.core.config import get_settings
+from app.core.http import get_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +31,12 @@ async def synthesize_to_public_url(text: str, voice_id: str) -> str:
         "xi-api-key": api_key,
     }
 
-    async with httpx.AsyncClient(timeout=90) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        if response.status_code >= 400:
-            detail = response.text[:300]
-            raise ValueError(f"ElevenLabs TTS: {detail or response.status_code}")
-        audio = response.content
+    client = get_async_client()
+    response = await client.post(url, headers=headers, json=payload, timeout=90)
+    if response.status_code >= 400:
+        detail = response.text[:300]
+        raise ValueError(f"ElevenLabs TTS: {detail or response.status_code}")
+    audio = response.content
 
     if not audio:
         raise ValueError("ElevenLabs TTS returned empty audio")

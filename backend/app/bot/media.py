@@ -1,9 +1,10 @@
 import logging
 
-import httpx
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BufferedInputFile, Message
+
+from app.core.http import get_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -59,20 +60,20 @@ async def send_photo_from_url(
 
     # KIE и другие AI-URL недоступны для Telegram напрямую — скачиваем на сервер.
     try:
-        async with httpx.AsyncClient(timeout=90, follow_redirects=True) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            content_type = (response.headers.get("content-type") or "").lower()
-            ext = ".png" if "png" in content_type else ".jpg"
-            photo = BufferedInputFile(response.content, filename=f"image{ext}")
-            return await _try_send(
-                message,
-                photo,
-                caption=caption,
-                caption_plain=caption_plain,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup,
-            )
+        client = get_async_client()
+        response = await client.get(url, timeout=90)
+        response.raise_for_status()
+        content_type = (response.headers.get("content-type") or "").lower()
+        ext = ".png" if "png" in content_type else ".jpg"
+        photo = BufferedInputFile(response.content, filename=f"image{ext}")
+        return await _try_send(
+            message,
+            photo,
+            caption=caption,
+            caption_plain=caption_plain,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
     except Exception as exc:
         logger.warning("Failed to download/send photo url=%s: %s", url, exc)
         return False

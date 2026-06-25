@@ -72,6 +72,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Waiting for %s background telegram tasks", len(_background_tasks))
         await asyncio.gather(*_background_tasks, return_exceptions=True)
     await app.state.bot.session.close()
+    from app.core.http import aclose_async_client
+
+    await aclose_async_client()
 
 
 app = FastAPI(title=get_settings().app_name, lifespan=lifespan)

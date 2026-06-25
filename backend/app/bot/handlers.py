@@ -687,8 +687,8 @@ async def nav_noop(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("nav:back:"))
 async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
-    lang = await _user_language(callback.from_user.id)
     await safe_callback_answer(callback)
+    lang = await _user_language(callback.from_user.id)
     target = callback.data.removeprefix("nav:back:")
     await state.clear()
 
@@ -1217,8 +1217,8 @@ async def _open_reading_type(callback: CallbackQuery, state: FSMContext, reading
 
 @router.callback_query(F.data.startswith("nav:"))
 async def nav_callback(callback: CallbackQuery, state: FSMContext) -> None:
-    lang = await _user_language(callback.from_user.id)
     await safe_callback_answer(callback)
+    lang = await _user_language(callback.from_user.id)
     action = callback.data.removeprefix("nav:")
     tarot = TarotService()
     onboarding = OnboardingService()

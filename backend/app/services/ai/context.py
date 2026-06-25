@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import select
@@ -20,6 +21,7 @@ HISTORY_CHAR_LIMIT = 220
 HISTORY_CHAR_LIMIT_RECENT = 420
 
 
+@lru_cache(maxsize=8)
 def load_system_prompt(lang: str = "ru") -> str:
     lang = normalize_language(lang)
     filename = _SYSTEM_PROMPT_FILES.get(lang, "system_ru.md")

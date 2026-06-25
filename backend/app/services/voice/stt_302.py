@@ -1,9 +1,8 @@
 import logging
 from pathlib import Path
 
-import httpx
-
 from app.core.config import get_settings
+from app.core.http import get_async_client
 from app.services.media.audio_convert import ensure_mp3
 
 logger = logging.getLogger(__name__)
@@ -52,8 +51,8 @@ class Stt302Client:
             )
 
             try:
-                async with httpx.AsyncClient(timeout=120) as client:
-                    response = await client.post(url, headers=headers, files=multipart)
+                client = get_async_client()
+                response = await client.post(url, headers=headers, files=multipart, timeout=120)
             except Exception as exc:
                 last_error = exc
                 logger.warning("302.AI STT transport error model=%s: %s", model, exc)

@@ -2,9 +2,9 @@ import json
 from collections.abc import AsyncIterator
 
 import asyncio
-import httpx
 
 from app.core.config import get_settings
+from app.core.http import get_async_client
 
 
 def _map_reasoning_effort(effort: str) -> str:
@@ -43,37 +43,39 @@ class KieClient:
             "stream": True,
             "reasoning_effort": _map_reasoning_effort(reasoning_effort),
         }
-        async with httpx.AsyncClient(timeout=90) as client:
-            async with client.stream("POST", self._chat_url(), headers=self.headers, json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line.removeprefix("data: ").strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        event = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
+        client = get_async_client()
+        async with client.stream(
+            "POST", self._chat_url(), headers=self.headers, json=payload, timeout=90
+        ) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line.removeprefix("data: ").strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    event = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
 
-                    usage = event.get("usage")
-                    if usage:
-                        self.last_usage = {
-                            "input_tokens": int(
-                                usage.get("prompt_tokens") or usage.get("input_tokens") or 0
-                            ),
-                            "output_tokens": int(
-                                usage.get("completion_tokens") or usage.get("output_tokens") or 0
-                            ),
-                        }
+                usage = event.get("usage")
+                if usage:
+                    self.last_usage = {
+                        "input_tokens": int(
+                            usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+                        ),
+                        "output_tokens": int(
+                            usage.get("completion_tokens") or usage.get("output_tokens") or 0
+                        ),
+                    }
 
-                    choices = event.get("choices") or []
-                    if not choices:
-                        continue
-                    delta = choices[0].get("delta", {}).get("content")
-                    if delta:
-                        yield delta
+                choices = event.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta", {}).get("content")
+                if delta:
+                    yield delta
 
     async def chat_completion(
         self,
@@ -90,10 +92,12 @@ class KieClient:
             "stream": False,
             "reasoning_effort": _map_reasoning_effort(reasoning_effort),
         }
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(self._chat_url(), headers=self.headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
+        client = get_async_client()
+        response = await client.post(
+            self._chat_url(), headers=self.headers, json=payload, timeout=120
+        )
+        response.raise_for_status()
+        data = response.json()
 
         usage = data.get("usage") or {}
         self.last_usage = {
@@ -116,14 +120,15 @@ class KieClient:
                 },
             }
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(
-                f"{self.settings.kie_base_url.rstrip('/')}/api/v1/jobs/recordInfo",
-                headers=self.headers,
-                params={"taskId": task_id},
-            )
-            response.raise_for_status()
-            body = response.json()
+        client = get_async_client()
+        response = await client.get(
+            f"{self.settings.kie_base_url.rstrip('/')}/api/v1/jobs/recordInfo",
+            headers=self.headers,
+            params={"taskId": task_id},
+            timeout=30,
+        )
+        response.raise_for_status()
+        body = response.json()
 
         code = int(body.get("code") or 200)
         if body.get("data") is None:
@@ -149,14 +154,15 @@ class KieClient:
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                async with httpx.AsyncClient(timeout=45) as client:
-                    response = await client.post(
-                        f"{self.settings.kie_base_url.rstrip('/')}/api/v1/jobs/createTask",
-                        headers=self.headers,
-                        json=payload,
-                    )
-                    response.raise_for_status()
-                    body = response.json()
+                client = get_async_client()
+                response = await client.post(
+                    f"{self.settings.kie_base_url.rstrip('/')}/api/v1/jobs/createTask",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=45,
+                )
+                response.raise_for_status()
+                body = response.json()
 
                 code = int(body.get("code") or 200)
                 if code != 200:

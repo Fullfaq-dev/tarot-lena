@@ -124,6 +124,10 @@ class OnboardingService:
                 session.add(SoulProfile(user_id=user.id, name=telegram_user.first_name))
                 await session.commit()
 
+                from app.services.locale.service import invalidate_language_cache
+
+                invalidate_language_cache(telegram_user.id)
+
                 return (
                     f"{onboarding_welcome(lang)}\n\n{self.prompt_for_step('name', lang)}",
                     user.id,

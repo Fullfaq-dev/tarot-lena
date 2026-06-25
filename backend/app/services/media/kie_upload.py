@@ -4,9 +4,8 @@ import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-import httpx
-
 from app.core.config import get_settings
+from app.core.http import get_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -150,14 +149,15 @@ class KieFileUpload:
             "uploadPath": upload_path,
             "fileName": name,
         }
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                f"{self.base_url}/api/file-base64-upload",
-                headers={**self.headers, "Content-Type": "application/json"},
-                json=payload,
-            )
-            response.raise_for_status()
-            body = response.json()
+        client = get_async_client()
+        response = await client.post(
+            f"{self.base_url}/api/file-base64-upload",
+            headers={**self.headers, "Content-Type": "application/json"},
+            json=payload,
+            timeout=120,
+        )
+        response.raise_for_status()
+        body = response.json()
         return self._extract_file_url(body)
 
     async def upload_stream(
@@ -181,15 +181,16 @@ class KieFileUpload:
             suffix = path.suffix.lower()
             mime = "image/jpeg" if suffix in {".jpg", ".jpeg"} else "image/png"
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                f"{self.base_url}/api/file-stream-upload",
-                headers=self.headers,
-                files={"file": (name, content, mime)},
-                data={"uploadPath": upload_path, "fileName": name},
-            )
-            response.raise_for_status()
-            body = response.json()
+        client = get_async_client()
+        response = await client.post(
+            f"{self.base_url}/api/file-stream-upload",
+            headers=self.headers,
+            files={"file": (name, content, mime)},
+            data={"uploadPath": upload_path, "fileName": name},
+            timeout=120,
+        )
+        response.raise_for_status()
+        body = response.json()
 
         return self._extract_file_url(body)
 
@@ -204,14 +205,15 @@ class KieFileUpload:
         if file_name:
             payload["fileName"] = file_name
 
-        async with httpx.AsyncClient(timeout=90) as client:
-            response = await client.post(
-                f"{self.base_url}/api/file-url-upload",
-                headers={**self.headers, "Content-Type": "application/json"},
-                json=payload,
-            )
-            response.raise_for_status()
-            body = response.json()
+        client = get_async_client()
+        response = await client.post(
+            f"{self.base_url}/api/file-url-upload",
+            headers={**self.headers, "Content-Type": "application/json"},
+            json=payload,
+            timeout=90,
+        )
+        response.raise_for_status()
+        body = response.json()
 
         return self._extract_file_url(body)
 
