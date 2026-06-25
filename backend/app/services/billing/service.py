@@ -296,10 +296,12 @@ class BillingService:
     async def reply_main_menu_markup(self, telegram_id: int):
         from app.bot.keyboards import main_menu
         from app.services.settings.service import SettingsService
+        from app.services.gift.service import GiftService
 
         balance = await self.get_balance_label(telegram_id)
         lang = await SettingsService().get_ui_language(telegram_id)
-        return main_menu(balance, lang)
+        show_gift = await GiftService().is_available(telegram_id)
+        return main_menu(balance, lang, show_gift=show_gift)
 
     async def record_chat_usage(
         self,
@@ -947,6 +949,26 @@ class BillingService:
             "amount_rub": payment.amount_rub,
             "balance_rub": user.balance_rub,
         }
+        owner_name = user.first_name or user.username or str(user.telegram_id)
+        owner_handle = f" (@{user.username})" if user.username else ""
+        if payment.purpose == "topup":
+            owner_title = "💰 Пополнение баланса"
+            owner_item = format_balance(payment.amount_rub)
+        elif payment.purpose.startswith("subscription_"):
+            tier = payment.purpose.removeprefix("subscription_")
+            tier_label = {"plus": "Plus", "premium": "Premium"}.get(tier, tier)
+            owner_title = "⭐ Покупка подписки"
+            owner_item = f"{tier_label} ({format_balance(payment.amount_rub)})"
+        else:
+            owner_title = "🛒 Покупка"
+            owner_item = format_balance(payment.amount_rub)
+        result["owner_notify"] = (
+            f"{owner_title}\n"
+            f"Пользователь: {owner_name}{owner_handle}\n"
+            f"ID: {user.telegram_id}\n"
+            f"Что: {owner_item}\n"
+            f"Баланс: {format_balance(user.balance_rub)}"
+        )
         notify = await self._payment_success_notify(
             session,
             user,

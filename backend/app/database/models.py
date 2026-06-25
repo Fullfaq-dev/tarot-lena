@@ -67,6 +67,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     free_infographics_used_month: Mapped[int] = mapped_column(Integer, default=0)
     free_limits_month: Mapped[str | None] = mapped_column(String(7))
     usdt_trc20_wallet: Mapped[str | None] = mapped_column(String(64))
+    gift_claimed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     settings: Mapped["UserSettings"] = relationship(back_populates="user", cascade="all, delete-orphan")
     soul_profile: Mapped["SoulProfile"] = relationship(

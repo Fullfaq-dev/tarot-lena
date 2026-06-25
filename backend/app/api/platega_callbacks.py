@@ -7,7 +7,7 @@ from platega import PlategaCallback
 from app.core.config import get_settings
 from app.database.session import AsyncSessionLocal
 from app.services.billing.service import BillingService
-from app.services.telegram_notify import send_telegram_message
+from app.services.telegram_notify import notify_owner, send_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ async def platega_callback(request: Request) -> PlainTextResponse:
 
     billing = BillingService()
     notify: dict[str, int | str] | None = None
+    owner_text: str | None = None
     async with AsyncSessionLocal() as session:
         try:
             result = await billing.process_platega_callback(
@@ -43,6 +44,9 @@ async def platega_callback(request: Request) -> PlainTextResponse:
                 raw = result.get("telegram_notify")
                 if isinstance(raw, dict):
                     notify = raw
+                owner_raw = result.get("owner_notify")
+                if isinstance(owner_raw, str):
+                    owner_text = owner_raw
         except Exception:
             logger.exception("Platega callback processing failed")
             await session.rollback()
@@ -52,5 +56,8 @@ async def platega_callback(request: Request) -> PlainTextResponse:
         telegram_id = int(notify["telegram_id"])
         keyboard = await billing.reply_main_menu_markup(telegram_id)
         await send_telegram_message(telegram_id, str(notify["text"]), reply_markup=keyboard)
+
+    if owner_text:
+        await notify_owner(owner_text)
 
     return PlainTextResponse("OK")

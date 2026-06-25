@@ -24,6 +24,7 @@ from app.bot.i18n_extra import ONBOARDING_CHOICE_STEPS
 from app.bot.keyboards import (
     MENU_ACTIONS,
     inline_billing_menu,
+    inline_gift_menu,
     inline_history_menu,
     inline_info_menu,
     inline_language_menu,
@@ -57,6 +58,7 @@ from app.database.session import AsyncSessionLocal
 from app.services.ai.orchestrator import AIOrchestrator
 from app.services.analytics.tracker import track_event
 from app.services.billing.limits import (
+    CHANNEL_GIFT_RUB,
     FREE_CHAT_MESSAGES_PER_MONTH,
     FREE_READINGS_PER_MONTH,
     can_use_premium_voice,
@@ -66,6 +68,8 @@ from app.services.billing.tokens import format_balance
 from platega.exceptions import PlategaAPIError
 
 from app.services.billing.service import BillingService
+from app.services.gift.service import GiftService, is_channel_member
+from app.services.telegram_notify import notify_owner
 from app.services.memory.panel import MemoryPanelService
 from app.services.onboarding.service import ONBOARDING_STEPS, OnboardingService
 from app.services.profile.service import ProfileService
@@ -153,7 +157,61 @@ async def _user_language(telegram_id: int) -> str:
 async def _user_main_menu(telegram_id: int):
     balance = await BillingService().get_balance_label(telegram_id)
     lang = await _user_language(telegram_id)
-    return main_menu(balance, lang)
+    show_gift = await GiftService().is_available(telegram_id)
+    return main_menu(balance, lang, show_gift=show_gift)
+
+
+async def _notify_owner_new_user(
+    bot,
+    tg_user: TelegramUser,
+    *,
+    referrer_name: str | None,
+    via_link: bool,
+) -> None:
+    name = tg_user.first_name or tg_user.username or str(tg_user.id)
+    handle = f" (@{tg_user.username})" if tg_user.username else ""
+    if referrer_name:
+        source = f"по реферальной ссылке от {referrer_name}"
+    elif via_link:
+        source = "по ссылке (реферер не распознан)"
+    else:
+        source = "напрямую"
+    text = (
+        "🆕 Новый пользователь в боте\n"
+        f"Имя: {name}{handle}\n"
+        f"ID: {tg_user.id}\n"
+        f"Источник: {source}"
+    )
+    await notify_owner(text, bot=bot)
+
+
+async def _grant_gift(message: Message, telegram_id: int, lang: str) -> None:
+    granted, amount = await GiftService().claim(telegram_id)
+    text = (
+        t("gift_success", lang, amount=format_balance(amount))
+        if granted
+        else t("gift_already_claimed", lang)
+    )
+    await message.answer(text, reply_markup=await _user_main_menu(telegram_id))
+    if granted:
+        await _track(None, "bot.gift_claimed", {"telegram_id": telegram_id})
+
+
+async def _handle_gift(message: Message, telegram_id: int) -> None:
+    lang = await _user_language(telegram_id)
+    if not await GiftService().is_available(telegram_id):
+        await message.answer(
+            t("gift_already_claimed", lang),
+            reply_markup=await _user_main_menu(telegram_id),
+        )
+        return
+    if await is_channel_member(message.bot, telegram_id):
+        await _grant_gift(message, telegram_id, lang)
+        return
+    await message.answer(
+        t("gift_offer", lang, amount=format_balance(CHANNEL_GIFT_RUB)),
+        reply_markup=inline_gift_menu(lang),
+    )
 
 
 async def _go_home(message: Message, state: FSMContext) -> None:
@@ -650,6 +708,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
         text, user_id, is_new = await service.start_or_resume(telegram_user=message.from_user)
         onboarded = await service.is_onboarded(message.from_user)
 
+        referrer_name: str | None = None
         if is_new and command.args and message.from_user:
             referrer_name = await ReferralService().attach_from_start_code(
                 message.from_user.id,
@@ -657,6 +716,16 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
             )
             if referrer_name:
                 text = f"{text}\n\n{t('referral_invited', lang, name=referrer_name)}"
+
+        if is_new and message.from_user:
+            _fire_and_forget(
+                _notify_owner_new_user(
+                    message.bot,
+                    message.from_user,
+                    referrer_name=referrer_name,
+                    via_link=bool(command.args),
+                )
+            )
 
         if onboarded:
             await message.answer(text, reply_markup=await _user_main_menu(message.from_user.id))
@@ -683,6 +752,20 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
 @router.callback_query(F.data == "nav:noop")
 async def nav_noop(callback: CallbackQuery) -> None:
     await callback.answer()
+
+
+@router.callback_query(F.data == "gift:check")
+async def gift_check_callback(callback: CallbackQuery) -> None:
+    telegram_id = callback.from_user.id
+    lang = await _user_language(telegram_id)
+    if not await GiftService().is_available(telegram_id):
+        await safe_callback_answer(callback, t("gift_already_claimed", lang), show_alert=True)
+        return
+    if not await is_channel_member(callback.message.bot, telegram_id):
+        await safe_callback_answer(callback, t("gift_not_subscribed", lang), show_alert=True)
+        return
+    await safe_callback_answer(callback)
+    await _grant_gift(callback.message, telegram_id, lang)
 
 
 @router.callback_query(F.data.startswith("nav:back:"))
@@ -1795,6 +1878,11 @@ async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> N
     if action == "home":
         await _go_home(message, state)
         await _track(None, "bot.menu", {"item": "home"})
+        return
+
+    if action == "gift":
+        await _handle_gift(message, message.from_user.id)
+        await _track(None, "bot.menu", {"item": "gift"})
         return
 
     if action == "zen":

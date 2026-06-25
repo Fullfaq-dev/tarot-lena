@@ -89,18 +89,37 @@ MAIN_MENU_TEXT = main_menu_text()
 READINGS_MENU_TEXT = readings_menu_text()
 
 
-def main_menu(balance_label: str = "0 ₽", lang: str = "ru") -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=balance_button_text(balance_label, lang))],
+def main_menu(
+    balance_label: str = "0 ₽",
+    lang: str = "ru",
+    *,
+    show_gift: bool = False,
+) -> ReplyKeyboardMarkup:
+    keyboard = [[KeyboardButton(text=balance_button_text(balance_label, lang))]]
+    if show_gift:
+        keyboard.append([KeyboardButton(text=t("btn_gift", lang))])
+    keyboard.extend(
+        [
             [KeyboardButton(text=t("btn_home", lang))],
             [KeyboardButton(text=btn_readings(lang)), KeyboardButton(text=btn_daily(lang))],
             [KeyboardButton(text=btn_zen(lang)), KeyboardButton(text=btn_energy(lang))],
             [KeyboardButton(text=btn_history(lang)), KeyboardButton(text=btn_language(lang))],
             [KeyboardButton(text=btn_info(lang)), KeyboardButton(text=btn_support(lang))],
             [KeyboardButton(text=btn_settings(lang))],
-        ],
-        resize_keyboard=True,
+        ]
+    )
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+
+
+def inline_gift_menu(lang: str = "ru") -> InlineKeyboardMarkup:
+    from app.core.config import get_settings
+
+    channel_url = get_settings().gift_channel_url
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=t("btn_gift_open_channel", lang), url=channel_url)],
+            [InlineKeyboardButton(text=t("btn_gift_check", lang), callback_data="gift:check")],
+        ]
     )
 
 

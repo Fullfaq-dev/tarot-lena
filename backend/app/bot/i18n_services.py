@@ -314,6 +314,73 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "es": "### 📋 Historial de gastos\n\nAún no hay cargos.",
         "pt": "### 📋 Histórico de gastos\n\nAinda não há cobranças.",
     },
+    "btn_gift": {
+        "ru": "🎁 Получить подарок",
+        "en": "🎁 Get a gift",
+        "es": "🎁 Recibir regalo",
+        "pt": "🎁 Receber presente",
+    },
+    "gift_offer": {
+        "ru": (
+            "🎁 Подарок {amount} на баланс!\n\n"
+            "Что нужно сделать:\n\n"
+            "1. Подпишись на наш канал по кнопке ниже.\n\n"
+            "2. Вернись и нажми «✅ Я подписался».\n\n"
+            "После проверки я начислю тебе {amount} на личный счёт — их можно тратить "
+            "на ответы ИИ, расклады и инфографику. Акция разовая."
+        ),
+        "en": (
+            "🎁 A gift of {amount} to your balance!\n\n"
+            "What to do:\n\n"
+            "1. Subscribe to our channel via the button below.\n\n"
+            "2. Come back and tap «✅ I subscribed».\n\n"
+            "Once verified, I'll credit {amount} to your account. One-time offer."
+        ),
+        "es": (
+            "🎁 ¡Un regalo de {amount} a tu saldo!\n\n"
+            "Qué hacer:\n\n"
+            "1. Suscríbete a nuestro canal con el botón de abajo.\n\n"
+            "2. Vuelve y pulsa «✅ Me suscribí».\n\n"
+            "Tras verificar, acreditaré {amount} a tu cuenta. Oferta única."
+        ),
+        "pt": (
+            "🎁 Um presente de {amount} no seu saldo!\n\n"
+            "O que fazer:\n\n"
+            "1. Inscreva-se no nosso canal pelo botão abaixo.\n\n"
+            "2. Volte e toque «✅ Me inscrevi».\n\n"
+            "Após a verificação, vou creditar {amount} na sua conta. Oferta única."
+        ),
+    },
+    "gift_success": {
+        "ru": "🎁 Готово! Подарок {amount} зачислен на твой баланс. Спасибо, что с нами 💜",
+        "en": "🎁 Done! A gift of {amount} was added to your balance. Thanks for joining 💜",
+        "es": "🎁 ¡Listo! Un regalo de {amount} se añadió a tu saldo. Gracias 💜",
+        "pt": "🎁 Pronto! Um presente de {amount} foi adicionado ao seu saldo. Obrigado 💜",
+    },
+    "gift_already_claimed": {
+        "ru": "🎁 Ты уже получил этот подарок — он разовый. Спасибо, что ты с нами!",
+        "en": "🎁 You've already claimed this one-time gift. Thanks for being with us!",
+        "es": "🎁 Ya recibiste este regalo único. ¡Gracias por estar con nosotros!",
+        "pt": "🎁 Você já recebeu este presente único. Obrigado por estar conosco!",
+    },
+    "gift_not_subscribed": {
+        "ru": "Пока не вижу твою подписку 🙈 Подпишись на канал и нажми «✅ Я подписался» ещё раз.",
+        "en": "I don't see your subscription yet 🙈 Subscribe and tap «✅ I subscribed» again.",
+        "es": "Aún no veo tu suscripción 🙈 Suscríbete y pulsa «✅ Me suscribí» otra vez.",
+        "pt": "Ainda não vejo sua inscrição 🙈 Inscreva-se e toque «✅ Me inscrevi» de novo.",
+    },
+    "btn_gift_open_channel": {
+        "ru": "📣 Открыть канал",
+        "en": "📣 Open channel",
+        "es": "📣 Abrir canal",
+        "pt": "📣 Abrir canal",
+    },
+    "btn_gift_check": {
+        "ru": "✅ Я подписался",
+        "en": "✅ I subscribed",
+        "es": "✅ Me suscribí",
+        "pt": "✅ Me inscrevi",
+    },
     "billing_spending_title": {
         "ru": "📋 История трат",
         "en": "📋 Spending history",

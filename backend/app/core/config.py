@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     telegram_admin_ids: str = ""
     telegram_placeholder_sticker_id: str = ""
 
+    # Personal owner who receives new-user and top-up notifications.
+    owner_telegram_id: int = 7670490295
+    # Channel users must join to claim the one-time gift (username without @).
+    gift_channel_username: str = "arcana_tarot_ai"
+
     kie_api_key: str = "replace-me"
     kie_base_url: str = "https://api.kie.ai"
     kie_file_upload_base_url: str = "https://kieai.redpandaai.co"
@@ -66,6 +71,14 @@ class Settings(BaseSettings):
     @property
     def webhook_url(self) -> str:
         return f"{self.public_base_url.rstrip('/')}/telegram/webhook"
+
+    @property
+    def gift_channel_chat_id(self) -> str:
+        return f"@{self.gift_channel_username.lstrip('@')}"
+
+    @property
+    def gift_channel_url(self) -> str:
+        return f"https://t.me/{self.gift_channel_username.lstrip('@')}"
 
     @property
     def admin_ids(self) -> set[int]:

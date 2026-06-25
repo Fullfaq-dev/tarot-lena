@@ -104,3 +104,18 @@ async def notify_admins(text: str) -> None:
     settings = get_settings()
     for admin_id in settings.admin_ids:
         await send_telegram_message(admin_id, text)
+
+
+async def notify_owner(text: str, *, bot: Bot | None = None) -> None:
+    """Send a private notification only to the configured owner."""
+    settings = get_settings()
+    owner_id = settings.owner_telegram_id
+    if not owner_id:
+        return
+    if bot is not None:
+        try:
+            await bot.send_message(owner_id, text)
+            return
+        except Exception as exc:
+            logger.warning("notify_owner via bot failed: %s", exc)
+    await send_telegram_message(owner_id, text)
