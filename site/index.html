@@ -79,278 +79,653 @@
     @media (max-width: 560px) {
       .tabs button { flex: 1 1 calc(50% - 8px); text-align: center; }
     }
+
+    :root {
+      --arcana-bg: #090613;
+      --arcana-ink: #fff8ec;
+      --arcana-violet: #4c1f86;
+      --arcana-purple: #170d34;
+      --arcana-gold: #d7a85d;
+      --arcana-gold-bright: #ffd992;
+      --arcana-lilac: #c59cff;
+      --arcana-glass: rgba(255, 248, 236, 0.08);
+      --arcana-line: rgba(255, 217, 146, 0.22);
+      --arcana-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background:
+        radial-gradient(circle at 50% -10%, rgba(115, 56, 183, 0.42), transparent 34rem),
+        radial-gradient(circle at 85% 12%, rgba(215, 168, 93, 0.16), transparent 22rem),
+        radial-gradient(circle at 15% 35%, rgba(101, 42, 160, 0.28), transparent 26rem),
+        var(--arcana-bg);
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        radial-gradient(circle, rgba(255,255,255,.75) 0 1px, transparent 1.4px),
+        radial-gradient(circle, rgba(255,217,146,.55) 0 1px, transparent 1.6px);
+      background-size: 120px 120px, 190px 190px;
+      background-position: 13px 22px, 70px 90px;
+      opacity: .18;
+      animation: star-drift 34s linear infinite;
+    }
+    .landing {
+      position: relative;
+      isolation: isolate;
+      color: var(--arcana-ink);
+      min-height: 100vh;
+    }
+    .landing a { color: inherit; }
+    .orb {
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(4px);
+      opacity: .85;
+      pointer-events: none;
+    }
+    .orb.one {
+      width: 18rem;
+      height: 18rem;
+      left: -7rem;
+      top: 16rem;
+      background: radial-gradient(circle, rgba(108,54,179,.65), transparent 70%);
+      animation: float-slow 10s ease-in-out infinite;
+    }
+    .orb.two {
+      width: 14rem;
+      height: 14rem;
+      right: -5rem;
+      top: 7rem;
+      background: radial-gradient(circle, rgba(215,168,93,.42), transparent 72%);
+      animation: float-slow 12s ease-in-out infinite reverse;
+    }
+    .landing-shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 72px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--arcana-line);
+      border-radius: 999px;
+      background: radial-gradient(circle at 50% 35%, var(--arcana-gold-bright), #6d3d9c 47%, #110820 72%);
+      box-shadow: 0 0 35px rgba(215,168,93,.28);
+    }
+
+    .brand-mark {
+      overflow: hidden;
+    }
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .sparkles {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .sparkles span {
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #fff8ec;
+      box-shadow: 0 0 18px #ffd992, 0 0 38px rgba(197,156,255,.48);
+      opacity: .64;
+      animation: sparkle-rise 7s ease-in-out infinite;
+    }
+    .sparkles span::before,
+    .sparkles span::after {
+      content: "";
+      position: absolute;
+      inset: -5px 3px;
+      border-radius: 999px;
+      background: rgba(255,217,146,.72);
+    }
+    .sparkles span::after {
+      inset: 3px -5px;
+    }
+    .sparkles span:nth-child(1) { left: 7%; top: 18%; animation-delay: -1s; }
+    .sparkles span:nth-child(2) { left: 22%; top: 72%; animation-delay: -4s; transform: scale(.72); }
+    .sparkles span:nth-child(3) { left: 47%; top: 12%; animation-delay: -2.5s; transform: scale(.55); }
+    .sparkles span:nth-child(4) { left: 68%; top: 68%; animation-delay: -5.2s; transform: scale(.82); }
+    .sparkles span:nth-child(5) { left: 87%; top: 24%; animation-delay: -3.2s; transform: scale(.62); }
+    .sparkles span:nth-child(6) { left: 78%; top: 88%; animation-delay: -6.1s; transform: scale(.48); }
+
+    .topnav {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: rgba(255,248,236,.72);
+      font-size: .92rem;
+    }
+    .topnav a { text-decoration: none; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, .95fr);
+      gap: 52px;
+      align-items: center;
+      padding: 28px 0 80px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      margin: 0 0 20px;
+      padding: 8px 12px;
+      border: 1px solid var(--arcana-line);
+      border-radius: 999px;
+      background: rgba(255,255,255,.055);
+      color: var(--arcana-gold-bright);
+      box-shadow: inset 0 0 30px rgba(215,168,93,.06);
+    }
+    .hero h1 {
+      margin: 0;
+      max-width: 720px;
+      font-size: clamp(3rem, 8vw, 6.9rem);
+      line-height: .88;
+      letter-spacing: -0.075em;
+    }
+    .hero h1 span {
+      display: block;
+      color: transparent;
+      background: linear-gradient(100deg, #fff8ec, #ffd992 38%, #b690ff 78%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      text-shadow: 0 0 48px rgba(197,156,255,.2);
+    }
+    .hero-copy {
+      max-width: 650px;
+      margin: 24px 0 0;
+      color: rgba(255,248,236,.76);
+      font-size: clamp(1.06rem, 2vw, 1.28rem);
+    }
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      margin-top: 32px;
+    }
+    .cta-primary,
+    .cta-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      min-height: 56px;
+      padding: 0 22px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 800;
+      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+    }
+    .cta-primary {
+      color: #160b24;
+      background: linear-gradient(135deg, #ffd992, #c88d3f);
+      box-shadow: 0 18px 48px rgba(215,168,93,.28), inset 0 1px 0 rgba(255,255,255,.45);
+    }
+    .cta-secondary {
+      border: 1px solid var(--arcana-line);
+      color: var(--arcana-ink);
+      background: rgba(255,255,255,.06);
+    }
+    .cta-primary:hover,
+    .cta-secondary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 22px 58px rgba(215,168,93,.32);
+    }
+    .trust-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 34px;
+      max-width: 640px;
+    }
+    .trust-pill {
+      padding: 14px;
+      border: 1px solid var(--arcana-line);
+      border-radius: 18px;
+      background: var(--arcana-glass);
+      color: rgba(255,248,236,.78);
+      backdrop-filter: blur(16px);
+    }
+    .trust-pill strong {
+      display: block;
+      color: var(--arcana-gold-bright);
+      font-size: 1.08rem;
+    }
+    .portal-card {
+      position: relative;
+      min-height: 560px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--arcana-line);
+      border-radius: 42px;
+      background:
+        radial-gradient(circle at 50% 28%, rgba(255,217,146,.18), transparent 26%),
+        linear-gradient(150deg, rgba(255,255,255,.12), rgba(255,255,255,.035));
+      box-shadow: var(--arcana-shadow);
+      overflow: hidden;
+    }
+    .portal-card::before,
+    .portal-card::after {
+      content: "";
+      position: absolute;
+      width: 78%;
+      aspect-ratio: 1;
+      border: 1px solid rgba(255,217,146,.42);
+      border-radius: 999px;
+      animation: rotate-ring 30s linear infinite;
+    }
+    .portal-card::after {
+      width: 58%;
+      border-style: dashed;
+      opacity: .72;
+      animation-direction: reverse;
+      animation-duration: 42s;
+    }
+    .mystic-avatar {
+      position: relative;
+      z-index: 1;
+      width: min(82%, 390px);
+      aspect-ratio: 1;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      border: 3px solid rgba(255,217,146,.72);
+      background:
+        radial-gradient(circle at 50% 40%, rgba(255,217,146,.28), transparent 13%),
+        radial-gradient(circle at 50% 55%, rgba(73,30,130,.72), transparent 50%),
+        linear-gradient(180deg, #171035, #05030b);
+      box-shadow:
+        inset 0 0 70px rgba(255,217,146,.16),
+        0 0 70px rgba(115,56,183,.36);
+      overflow: hidden;
+      animation: breathe 5s ease-in-out infinite;
+    }
+    .mystic-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      filter: saturate(1.04) contrast(1.03);
+    }
+    .floating-note {
+      position: absolute;
+      z-index: 2;
+      max-width: 210px;
+      padding: 14px 16px;
+      border: 1px solid var(--arcana-line);
+      border-radius: 18px;
+      background: rgba(10, 6, 22, .72);
+      backdrop-filter: blur(18px);
+      color: rgba(255,248,236,.84);
+      box-shadow: 0 20px 50px rgba(0,0,0,.34);
+      animation: float-slow 7s ease-in-out infinite;
+    }
+    .floating-note strong {
+      display: block;
+      color: var(--arcana-gold-bright);
+    }
+    .floating-note.left { left: 20px; bottom: 50px; }
+    .floating-note.right { right: 20px; top: 54px; animation-delay: -2s; }
+    .section {
+      padding: 76px 0;
+    }
+    .section-title {
+      max-width: 760px;
+      margin: 0 auto 34px;
+      text-align: center;
+    }
+    .section-title h2 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 5vw, 4rem);
+      line-height: .96;
+      letter-spacing: -.045em;
+    }
+    .section-title p {
+      margin: 0;
+      color: rgba(255,248,236,.68);
+      font-size: 1.08rem;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .feature-card {
+      position: relative;
+      min-height: 230px;
+      padding: 24px;
+      border: 1px solid var(--arcana-line);
+      border-radius: 28px;
+      background:
+        linear-gradient(160deg, rgba(255,255,255,.105), rgba(255,255,255,.035)),
+        radial-gradient(circle at 20% 10%, rgba(197,156,255,.18), transparent 34%);
+      overflow: hidden;
+      box-shadow: 0 22px 60px rgba(0,0,0,.22);
+      transition: transform .22s ease, border-color .22s ease;
+    }
+    .feature-card:hover {
+      transform: translateY(-6px);
+      border-color: rgba(255,217,146,.58);
+    }
+    .feature-card .icon {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 16px;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 45% 28%, rgba(255,217,146,.24), transparent 44%),
+        rgba(255,217,146,.1);
+      color: var(--arcana-gold-bright);
+      box-shadow: inset 0 0 24px rgba(197,156,255,.12), 0 10px 26px rgba(0,0,0,.2);
+    }
+    .feature-card .icon svg {
+      width: 28px;
+      height: 28px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .feature-card h3 {
+      margin: 0 0 10px;
+      font-size: 1.22rem;
+      line-height: 1.15;
+    }
+    .feature-card p {
+      margin: 0;
+      color: rgba(255,248,236,.66);
+    }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      counter-reset: step;
+    }
+    .flow-card {
+      position: relative;
+      padding: 22px;
+      border: 1px solid var(--arcana-line);
+      border-radius: 24px;
+      background: rgba(255,255,255,.055);
+    }
+    .flow-card::before {
+      counter-increment: step;
+      content: "0" counter(step);
+      display: inline-flex;
+      margin-bottom: 18px;
+      color: var(--arcana-gold-bright);
+      font-weight: 900;
+      letter-spacing: .08em;
+    }
+    .flow-card h3 { margin: 0 0 8px; }
+    .flow-card p { margin: 0; color: rgba(255,248,236,.66); }
+    .wide-cta {
+      position: relative;
+      margin-top: 36px;
+      padding: clamp(28px, 6vw, 56px);
+      border: 1px solid rgba(255,217,146,.36);
+      border-radius: 34px;
+      background:
+        radial-gradient(circle at 15% 0, rgba(255,217,146,.18), transparent 24rem),
+        linear-gradient(135deg, rgba(77,31,134,.86), rgba(12,7,27,.92));
+      box-shadow: var(--arcana-shadow);
+      overflow: hidden;
+    }
+    .wide-cta h2 {
+      max-width: 760px;
+      margin: 0 0 14px;
+      font-size: clamp(2.1rem, 6vw, 4.6rem);
+      line-height: .95;
+      letter-spacing: -.055em;
+    }
+    .wide-cta p {
+      max-width: 660px;
+      margin: 0 0 26px;
+      color: rgba(255,248,236,.72);
+      font-size: 1.12rem;
+    }
+    .legal-wrap {
+      border-top: 1px solid var(--arcana-line);
+      margin-top: 20px;
+      padding-top: 46px;
+    }
+    .landing-footer {
+      margin: 42px 0 0;
+      padding: 28px 0 0;
+      border-top: 1px solid var(--arcana-line);
+      text-align: center;
+      color: rgba(255,248,236,.62);
+    }
+    .landing-footer a { color: var(--arcana-gold-bright); }
+    .legal-home-link {
+      width: min(820px, calc(100% - 32px));
+      margin: 24px auto 0;
+      color: var(--arcana-gold-bright);
+      font-weight: 800;
+    }
+    .legal-home-link a { color: inherit; }
+    @keyframes star-drift {
+      from { transform: translate3d(0,0,0); }
+      to { transform: translate3d(-120px,120px,0); }
+    }
+    @keyframes sparkle-rise {
+      0%, 100% { opacity: .18; transform: translateY(0) scale(.7) rotate(0deg); }
+      35% { opacity: .88; }
+      50% { transform: translateY(-18px) scale(1) rotate(45deg); }
+    }
+    @keyframes rotate-ring {
+      from { transform: rotate(0); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes float-slow {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-18px); }
+    }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.025); }
+    }
+    @media (max-width: 900px) {
+      .hero,
+      .feature-grid,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+      .hero { padding-bottom: 48px; }
+      .portal-card { min-height: 460px; }
+      .topnav { display: none; }
+      .trust-row { grid-template-columns: 1fr; }
+      .feature-card { min-height: auto; }
+    }
+    @media (max-width: 560px) {
+      body { font-size: 14px; }
+      .landing-shell { width: min(100% - 22px, 1180px); padding-top: 18px; }
+      .topbar { margin-bottom: 24px; }
+      .brand { gap: 10px; font-size: .95rem; letter-spacing: .04em; }
+      .brand-mark { width: 38px; height: 38px; flex: 0 0 38px; }
+      .hero { padding-top: 6px; gap: 26px; }
+      .hero h1 { font-size: clamp(2.45rem, 14vw, 4rem); line-height: .92; letter-spacing: -.06em; }
+      .hero-copy { font-size: 1rem; }
+      .cta-row { align-items: stretch; }
+      .cta-primary, .cta-secondary {
+        width: 100%;
+        min-height: 52px;
+        padding: 0 16px;
+        white-space: normal;
+        text-align: center;
+        line-height: 1.2;
+      }
+      .portal-card { min-height: auto; padding: 24px 12px 118px; border-radius: 28px; overflow: visible; }
+      .portal-card::before { width: 88%; }
+      .portal-card::after { width: 68%; }
+      .mystic-avatar { width: min(78vw, 320px); }
+      .floating-note {
+        display: block;
+        max-width: min(78vw, 270px);
+        padding: 11px 13px;
+        font-size: .86rem;
+        line-height: 1.35;
+      }
+      .floating-note.right { right: 10px; top: 14px; }
+      .floating-note.left { left: 10px; bottom: 14px; }
+      .section { padding: 54px 0; }
+      .section-title h2, .wide-cta h2 { letter-spacing: -.035em; }
+      .feature-card { padding: 20px; border-radius: 22px; }
+      .wide-cta { padding: 26px 20px; border-radius: 26px; }
+      .tabs button { flex: 1 1 100%; }
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Arcana AI</h1>
-      <p>AI-таролог и духовный наставник · <a href="https://arcaneai.online">arcaneai.online</a></p>
-    </header>
+  <main class="landing">
+    <div class="sparkles" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="orb one"></div>
+    <div class="orb two"></div>
 
-    <nav class="tabs" role="tablist">
-      <button type="button" class="active" data-tab="offer">Публичная оферта</button>
-      <button type="button" data-tab="terms">Пользовательское соглашение</button>
-      <button type="button" data-tab="privacy">Политика ПДн</button>
-      <button type="button" data-tab="consent">Согласие на ПДн</button>
-    </nav>
+    <div class="landing-shell">
+      <header class="topbar">
+        <a class="brand" href="https://t.me/arcane_ai_bot?start=landing" aria-label="Arcana AI в Telegram">
+          <span class="brand-mark"><img src="/assets/arcana-avatar.png" alt=""></span>
+          <span>Arcana AI</span>
+        </a>
+        <nav class="topnav" aria-label="Навигация лендинга">
+          <a href="#features">Возможности</a>
+          <a href="#how">Как работает</a>
+          <a href="/legal.html">Документы</a>
+        </nav>
+      </header>
 
-    <!-- ОФЕРТА -->
-    <article id="offer" class="panel active" role="tabpanel">
-      <h2>Публичная оферта о заключении договора об оказании услуг</h2>
-      <p class="meta">Редакция от 12.06.2026</p>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">✦ AI-таролог, который помнит тебя</p>
+          <h1>
+            Твой личный
+            <span>проводник по знакам</span>
+          </h1>
+          <p class="hero-copy">
+            Arcana AI соединяет таро, символы, память диалога и визуальные разборы:
+            задавай вопросы о любви, деньгах, выборе и внутреннем состоянии — бот отвечает
+            красиво, глубоко и персонально прямо в Telegram.
+          </p>
+          <div class="cta-row">
+            <a class="cta-primary" href="https://t.me/arcane_ai_bot?start=landing">Открыть бота в Telegram →</a>
+            <a class="cta-secondary" href="#features">Посмотреть возможности</a>
+          </div>
+          <div class="trust-row" aria-label="Ключевые факты">
+            <div class="trust-pill"><strong>10</strong> бесплатных AI-сообщений в месяц</div>
+            <div class="trust-pill"><strong>5</strong> раскладов в день на free-тарифе</div>
+            <div class="trust-pill"><strong>24/7</strong> рядом, когда нужен знак</div>
+          </div>
+        </div>
 
-      <h3>1. Общие положения</h3>
-      <p>Настоящая Публичная оферта содержит условия заключения Договора об оказании услуг (далее — «Договор»). Офертой признаётся предложение, адресованное неопределённому кругу лиц, содержащее все существенные условия договора.</p>
-      <p>Совершение действий, указанных в настоящей Оферте, является акцептом и означает заключение Договора на изложенных условиях (ст. 437, 438 ГК РФ).</p>
+        <div class="portal-card" aria-label="Визуальная инфографика Arcana AI">
+          <div class="floating-note right"><strong>Память</strong> бот учитывает твой контекст, людей и важные детали</div>
+          <div class="mystic-avatar">
+            <img src="/assets/arcana-avatar.png" alt="Arcana AI — мистический AI-таролог">
+          </div>
+          <div class="floating-note left"><strong>Инфографика</strong> аура, ладонь и фото-разборы в эстетике Arcana</div>
+        </div>
+      </section>
 
-      <p><strong>Термины:</strong></p>
-      <ul>
-        <li><strong>Исполнитель</strong> — Кочергин Максим Андреевич, самозанятый (НПД).</li>
-        <li><strong>Заказчик / Пользователь</strong> — физическое лицо, использующее сервис Arcana AI.</li>
-        <li><strong>Сервис</strong> — Telegram-бот Arcana AI (Аркан AI) и сайт <a href="https://arcaneai.online">arcaneai.online</a>, предоставляющие доступ к AI-чату с памятью, таро-раскладам, карте дня, анализу фото и иным функциям духовного наставника.</li>
-        <li><strong>Услуги</strong> — (1) персональный AI-чат с памятью контекста с привлечением внешних провайдеров искусственного интеллекта по запросу Заказчика; (2) таро-расклады и карта дня; (3) анализ фотографий (аура, ладонь, пользовательская инфографика); (4) голосовые ответы (тариф Premium); (5) подписки Plus и Premium; (6) пополнение баланса и иные функции Сервиса.</li>
-        <li><strong>Баланс</strong> — предоплаченный лицевой счёт Заказчика в Сервисе в рублях, с которого списывается стоимость успешно оказанных Услуг.</li>
-      </ul>
+      <section class="section" id="features">
+        <div class="section-title">
+          <h2>В одном боте — целая мистическая студия</h2>
+          <p>Не сухой генератор текста, а атмосферный AI-наставник с раскладами, визуалом, голосом и памятью.</p>
+        </div>
 
-      <h3>2. Предмет Договора</h3>
-      <ul>
-        <li>Исполнитель оказывает Заказчику Услуги, Заказчик оплачивает их в порядке и на условиях настоящей Оферты.</li>
-        <li>Сервис Arcana AI не является разработчиком моделей ИИ: при чате, раскладах, анализе фото и голосовых ответах Исполнитель организует обращение к внешним AI-провайдерам (KIE API, 302.AI STT, ElevenLabs TTS и др.) с передачей запроса Заказчика, контекста диалога и системных инструкций, настроенных для Сервиса.</li>
-        <li>Результаты таро-раскладов, интерпретаций и советов носят развлекательно-информационный характер и не являются профессиональной психологической, медицинской или юридической консультацией.</li>
-        <li>Наименование, объём и стоимость Услуг определяются при оформлении заказа в боте и/или в разделе «Тарифы».</li>
-        <li>Исполнитель вправе привлекать третьих лиц (хостинг, платёжные системы, AI-провайдеры) и несёт ответственность за их действия как за свои в пределах, установленных законом.</li>
-        <li>Акцепт выражается в: начале использования бота, отправке сообщений, заказе раскладов, оплате услуг, пополнении баланса, оформлении подписки Plus или Premium.</li>
-      </ul>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="icon"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="13" r="8"/><path d="M11 22h10l2 5H9l2-5Z"/><path d="M16 5v3M10 8l2 2M22 8l-2 2"/></svg></div>
+            <h3>Расклады Таро</h3>
+            <p>Любовь, деньги, карьера, совместимость, выбор и личные вопросы — с живой интерпретацией, а не шаблонной фразой.</p>
+          </article>
+          <article class="feature-card">
+            <div class="icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 22h22"/><path d="M9 22a7 7 0 0 1 14 0"/><path d="M16 5v5M6 12l4 3M26 12l-4 3"/><path d="M8 26h16"/></svg></div>
+            <h3>Карта дня</h3>
+            <p>Ежедневный ориентир: что поддержит, где быть внимательнее и какой символ взять с собой в день.</p>
+          </article>
+          <article class="feature-card">
+            <div class="icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M11 24c-4 0-6-3-6-6 0-2 1-4 3-5-.4-4 3-7 7-5 1-2 5-2 6 1 3 0 6 3 5 7 2 1 2 3 2 5 0 3-3 5-6 5"/><path d="M12 10v15M20 10v15M12 15h8M12 20h8"/></svg></div>
+            <h3>Память о тебе</h3>
+            <p>Бот запоминает важные детали и людей, а не просто контекст, чтобы ответы становились точнее и глубже со временем.</p>
+          </article>
+          <article class="feature-card">
+            <div class="icon"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="9" width="22" height="16" rx="4"/><path d="M11 9l2-3h6l2 3"/><circle cx="16" cy="17" r="5"/><path d="M23 13h.01"/></svg></div>
+            <h3>Фото, аура и ладонь</h3>
+            <p>Загрузи фото: Arcana AI сделает символический разбор и может создать красивую инфографику для ауры или ладони.</p>
+          </article>
+          <article class="feature-card">
+            <div class="icon"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 4v24"/><path d="M16 7l8 5-8 5"/><path d="M16 16l7 4-7 4"/><path d="M8 27l16-22"/></svg></div>
+            <h3>Руны, камни, браслет</h3>
+            <p>Подбор символа, камня или энергетического браслета под запрос: мягкая поддержка, когда хочется знака.</p>
+          </article>
+          <article class="feature-card">
+            <div class="icon"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="12" y="4" width="8" height="14" rx="4"/><path d="M7 15a9 9 0 0 0 18 0"/><path d="M16 24v4M11 28h10"/></svg></div>
+            <h3>Голосовые ответы</h3>
+            <p>На Premium бот может отвечать голосом — как личный мистический наставник, который рядом в нужный момент.</p>
+          </article>
+        </div>
+      </section>
 
-      <h3>3. Права и обязанности Сторон</h3>
-      <p><strong>Исполнитель обязуется:</strong> оказывать Услуги в соответствии с Офертой; обеспечивать работу Сервиса в разумных пределах; обрабатывать персональные данные в соответствии с законодательством РФ и Политикой ПДн.</p>
-      <p><strong>Исполнитель вправе:</strong> изменять функционал, тарифы, лимиты бесплатного доступа и условия Оферты в одностороннем порядке с публикацией новой редакции на <a href="https://arcaneai.online">arcaneai.online</a> (для новых заказов).</p>
-      <p><strong>Заказчик обязуется:</strong> предоставлять достоверные данные; не использовать Сервис для незаконных целей; не злоупотреблять бесплатным доступом; соблюдать настоящую Оферту и законодательство РФ.</p>
-      <p><strong>Заказчик вправе:</strong> использовать остаток на Балансе для оплаты Услуг в рамках Сервиса; обращаться в службу поддержки по вопросам работы Сервиса (контакты — в футере сайта).</p>
+      <section class="section" id="how">
+        <div class="section-title">
+          <h2>Как начать за минуту</h2>
+          <p>Весь путь остаётся в Telegram: без регистрации на сайте, лишних форм и сложных кабинетов.</p>
+        </div>
+        <div class="flow">
+          <article class="flow-card"><h3>Открой бота</h3><p>Нажми кнопку и перейди в Telegram по рекламной ссылке.</p></article>
+          <article class="flow-card"><h3>Ответь на пару вопросов</h3><p>Мини-онбординг помогает настроить тон и контекст ответов.</p></article>
+          <article class="flow-card"><h3>Задай свой запрос</h3><p>Расклад, карта дня, фото, руны или простой разговор с памятью.</p></article>
+          <article class="flow-card"><h3>Получай инсайты</h3><p>Красивые ответы, история, баланс, тарифы и поддержка внутри бота.</p></article>
+        </div>
+      </section>
 
-      <h3>4. Цена и порядок расчётов</h3>
-      <ul>
-        <li><strong>Бесплатный тариф:</strong> до 10 сообщений в AI-чате в месяц — бесплатно; таро-расклады — в пределах лимитов бота (не более 5 в сутки и иные ограничения, указанные в боте). После исчерпания бесплатных сообщений ответы AI-чата списываются с Баланса (лицевого счёта) в размере <strong>от 5 до 30 ₽</strong> за сообщение в зависимости от длины запроса и ответа.</li>
-        <li><strong>Пополнение Баланса</strong> (лицевой счёт) — фиксированные пакеты 100 ₽, 300 ₽, 500 ₽ и иные суммы, доступные в боте. Средства зачисляются на Баланс и расходуются на платные ответы ИИ и иные услуги на бесплатном тарифе.</li>
-        <li><strong>Анализ фотографии с выдачей инфографики</strong> (аура, ладонь) — <strong>100 ₽</strong> с Баланса за успешную обработку.</li>
-        <li><strong>Подписка Plus</strong> — 999 ₽/мес: неограниченный AI-чат <strong>без списаний за сообщения</strong>.</li>
-        <li><strong>Подписка Premium</strong> — 2 999 ₽/мес: неограниченный AI-чат <strong>без списаний за сообщения</strong>, голосовые ответы и расширенные возможности согласно описанию в боте.</li>
-        <li>Актуальные цены и лимиты — в боте, раздел «Баланс» / «Тарифы».</li>
-        <li>Расчёты — в безналичной форме через платёжный сервис Platega; зачисление на Баланс или активация подписки.</li>
-      </ul>
-
-      <h3>4.1. Баланс, списания и возвраты</h3>
-      <ul>
-        <li><strong>Возврат денежных средств на банковскую карту или счёт не производится.</strong> Суммы, поступившие на Баланс при пополнении, остаются на Балансе Заказчика и могут быть использованы только для оплаты Услуг в Сервисе.</li>
-        <li><strong>Срок действия Баланса не ограничен</strong> — неиспользованные средства на Балансе не сгорают и не аннулируются по истечении времени, если иное прямо не предусмотрено новой редакцией Оферты для будущих пополнений.</li>
-        <li><strong>Списание</strong> производится только за <strong>успешно оказанные</strong> Услуги: успешный ответ AI-чата (на бесплатном тарифе — от 5 до 30 ₽ за сообщение в зависимости от длины), успешно сформированный расклад, успешный анализ фото с инфографикой (100 ₽), успешная генерация голосового ответа и иные операции, явно отмеченные в боте как оплачиваемые после успеха.</li>
-        <li>При <strong>ошибке внешнего AI-провайдера</strong>, техническом сбое Сервиса или ином неуспешном результате — <strong>списание с Баланса не производится</strong>.</li>
-        <li>Заказчик до списания видит ориентировочную стоимость в боте; фактическое списание соответствует успешно оказанной Услуге согласно тарифам.</li>
-      </ul>
-
-      <h3>4.2. Услуги с использованием ИИ</h3>
-      <p>Услуги с использованием алгоритмов искусственного интеллекта оказываются через внешних провайдеров (KIE API, 302.AI STT, ElevenLabs TTS и др.) по запросу Заказчика, с применением системных инструкций Сервиса. Результат предоставляется «как есть». ИИ может ошибаться; интерпретации раскладов и советы носят субъективный характер. Исполнитель не гарантирует точность предсказаний и не несёт ответственности за решения, принятые Заказчиком на основе ответов Сервиса. При сбое провайдера ИИ плата с Баланса не взимается (п. 4.1).</p>
-
-      <h3>4.3. Реферальная программа</h3>
-      <p>Заказчик может участвовать в реферальной программе и получать вознаграждение в размере <strong>40%</strong> от платежей привлечённых пользователей согласно условиям в боте. Вывод вознаграждения осуществляется в <strong>USDT</strong> на кошелёк, указанный Заказчиком, в порядке и сроки, определённые Исполнителем. Исполнитель вправе приостановить выплаты при подозрении на мошенничество или нарушение условий программы.</p>
-
-      <h3>5. Конфиденциальность</h3>
-      <p>Стороны обеспечивают защиту персональных данных в соответствии с 152-ФЗ и 149-ФЗ. Подробности — в Политике обработки персональных данных.</p>
-
-      <h3>6. Форс-мажор</h3>
-      <p>Стороны освобождаются от ответственности при обстоятельствах непреодолимой силы (стихийные бедствия, действия властей, сбои связи и т.п.) с уведомлением другой Стороны в разумный срок.</p>
-
-      <h3>7. Ответственность</h3>
-      <p>Стороны несут ответственность по законодательству РФ. Исполнитель не отвечает за содержание советов и интерпретаций, сгенерированных ИИ, и за перерывы работы по вине третьих лиц или Заказчика. Сервис не заменяет профессиональную помощь психолога, врача или юриста.</p>
-
-      <h3>8. Срок действия</h3>
-      <p>Оферта действует с момента публикации до отзыва. Договор действует до полного исполнения обязательств.</p>
-
-      <h3>9. Разрешение споров</h3>
-      <p>Споры решаются путём переговоров, обязателен досудебный порядок. Подсудность — по месту жительства Исполнителя, если иное не установлено императивными нормами ЗоЗПП.</p>
-
-      <div class="requisites">
-        <h3>Реквизиты Исполнителя</h3>
+      <section class="wide-cta">
+        <h2>Пусть следующий знак придёт в Telegram</h2>
         <p>
-          <strong>Кочергин Максим Андреевич</strong><br>
-          Самозанятый (НПД)<br>
-          Адрес: г. Одинцово<br>
-          E-mail: <a href="mailto:Cryptooth2021@yandex.ru">Cryptooth2021@yandex.ru</a>
+          Запусти Arcana AI сейчас: начни с бесплатных сообщений, карты дня или первого расклада.
+          Если откликнется — останься с ботом как с личным пространством для вопросов и символов.
         </p>
-      </div>
-    </article>
-
-    <!-- ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ -->
-    <article id="terms" class="panel" role="tabpanel">
-      <h2>Пользовательское соглашение</h2>
-      <p class="meta">Редакция от 12.06.2026 · Сервис Arcana AI · Telegram-бот Arcana AI</p>
-
-      <h3>1. Общие положения</h3>
-      <p>1.1. Настоящее Соглашение регулирует отношения между правообладателем сервиса Arcana AI и пользователями Telegram-бота.</p>
-      <p>1.2. Правообладатель:<br>
-        <strong>Кочергин Максим Андреевич</strong>, физическое лицо — плательщик налога на профессиональный доход (самозанятый).<br>
-        Адрес: г. Одинцово<br>
-        E-mail: <a href="mailto:Cryptooth2021@yandex.ru">Cryptooth2021@yandex.ru</a>
-      </p>
-      <p>1.3. Используя бот, Пользователь подтверждает, что ознакомился с настоящим Соглашением, офертой и юридической информацией на <a href="https://arcaneai.online">arcaneai.online</a>, и принимает их условия.</p>
-
-      <h3>2. Предмет</h3>
-      <p>2.1. Правообладатель предоставляет доступ к платформе Arcana AI (AI-таролог / духовный наставник), которая:</p>
-      <ul>
-        <li><strong>AI-чат с памятью:</strong> персональное общение с виртуальным наставником через внешних провайдеров ИИ (KIE API и др.) с сохранением контекста диалога; на бесплатном тарифе после лимита — списание с баланса 5–30 ₽ за ответ; на Plus и Premium — безлимитно и без списаний;</li>
-        <li><strong>Таро:</strong> расклады (не более 5 в сутки на бесплатном тарифе, если иное не указано в боте) и ежедневная карта дня;</li>
-        <li><strong>Анализ фото:</strong> интерпретация ауры, ладони или создание пользовательской инфографики по загруженному изображению; анализ с инфографикой (аура, ладонь) — 100 ₽ с баланса;</li>
-        <li><strong>Голосовые ответы:</strong> синтез речи через ElevenLabs TTS (доступно на тарифе Premium);</li>
-        <li><strong>Распознавание речи:</strong> обработка голосовых сообщений через 302.AI STT (где доступно);</li>
-        <li>дополнительно: подписки Plus (999 ₽/мес) и Premium (2 999 ₽/мес), пополнение баланса (100/300/500 ₽), реферальная программа (40%, вывод в USDT), управление профилем.</li>
-      </ul>
-      <p>2.2. Сервис предоставляется «как есть». Arcana AI не является разработчиком моделей ИИ. Результаты чата, раскладов и анализа фото носят развлекательно-информационный характер и могут быть неточными.</p>
-
-      <h3>3. Ограничение ответственности</h3>
-      <ul>
-        <li>Сервис не предоставляет медицинских, психологических, юридических или финансовых консультаций.</li>
-        <li>Исполнитель не гарантирует бесперебойную работу 24/7, но стремится поддерживать доступность Сервиса.</li>
-        <li>ИИ-функции могут давать неточные, противоречивые или неполные результаты; Пользователь принимает решения на свой страх и риск.</li>
-        <li>Интерпретации таро и духовные советы — субъективны и не являются гарантией будущих событий.</li>
-      </ul>
-
-      <h3>4. Права и обязанности Пользователя</h3>
-      <p>Пользователь вправе использовать Сервис для личных целей в рамках функционала и тарифов; прекратить использование в любой момент.</p>
-      <p>Пользователь обязуется не использовать Сервис для незаконных целей; не отправлять контент, нарушающий права третьих лиц; не пытаться взломать или перегрузить Сервис; не обходить лимиты бесплатного доступа (10 сообщений в чате в месяц и иные ограничения).</p>
-
-      <h3>5. Права Правообладателя</h3>
-      <p>Изменять функционал, тарифы и лимиты; приостанавливать доступ при нарушениях или технических работах; ограничивать доступ при злоупотреблениях бесплатным тарифом.</p>
-
-      <h3>6. Платные услуги и баланс</h3>
-      <ul>
-        <li>На <strong>бесплатном тарифе</strong> пополнение зачисляется на лицевой счёт (баланс). После исчерпания 10 бесплатных сообщений в месяц ответы ИИ списываются с баланса: <strong>от 5 до 30 ₽</strong> за сообщение в зависимости от его длины.</li>
-        <li><strong>Анализ фото с инфографикой</strong> (аура, ладонь) — <strong>100 ₽</strong> с баланса за успешную обработку.</li>
-        <li>На тарифах <strong>Plus</strong> и <strong>Premium</strong> сообщения в AI-чате <strong>неограничены и не списываются</strong> с баланса.</li>
-        <li>Платный доступ: подписки Plus (999 ₽/мес) и Premium (2 999 ₽/мес), платные расклады и функции сверх лимитов, пополнение баланса через Platega.</li>
-        <li>Цены отображаются в боте (раздел «Баланс»).</li>
-        <li>Оплата пополнения баланса или подписки означает согласие с условиями; средства зачисляются на баланс или активируется подписка.</li>
-        <li><strong>Возврат денежных средств на карту/счёт не производится.</strong> Поступившие на баланс суммы остаются на балансе без срока давности (не сгорают) и расходуются только на успешные услуги в Сервисе.</li>
-        <li>Списание — только за успешно завершённые операции. При ошибках AI-провайдеров и неуспешных генерациях списание не производится.</li>
-      </ul>
-
-      <h3>7. Реферальная программа</h3>
-      <p>Пользователь может приглашать других пользователей по реферальной ссылке и получать 40% от их платежей. Вывод начислений — в USDT на указанный кошелёк. Условия, минимальная сумма вывода и сроки обработки — в боте. Правообладатель вправе отказать в выплате при нарушении правил программы.</p>
-
-      <h3>8. Интеллектуальная собственность</h3>
-      <p>Права на код, дизайн, тексты шаблонов и бренд Arcana AI принадлежат Правообладателю. Контент, создаваемый Пользователем (сообщения, фото), остаётся его собственностью; Пользователь предоставляет Исполнителю право обрабатывать его для оказания Услуг.</p>
-
-      <h3>9. Персональные данные</h3>
-      <p>Обработка — по Политике ПДн и Согласию на обработку персональных данных.</p>
-
-      <h3>10. Изменение Соглашения</h3>
-      <p>Новая редакция вступает в силу с момента публикации на <a href="https://arcaneai.online">arcaneai.online</a>.</p>
-
-      <h3>11. Контакты</h3>
-      <p>Кочергин Максим Андреевич · <a href="mailto:Cryptooth2021@yandex.ru">Cryptooth2021@yandex.ru</a></p>
-    </article>
-
-    <!-- ПОЛИТИКА ПДн -->
-    <article id="privacy" class="panel" role="tabpanel">
-      <h2>Политика обработки персональных данных</h2>
-      <p class="meta">152-ФЗ «О персональных данных» · Редакция от 12.06.2026</p>
-
-      <h3>1. Общие положения</h3>
-      <p>1.1. Политика определяет порядок обработки персональных данных пользователей Telegram-бота Arcana AI (Аркан AI).</p>
-      <p>1.2. Оператор: <strong>Кочергин Максим Андреевич</strong>, самозанятый (НПД), г. Одинцово. E-mail: <a href="mailto:Cryptooth2021@yandex.ru">Cryptooth2021@yandex.ru</a></p>
-
-      <h3>2. Какие данные обрабатываются</h3>
-      <ul>
-        <li>идентификатор Telegram (user_id), имя пользователя (@username), имя и фамилия из профиля Telegram;</li>
-        <li>тексты сообщений в AI-чате, история диалога (память контекста);</li>
-        <li>данные таро-раскладов: вопросы, выбранные карты, сгенерированные интерпретации;</li>
-        <li>загруженные фотографии (для анализа ауры, ладони, инфографики);</li>
-        <li>голосовые сообщения (при использовании STT/TTS);</li>
-        <li>данные о платежах, балансе и подписках (суммы, даты; без полных реквизитов карт — их обрабатывает платёжный провайдер Platega);</li>
-        <li>данные реферальной программы: реферальные ссылки, начисления, адрес USDT-кошелька для вывода;</li>
-        <li>технические данные: IP, user-agent при посещении сайта arcaneai.online;</li>
-        <li>переписка с ботом и обращения в поддержку.</li>
-      </ul>
-
-      <h3>3. Цели обработки</h3>
-      <ul>
-        <li>регистрация и идентификация в Сервисе;</li>
-        <li>оказание услуг AI-чата, таро-раскладов, карты дня, анализа фото, голосовых ответов;</li>
-        <li>передача запросов и контекста диалога внешним AI-провайдерам (KIE API, 302.AI STT, ElevenLabs TTS) по запросу Пользователя;</li>
-        <li>ведение баланса, списание только за успешные услуги, подписки Plus и Premium, реферальная программа;</li>
-        <li>техподдержка и улучшение Сервиса;</li>
-        <li>исполнение требований законодательства РФ.</li>
-      </ul>
-
-      <h3>4. Правовые основания</h3>
-      <p>Согласие Пользователя; исполнение договора (оферты); законные интересы Оператора при соблюдении прав субъекта.</p>
-
-      <h3>5. Передача третьим лицам</h3>
-      <p>Данные могут передаваться:</p>
-      <ul>
-        <li>хостинг-провайдерам (VPS, облачное хранилище);</li>
-        <li>платёжным системам (Platega и др.);</li>
-        <li>провайдерам ИИ — KIE API (текстовые запросы и контекст), 302.AI (распознавание речи), ElevenLabs (синтез речи);</li>
-        <li>Telegram (как платформа бота).</li>
-      </ul>
-      <p>Передача иным лицам — только по закону или с согласия Пользователя.</p>
-
-      <h3>6. Хранение и удаление</h3>
-      <p>Данные хранятся до достижения целей обработки или удаления аккаунта/истории Пользователем. По запросу — удаление или обезличивание, если иное не требуется законом. Пользователь может запросить очистку памяти чата через функции бота (где доступно).</p>
-
-      <h3>7. Права Пользователя</h3>
-      <p>Запросить информацию об обработке, уточнение, блокирование, удаление, отозвать согласие — на <a href="mailto:Cryptooth2021@yandex.ru">Cryptooth2021@yandex.ru</a> или через службу поддержки (контакты — в футере сайта).</p>
-
-      <h3>8. Трансграничная передача</h3>
-      <p>Возможна при использовании зарубежных серверов и AI-провайдеров (KIE API, 302.AI, ElevenLabs) при наличии согласия Пользователя и соблюдении 152-ФЗ.</p>
-
-      <h3>9. Изменения Политики</h3>
-      <p>Актуальная версия — на <a href="https://arcaneai.online">arcaneai.online</a>.</p>
-    </article>
-
-    <!-- СОГЛАСИЕ -->
-    <article id="consent" class="panel" role="tabpanel">
-      <h2>Согласие на обработку персональных данных</h2>
-      <p class="meta">152-ФЗ · Редакция от 12.06.2026</p>
-
-      <p>Я, используя Telegram-бот Arcana AI (Аркан AI), даю согласие <strong>Кочергину Максиму Андреевичу</strong> (самозанятый, e-mail: <a href="mailto:Cryptooth2021@yandex.ru">Cryptooth2021@yandex.ru</a>) на обработку моих персональных данных на условиях:</p>
-
-      <h3>1. Перечень данных</h3>
-      <p>Telegram user_id, @username, имя из профиля; тексты сообщений и история AI-чата; данные раскладов и карты дня; загруженные фото; голосовые сообщения; данные о платежах, балансе и подписках; данные реферальной программы и USDT-кошелька; переписка с ботом и поддержкой.</p>
-
-      <h3>2. Цели</h3>
-      <p>Предоставление функционала Arcana AI: AI-чат с памятью, таро-расклады, карта дня, анализ фото, голосовые ответы (Premium), обращение к внешним AI-провайдерам (KIE API, 302.AI STT, ElevenLabs TTS) по запросу Пользователя, ведение баланса (без возврата на реквизиты, списание только за успешные услуги), подписки Plus и Premium, реферальная программа (40%, вывод в USDT), поддержка.</p>
-
-      <h3>3. Действия с данными</h3>
-      <p>Сбор, запись, хранение, уточнение, использование, передача (в т.ч. хостинг, платежи Platega, AI-провайдеры KIE API, 302.AI, ElevenLabs), обезличивание, блокирование, удаление.</p>
-
-      <h3>4. Срок</h3>
-      <p>До отзыва согласия или достижения целей обработки. Отзыв — письмом на <a href="mailto:Cryptooth2021@yandex.ru">Cryptooth2021@yandex.ru</a> или через службу поддержки (контакты — в футере сайта).</p>
-
-      <h3>5. Подтверждение</h3>
-      <p>Нажатие «Start» / использование бота / отправка сообщения / заказ расклада означает ознакомление с Политикой ПДн, пользовательским соглашением, офертой и дачу настоящего согласия.</p>
-    </article>
-
-    <footer>
-      © Arcana AI · <a href="https://arcaneai.online">arcaneai.online</a> · <a href="https://t.me/OnePage_support">Поддержка</a>
+        <a class="cta-primary" href="https://t.me/arcane_ai_bot?start=landing">Перейти в @arcane_ai_bot →</a>
+      </section>
+    <footer class="landing-footer">
+      © Arcana AI · <a href="/legal.html">Документы</a> · <a href="https://t.me/OnePage_support">Поддержка</a>
     </footer>
   </div>
-
-  <script>
-    document.querySelectorAll('.tabs button').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var id = btn.getAttribute('data-tab');
-        document.querySelectorAll('.tabs button').forEach(function (b) { b.classList.remove('active'); });
-        document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
-        btn.classList.add('active');
-        document.getElementById(id).classList.add('active');
-        history.replaceState(null, '', '#' + id);
-      });
-    });
-    var hash = location.hash.replace('#', '');
-    if (hash && document.getElementById(hash)) {
-      document.querySelector('[data-tab="' + hash + '"]').click();
-    }
-  </script>
+</main>
 </body>
 </html>

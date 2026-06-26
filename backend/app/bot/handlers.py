@@ -167,10 +167,13 @@ async def _notify_owner_new_user(
     *,
     referrer_name: str | None,
     via_link: bool,
+    start_payload: str | None,
 ) -> None:
     name = tg_user.first_name or tg_user.username or str(tg_user.id)
     handle = f" (@{tg_user.username})" if tg_user.username else ""
-    if referrer_name:
+    if start_payload == "landing":
+        source = "с сайта (лендинг)"
+    elif referrer_name:
         source = f"по реферальной ссылке от {referrer_name}"
     elif via_link:
         source = "по ссылке (реферер не распознан)"
@@ -724,6 +727,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
                     message.from_user,
                     referrer_name=referrer_name,
                     via_link=bool(command.args),
+                    start_payload=command.args,
                 )
             )
 
@@ -742,7 +746,10 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
         await _track(
             user_id,
             "bot.user_created" if is_new else "bot.command_start",
-            {"telegram_id": message.from_user.id if message.from_user else None},
+            {
+                "telegram_id": message.from_user.id if message.from_user else None,
+                "start_payload": command.args,
+            },
         )
     except Exception as exc:
         await _track(None, "bot.error", {"handler": "start", "error": str(exc)})
