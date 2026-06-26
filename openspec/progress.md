@@ -4,3 +4,4 @@
 - [Completed] Mark `/start landing` users in owner notifications and analytics payload.
 - [Completed] Validate static site and Python changes.
 - [Completed] Move legal documents to a separate page, add real avatar, themed SVG icons, sparkles, and mobile fixes.
+- [Completed] Add dual iPhone bot screenshots and interactive referral earning section to the landing page.

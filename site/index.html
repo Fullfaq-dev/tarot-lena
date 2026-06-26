@@ -397,6 +397,281 @@
     }
     .floating-note.left { left: 20px; bottom: 50px; }
     .floating-note.right { right: 20px; top: 54px; animation-delay: -2s; }
+
+    .phone-showcase {
+      position: relative;
+      min-height: 620px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--arcana-line);
+      border-radius: 42px;
+      background:
+        radial-gradient(circle at 62% 20%, rgba(255,217,146,.14), transparent 20rem),
+        radial-gradient(circle at 36% 48%, rgba(91,31,158,.44), transparent 23rem),
+        linear-gradient(150deg, rgba(255,255,255,.11), rgba(255,255,255,.035));
+      box-shadow: var(--arcana-shadow);
+      overflow: hidden;
+    }
+    .phone-showcase::before,
+    .phone-showcase::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      border: 1px solid rgba(255,217,146,.28);
+      pointer-events: none;
+    }
+    .phone-showcase::before {
+      width: 82%;
+      aspect-ratio: 1;
+      animation: rotate-ring 36s linear infinite;
+    }
+    .phone-showcase::after {
+      width: 52%;
+      aspect-ratio: 1;
+      border-style: dashed;
+      opacity: .65;
+      animation: rotate-ring 48s linear infinite reverse;
+    }
+    .phone-stack {
+      position: relative;
+      z-index: 1;
+      width: min(100%, 530px);
+      height: 560px;
+    }
+    .phone {
+      position: absolute;
+      width: 235px;
+      aspect-ratio: 9 / 19.5;
+      padding: 10px;
+      border-radius: 36px;
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.5), rgba(255,217,146,.16) 8%, rgba(13,9,24,.95) 20%, #05030b 100%);
+      box-shadow:
+        inset 0 0 0 1px rgba(255,217,146,.18),
+        inset 0 0 0 4px rgba(255,255,255,.035),
+        0 34px 90px rgba(0,0,0,.54),
+        0 0 60px rgba(117,51,180,.24);
+      transform-style: preserve-3d;
+      transition: transform .26s ease, filter .26s ease;
+    }
+    .phone:hover { filter: brightness(1.08); }
+    .phone.primary {
+      right: 70px;
+      top: 36px;
+      transform: rotate(2deg);
+      z-index: 2;
+    }
+    .phone.primary:hover { transform: rotate(0deg) translateY(-8px); }
+    .phone.secondary {
+      left: 62px;
+      bottom: 24px;
+      transform: rotate(-10deg) scale(.94);
+      z-index: 1;
+      opacity: .95;
+    }
+    .phone.secondary:hover { transform: rotate(-6deg) scale(.96) translateY(-8px); }
+    .phone-notch {
+      position: absolute;
+      top: 17px;
+      left: 50%;
+      width: 88px;
+      height: 24px;
+      transform: translateX(-50%);
+      border-radius: 0 0 16px 16px;
+      background: #05030b;
+      z-index: 3;
+      box-shadow: 0 2px 10px rgba(0,0,0,.45);
+    }
+    .phone-screen {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 28px;
+      overflow: hidden;
+      background: #090613;
+      border: 1px solid rgba(255,217,146,.18);
+    }
+    .phone-screen img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      object-position: top center;
+    }
+    .phone-badge {
+      position: absolute;
+      z-index: 4;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 13px;
+      border: 1px solid rgba(255,217,146,.28);
+      border-radius: 999px;
+      background: rgba(9,6,19,.74);
+      color: var(--arcana-gold-bright);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 18px 48px rgba(0,0,0,.34);
+      font-weight: 800;
+      font-size: .9rem;
+    }
+    .phone-badge.top { right: 26px; top: 26px; }
+    .phone-badge.bottom { left: 24px; bottom: 30px; }
+
+    .referral-section {
+      padding: 76px 0;
+    }
+    .referral-board {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, .92fr) minmax(320px, 1.08fr);
+      gap: 18px;
+      padding: clamp(22px, 4vw, 40px);
+      border: 1px solid rgba(255,217,146,.32);
+      border-radius: 34px;
+      background:
+        radial-gradient(circle at 18% 0, rgba(255,217,146,.16), transparent 20rem),
+        radial-gradient(circle at 92% 58%, rgba(107,52,174,.34), transparent 22rem),
+        linear-gradient(140deg, rgba(255,255,255,.105), rgba(255,255,255,.035));
+      box-shadow: var(--arcana-shadow);
+      overflow: hidden;
+    }
+    .referral-board::before {
+      content: "";
+      position: absolute;
+      inset: 22px;
+      border: 1px solid rgba(255,217,146,.08);
+      border-radius: 28px;
+      pointer-events: none;
+    }
+    .ref-copy {
+      position: relative;
+      z-index: 1;
+    }
+    .ref-copy h2 {
+      margin: 0 0 14px;
+      font-size: clamp(2rem, 5.4vw, 4.4rem);
+      line-height: .95;
+      letter-spacing: -.055em;
+    }
+    .ref-copy p {
+      margin: 0 0 20px;
+      max-width: 560px;
+      color: rgba(255,248,236,.7);
+      font-size: 1.08rem;
+    }
+    .ref-percent {
+      display: inline-grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      align-items: center;
+      margin: 12px 0 24px;
+      padding: 14px 16px;
+      border: 1px solid rgba(255,217,146,.26);
+      border-radius: 22px;
+      background: rgba(255,255,255,.06);
+    }
+    .ref-percent strong {
+      color: var(--arcana-gold-bright);
+      font-size: clamp(2.4rem, 8vw, 5rem);
+      line-height: .85;
+      letter-spacing: -.06em;
+    }
+    .ref-steps {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .ref-step {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 13px;
+      border: 1px solid rgba(255,217,146,.18);
+      border-radius: 18px;
+      background: rgba(7,4,16,.42);
+    }
+    .ref-step span {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      color: #160b24;
+      background: linear-gradient(135deg, #ffd992, #c88d3f);
+      font-weight: 900;
+    }
+    .ref-step h3 { margin: 0 0 4px; font-size: 1rem; }
+    .ref-step p { margin: 0; font-size: .94rem; }
+    .ref-calculator {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 14px;
+      padding: clamp(18px, 3vw, 26px);
+      border: 1px solid rgba(255,217,146,.28);
+      border-radius: 28px;
+      background: rgba(9,6,19,.72);
+      backdrop-filter: blur(18px);
+    }
+    .ref-calc-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+    }
+    .ref-calc-top h3 { margin: 0; font-size: 1.35rem; }
+    .ref-count {
+      color: var(--arcana-gold-bright);
+      font-size: 2.4rem;
+      font-weight: 900;
+      line-height: .9;
+    }
+    .ref-slider {
+      width: 100%;
+      accent-color: var(--arcana-gold-bright);
+    }
+    .ref-result {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .ref-money-card {
+      padding: 16px;
+      border-radius: 20px;
+      background: rgba(255,255,255,.065);
+      border: 1px solid rgba(255,217,146,.18);
+    }
+    .ref-money-card span {
+      display: block;
+      color: rgba(255,248,236,.62);
+      font-size: .88rem;
+    }
+    .ref-money-card strong {
+      display: block;
+      margin-top: 5px;
+      color: var(--arcana-gold-bright);
+      font-size: clamp(1.6rem, 4vw, 2.5rem);
+      line-height: 1;
+    }
+    .ref-examples {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .ref-example {
+      padding: 13px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(255,217,146,.11), rgba(255,255,255,.04));
+      border: 1px solid rgba(255,217,146,.16);
+    }
+    .ref-example strong { color: var(--arcana-gold-bright); }
+    .ref-note {
+      margin: 0;
+      color: rgba(255,248,236,.58);
+      font-size: .9rem;
+    }
+
     .section {
       padding: 76px 0;
     }
@@ -566,7 +841,9 @@
         grid-template-columns: 1fr;
       }
       .hero { padding-bottom: 48px; }
-      .portal-card { min-height: 460px; }
+      .phone-showcase { min-height: 620px; }
+      .phone-stack { width: min(100%, 500px); }
+      .referral-board { grid-template-columns: 1fr; }
       .topnav { display: none; }
       .trust-row { grid-template-columns: 1fr; }
       .feature-card { min-height: auto; }
@@ -589,19 +866,22 @@
         text-align: center;
         line-height: 1.2;
       }
-      .portal-card { min-height: auto; padding: 24px 12px 118px; border-radius: 28px; overflow: visible; }
-      .portal-card::before { width: 88%; }
-      .portal-card::after { width: 68%; }
-      .mystic-avatar { width: min(78vw, 320px); }
-      .floating-note {
-        display: block;
-        max-width: min(78vw, 270px);
-        padding: 11px 13px;
-        font-size: .86rem;
-        line-height: 1.35;
-      }
-      .floating-note.right { right: 10px; top: 14px; }
-      .floating-note.left { left: 10px; bottom: 14px; }
+      .phone-showcase { min-height: 520px; border-radius: 28px; }
+      .phone-stack { height: 490px; width: 100%; }
+      .phone { width: 190px; border-radius: 30px; padding: 8px; }
+      .phone-screen { border-radius: 23px; }
+      .phone-notch { width: 72px; height: 19px; top: 14px; }
+      .phone.primary { right: 18px; top: 38px; }
+      .phone.secondary { left: 10px; bottom: 36px; transform: rotate(-8deg) scale(.9); }
+      .phone-badge { font-size: .78rem; padding: 8px 10px; }
+      .phone-badge.top { right: 12px; top: 14px; }
+      .phone-badge.bottom { left: 12px; bottom: 16px; }
+      .referral-section { padding: 54px 0; }
+      .referral-board { padding: 20px; border-radius: 26px; }
+      .ref-copy h2 { letter-spacing: -.035em; }
+      .ref-percent { grid-template-columns: 1fr; }
+      .ref-result, .ref-examples { grid-template-columns: 1fr; }
+      .ref-calc-top { align-items: center; }
       .section { padding: 54px 0; }
       .section-title h2, .wide-cta h2 { letter-spacing: -.035em; }
       .feature-card { padding: 20px; border-radius: 22px; }
@@ -624,6 +904,7 @@
         </a>
         <nav class="topnav" aria-label="Навигация лендинга">
           <a href="#features">Возможности</a>
+          <a href="#referral">Заработок</a>
           <a href="#how">Как работает</a>
           <a href="/legal.html">Документы</a>
         </nav>
@@ -652,12 +933,23 @@
           </div>
         </div>
 
-        <div class="portal-card" aria-label="Визуальная инфографика Arcana AI">
-          <div class="floating-note right"><strong>Память</strong> бот учитывает твой контекст, людей и важные детали</div>
-          <div class="mystic-avatar">
-            <img src="/assets/arcana-avatar.png" alt="Arcana AI — мистический AI-таролог">
+        <div class="phone-showcase" aria-label="Скриншоты работы Telegram-бота Arcana AI">
+          <div class="phone-badge top">✦ Рич-расклады в Telegram</div>
+          <div class="phone-badge bottom">40% партнёрам с оплат</div>
+          <div class="phone-stack">
+            <figure class="phone secondary" aria-label="Скриншот инфографики по ладони">
+              <span class="phone-notch"></span>
+              <div class="phone-screen">
+                <img src="/assets/bot-palm-demo.png" alt="Arcana AI показывает инфографику по ладони в Telegram">
+              </div>
+            </figure>
+            <figure class="phone primary" aria-label="Скриншот расклада Таро">
+              <span class="phone-notch"></span>
+              <div class="phone-screen">
+                <img src="/assets/bot-reading-demo.png" alt="Arcana AI показывает расклад Таро в Telegram">
+              </div>
+            </figure>
           </div>
-          <div class="floating-note left"><strong>Инфографика</strong> аура, ладонь и фото-разборы в эстетике Arcana</div>
         </div>
       </section>
 
@@ -701,6 +993,50 @@
         </div>
       </section>
 
+      <section class="referral-section" id="referral">
+        <div class="referral-board">
+          <div class="ref-copy">
+            <p class="eyebrow">✦ Не только погружайся — зарабатывай</p>
+            <h2>Приглашай людей в Arcana AI и получай 40% с их оплат</h2>
+            <p>
+              Делись своей ссылкой из бота в сторис, канале, чате или под видео. Человек приходит,
+              пополняет баланс или покупает подписку — тебе начисляется партнёрское вознаграждение.
+            </p>
+            <div class="ref-percent">
+              <strong>40%</strong>
+              <span>от платежей привлечённых пользователей идёт на твой реферальный баланс. Вывод — в USDT по условиям в боте.</span>
+            </div>
+            <div class="ref-steps">
+              <div class="ref-step"><span>1</span><div><h3>Забираешь ссылку</h3><p>В боте открываешь раздел реферальной программы и копируешь личную ссылку.</p></div></div>
+              <div class="ref-step"><span>2</span><div><h3>Ведёшь трафик</h3><p>Рассказываешь про расклады, карту дня, фото-ауру, память и голосовые ответы.</p></div></div>
+              <div class="ref-step"><span>3</span><div><h3>Получаешь долю</h3><p>С каждой оплаты реферала накапливается вознаграждение — прозрачно и внутри бота.</p></div></div>
+            </div>
+          </div>
+
+          <div class="ref-calculator" aria-label="Калькулятор дохода по реферальной программе">
+            <div class="ref-calc-top">
+              <div>
+                <h3>Посчитай сценарий</h3>
+                <p class="ref-note">Средний платёж для примера: 999 ₽. Комиссия партнёра: 40%.</p>
+              </div>
+              <div class="ref-count"><span id="refCount">10</span></div>
+            </div>
+            <input class="ref-slider" id="refSlider" type="range" min="1" max="100" value="10" aria-label="Количество оплативших рефералов">
+            <div class="ref-result">
+              <div class="ref-money-card"><span>Оплативших рефералов</span><strong><span id="refUsers">10</span></strong></div>
+              <div class="ref-money-card"><span>Твой доход</span><strong><span id="refIncome">3 996 ₽</span></strong></div>
+            </div>
+            <div class="ref-examples">
+              <div class="ref-example">Пополнение 500 ₽<br><strong>тебе 200 ₽</strong></div>
+              <div class="ref-example">Plus 999 ₽<br><strong>тебе 400 ₽</strong></div>
+              <div class="ref-example">Premium 2 999 ₽<br><strong>тебе 1 200 ₽</strong></div>
+            </div>
+            <p class="ref-note">Это примерная математика для рекламного планирования: фактические начисления зависят от реальных оплат приглашённых пользователей.</p>
+            <a class="cta-primary" href="https://t.me/arcane_ai_bot?start=landing">Открыть бота и получить ссылку →</a>
+          </div>
+        </div>
+      </section>
+
       <section class="section" id="how">
         <div class="section-title">
           <h2>Как начать за минуту</h2>
@@ -727,5 +1063,28 @@
     </footer>
   </div>
 </main>
+
+<script>
+  (function () {
+    var slider = document.getElementById('refSlider');
+    if (!slider) return;
+    var count = document.getElementById('refCount');
+    var users = document.getElementById('refUsers');
+    var income = document.getElementById('refIncome');
+    var avgPayment = 999;
+    var share = 0.4;
+    var formatRub = function (value) {
+      return Math.round(value).toLocaleString('ru-RU') + ' ₽';
+    };
+    var render = function () {
+      var n = Number(slider.value || 0);
+      count.textContent = n;
+      users.textContent = n;
+      income.textContent = formatRub(n * avgPayment * share);
+    };
+    slider.addEventListener('input', render);
+    render();
+  })();
+</script>
 </body>
 </html>
