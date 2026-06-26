@@ -330,7 +330,6 @@ async def _generate_with_typing(message: Message, coro):
 
 
 async def _send_daily_card(message: Message, telegram_id: int) -> None:
-    lang = await _user_language(message.from_user.id)
     tarot = TarotService()
     interpretation, card = await _generate_with_typing(
         message,

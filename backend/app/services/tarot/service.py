@@ -15,7 +15,7 @@ from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
 from app.services.tarot.cards import FULL_DECK, storage_image_path
 from app.services.tarot.daily_card import pick_daily_card_with_ai
-from app.bot.i18n import normalize_language, reading_label, t
+from app.bot.i18n import SUPPORTED_LANGUAGES, normalize_language, reading_label, t
 from app.services.settings.service import SettingsService
 
 READING_TYPES = {
@@ -73,7 +73,7 @@ class TarotService:
                 card = await self._card_dict_from_prediction(session, existing)
                 if card is None:
                     card = self._resolve_card_from_text(existing.text)
-                if card is not None and not self._is_stale_daily_text(existing.text, lang):
+                if card is not None and self._daily_text_matches_language(existing.text, lang):
                     return existing.text, card
                 await session.delete(existing)
                 await session.flush()
@@ -82,7 +82,7 @@ class TarotService:
                 session, user, user_query=t("tarot_daily_query", lang)
             )
             try:
-                picked, interpretation = await pick_daily_card_with_ai(messages, self.kie)
+                picked, interpretation = await pick_daily_card_with_ai(messages, self.kie, lang=lang)
             except ValueError:
                 picked = self.draw_cards(1)[0]
                 interpretation = t(
@@ -94,7 +94,7 @@ class TarotService:
 
             card = self._attach_image_path(picked)
             text = interpretation.strip()
-            if card["name"] not in text:
+            if not text.startswith(t("tarot_daily_card_header_prefix", lang)):
                 text = t("tarot_daily_card_header", lang, name=card["name"], text=text)
 
             db_card = await session.scalar(select(TarotCard).where(TarotCard.slug == str(card["slug"])))
@@ -188,6 +188,17 @@ class TarotService:
     @staticmethod
     def _is_stale_daily_text(text: str, lang: str = "ru") -> bool:
         return t("tarot_daily_stale_marker", lang) in text
+
+    @staticmethod
+    def _daily_text_matches_language(text: str, lang: str = "ru") -> bool:
+        """Avoid reusing today's daily card if it was cached in another UI language."""
+        current_lang = normalize_language(lang)
+        for supported in SUPPORTED_LANGUAGES:
+            header = t("tarot_daily_card_header_prefix", supported)
+            marker = t("tarot_daily_stale_marker", supported)
+            if header in text or marker in text:
+                return supported == current_lang
+        return current_lang == "ru"
 
     @staticmethod
     def _today_start_utc() -> datetime:

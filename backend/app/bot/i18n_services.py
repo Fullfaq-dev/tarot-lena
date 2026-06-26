@@ -528,6 +528,12 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         "es": "**Carta del día — {name}**\n\n{text}",
         "pt": "**Carta do dia — {name}**\n\n{text}",
     },
+    "tarot_daily_card_header_prefix": {
+        "ru": "**Карта дня —",
+        "en": "**Daily card —",
+        "es": "**Carta del día —",
+        "pt": "**Carta do dia —",
+    },
     "tarot_daily_context_msg": {
         "ru": "🌅 Карта дня на сегодня",
         "en": "🌅 Daily card for today",
