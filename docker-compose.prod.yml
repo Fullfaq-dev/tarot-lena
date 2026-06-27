@@ -9,6 +9,8 @@ services:
     restart: unless-stopped
     volumes:
       - media_data:/app/backend/static/generated
+      - ./backend:/app/backend:ro
+      - ./prompts:/app/prompts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -23,6 +25,9 @@ services:
       - .env
     command: python -m app.workers.runner
     restart: unless-stopped
+    volumes:
+      - ./backend:/app/backend:ro
+      - ./prompts:/app/prompts:ro
     depends_on:
       postgres:
         condition: service_healthy
