@@ -38,16 +38,24 @@ else
   cp deploy/nginx.bootstrap.conf deploy/nginx.active.conf
 fi
 
-docker compose -f "$COMPOSE_FILE" down --remove-orphans || true
-
 build_ok=0
-if docker compose -f "$COMPOSE_FILE" build --pull=false; then
-  build_ok=1
-elif docker compose -f "$COMPOSE_FILE" build --pull=false api worker; then
-  echo "WARN: admin build skipped; api/worker built from cache"
+set +e
+docker compose -f "$COMPOSE_FILE" build --pull=false
+build_rc=$?
+set -e
+if [ "$build_rc" -eq 0 ]; then
   build_ok=1
 else
-  echo "WARN: Docker build skipped (likely Hub rate limit). Using cached images + live backend mount."
+  set +e
+  docker compose -f "$COMPOSE_FILE" build --pull=false api worker
+  build_rc=$?
+  set -e
+  if [ "$build_rc" -eq 0 ]; then
+    echo "WARN: admin build skipped; api/worker rebuilt from cache"
+    build_ok=1
+  else
+    echo "WARN: Docker build skipped (likely Hub rate limit). Using cached images + live backend mount."
+  fi
 fi
 
 if [ "$build_ok" -eq 1 ]; then
@@ -57,7 +65,7 @@ else
 fi
 
 docker compose -f "$COMPOSE_FILE" exec -T api alembic upgrade head
-docker compose -f "$COMPOSE_FILE" restart nginx
+docker compose -f "$COMPOSE_FILE" restart api worker nginx
 
 docker image prune -f
 
