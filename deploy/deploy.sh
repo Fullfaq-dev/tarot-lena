@@ -39,8 +39,9 @@ else
 fi
 
 if [ -f frontend-admin/dist/index.html ]; then
+  echo "Admin dist ready: $(grep -o 'index-[^\"]*\\.js' frontend-admin/dist/index.html || true)"
   set +e
-  docker compose -f "$COMPOSE_FILE" build --pull=false admin
+  docker compose -f "$COMPOSE_FILE" build --no-cache --pull=false admin
   admin_build_rc=$?
   set -e
   if [ "$admin_build_rc" -ne 0 ]; then
@@ -48,6 +49,8 @@ if [ -f frontend-admin/dist/index.html ]; then
   fi
 else
   echo "WARN: frontend-admin/dist/index.html missing; upload admin build in CI before deploy"
+  ls -la frontend-admin/ || true
+  ls -la frontend-admin/dist/ || true
 fi
 
 build_ok=0
