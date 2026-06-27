@@ -205,9 +205,16 @@ function DashboardPage() {
 function LandingPage() {
   const [days, setDays] = useState(30);
   const [stats, setStats] = useState<LandingStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.landingStats(days).then(setStats);
+    setLoading(true);
+    setError(null);
+    api.landingStats(days)
+      .then(setStats)
+      .catch((err) => setError(err instanceof Error ? err.message : "Не удалось загрузить статистику"))
+      .finally(() => setLoading(false));
   }, [days]);
 
   const maxDaily = Math.max(...(stats?.daily.map((d) => d.sessions) ?? [1]), 1);
@@ -239,6 +246,9 @@ function LandingPage() {
           <option value={90}>90 дней</option>
         </select>
       </div>
+
+      {loading && <p className="muted">Загрузка…</p>}
+      {error && <p className="error">{error}</p>}
 
       {stats && (
         <>

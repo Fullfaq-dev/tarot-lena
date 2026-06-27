@@ -166,15 +166,16 @@ async def landing_stats(session: AsyncSession, *, days: int = 30) -> dict[str, A
         )
     ) or 0
 
+    daily_day = cast(LandingSession.created_at, Date)
     daily_rows = await session.execute(
         select(
-            cast(LandingSession.created_at, Date).label("day"),
+            daily_day.label("day"),
             func.count(LandingSession.id).label("sessions"),
             func.count(func.distinct(LandingSession.visitor_id)).label("unique_visitors"),
         )
         .where(LandingSession.created_at >= since)
-        .group_by("day")
-        .order_by("day")
+        .group_by(daily_day)
+        .order_by(daily_day)
     )
     daily = [
         {

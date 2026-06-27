@@ -40,22 +40,13 @@ fi
 
 build_ok=0
 set +e
-docker compose -f "$COMPOSE_FILE" build --pull=false
+docker compose -f "$COMPOSE_FILE" build --pull=false api worker
 build_rc=$?
 set -e
 if [ "$build_rc" -eq 0 ]; then
   build_ok=1
 else
-  set +e
-  docker compose -f "$COMPOSE_FILE" build --pull=false api worker
-  build_rc=$?
-  set -e
-  if [ "$build_rc" -eq 0 ]; then
-    echo "WARN: admin build skipped; api/worker rebuilt from cache"
-    build_ok=1
-  else
-    echo "WARN: Docker build skipped (likely Hub rate limit). Using cached images + live backend mount."
-  fi
+  echo "WARN: api/worker Docker build skipped (likely Hub rate limit). Using cached images + live backend mount."
 fi
 
 if [ "$build_ok" -eq 1 ]; then
@@ -64,8 +55,11 @@ else
   docker compose -f "$COMPOSE_FILE" up -d --no-build
 fi
 
+mkdir -p frontend-admin/dist
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin
+
 docker compose -f "$COMPOSE_FILE" exec -T api alembic upgrade head
-docker compose -f "$COMPOSE_FILE" restart api worker nginx
+docker compose -f "$COMPOSE_FILE" restart api worker admin nginx
 
 docker image prune -f
 
