@@ -87,6 +87,7 @@ export type DashboardStats = {
 export const api = {
   dashboard: () => get<DashboardStats>("/dashboard"),
   signups: (days = 30) => get<{ date: string; count: number }[]>(`/stats/signups?days=${days}`),
+  landingStats: (days = 30) => get<LandingStats>(`/stats/landing?days=${days}`),
   tokenStats: (days = 30, dateFrom?: string, dateTo?: string) => {
     const params = new URLSearchParams({ days: String(days) });
     if (dateFrom) params.set("date_from", dateFrom);
@@ -221,6 +222,36 @@ export type BillingUsageRow = {
 export type BillingData = {
   payments: { id: string; purpose: string; status: string; amount_rub: string; created_at: string }[];
   usage: BillingUsageRow[];
+};
+
+export type LandingStats = {
+  summary: {
+    sessions: number;
+    unique_visitors: number;
+    avg_duration_sec: number;
+    avg_scroll_pct: number;
+    total_clicks: number;
+    cta_clicks: number;
+    bot_conversions: number;
+    conversion_rate_pct: number;
+  };
+  daily: { date: string; sessions: number; unique_visitors: number }[];
+  top_clicks: { label: string; element_id: string | null; section: string | null; count: number }[];
+  top_sections: { section_id: string; views: number }[];
+  devices: { device: string; sessions: number }[];
+  utm_sources: { source: string; sessions: number }[];
+  recent_sessions: {
+    id: string;
+    visitor_id: string;
+    page: string;
+    device_type: string | null;
+    duration_sec: number | null;
+    max_scroll_pct: number;
+    click_count: number;
+    utm_source: string | null;
+    referrer: string | null;
+    created_at: string;
+  }[];
 };
 
 export type TokenStatsResponse = {

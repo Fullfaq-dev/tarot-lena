@@ -14,6 +14,7 @@ from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, U
 from app.database.session import get_session
 from app.services.billing.platega_client import fetch_balances
 from app.services.billing.service import BillingService
+from app.services.landing import analytics as landing_analytics
 from app.services.telegram_notify import notify_owner, notify_telegram_message
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin)])
@@ -38,6 +39,14 @@ async def platega_balances() -> dict:
 @router.get("/stats/signups")
 async def signups_chart(session: AsyncSession = Depends(get_session), days: int = 30) -> list[dict]:
     return await admin_service.signups_chart(session, days=days)
+
+
+@router.get("/stats/landing")
+async def landing_stats(
+    session: AsyncSession = Depends(get_session),
+    days: int = Query(default=30, ge=1, le=365),
+) -> dict:
+    return await landing_analytics.landing_stats(session, days=days)
 
 
 @router.get("/stats/tokens")

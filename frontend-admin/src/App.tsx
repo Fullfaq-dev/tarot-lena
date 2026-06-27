@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { api, getToken, login, setToken, BillingData, BillingUsageRow, DashboardStats, LogRow, MemoryRow, MessageRow, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
+import { api, getToken, login, setToken, BillingData, BillingUsageRow, DashboardStats, LandingStats, LogRow, MemoryRow, MessageRow, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
 
 type Route =
   | { page: "dashboard" }
   | { page: "tokens" }
+  | { page: "landing" }
   | { page: "users" }
   | { page: "user"; id: string }
   | { page: "logs" }
@@ -17,6 +18,7 @@ function parseRoute(): Route {
   if (parts[0] === "users" && parts[1]) return { page: "user", id: parts[1] };
   if (parts[0] === "users") return { page: "users" };
   if (parts[0] === "tokens") return { page: "tokens" };
+  if (parts[0] === "landing") return { page: "landing" };
   if (parts[0] === "logs") return { page: "logs" };
   if (parts[0] === "billing") return { page: "billing" };
   if (parts[0] === "referrals") return { page: "referrals" };
@@ -92,6 +94,7 @@ export function App() {
         <div className="brand">Arcana AI Panel</div>
         <nav>
           <NavItem active={route.page === "dashboard"} onClick={() => navigate({ page: "dashboard" })}>Статистика</NavItem>
+          <NavItem active={route.page === "landing"} onClick={() => navigate({ page: "landing" })}>Лендинг</NavItem>
           <NavItem active={route.page === "tokens"} onClick={() => navigate({ page: "tokens" })}>Токены</NavItem>
           <NavItem active={route.page === "users" || route.page === "user"} onClick={() => navigate({ page: "users" })}>Пользователи</NavItem>
           <NavItem active={route.page === "logs"} onClick={() => navigate({ page: "logs" })}>Логи</NavItem>
@@ -105,6 +108,7 @@ export function App() {
       </aside>
       <main className="content">
         {route.page === "dashboard" && <DashboardPage />}
+        {route.page === "landing" && <LandingPage />}
         {route.page === "tokens" && <TokensPage />}
         {route.page === "users" && <UsersPage />}
         {route.page === "user" && <UserDetailPage id={route.id} />}
@@ -194,6 +198,172 @@ function DashboardPage() {
           {signups.length === 0 && <p className="muted">Пока нет данных</p>}
         </div>
       </section>
+    </>
+  );
+}
+
+function LandingPage() {
+  const [days, setDays] = useState(30);
+  const [stats, setStats] = useState<LandingStats | null>(null);
+
+  useEffect(() => {
+    api.landingStats(days).then(setStats);
+  }, [days]);
+
+  const maxDaily = Math.max(...(stats?.daily.map((d) => d.sessions) ?? [1]), 1);
+
+  const formatDuration = (sec: number | null | undefined) => {
+    if (!sec) return "—";
+    if (sec < 60) return `${sec} сек`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s ? `${m} мин ${s} сек` : `${m} мин`;
+  };
+
+  const sectionLabel = (id: string) => ({
+    hero: "Главный экран",
+    features: "Возможности",
+    referral: "Реферальная программа",
+    how: "Как начать",
+    "wide-cta": "Финальный CTA",
+    header: "Шапка",
+  }[id] ?? id);
+
+  return (
+    <>
+      <h1>Аналитика лендинга</h1>
+      <div className="toolbar">
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
+          <option value={7}>7 дней</option>
+          <option value={30}>30 дней</option>
+          <option value={90}>90 дней</option>
+        </select>
+      </div>
+
+      {stats && (
+        <>
+          <div className="cards grid-4">
+            <Metric title="Визиты (сессии)" value={stats.summary.sessions} />
+            <Metric title="Уникальные посетители" value={stats.summary.unique_visitors} />
+            <Metric title="Среднее время на сайте" value={formatDuration(stats.summary.avg_duration_sec)} />
+            <Metric title="Средняя глубина скролла" value={`${stats.summary.avg_scroll_pct}%`} />
+            <Metric title="Всего кликов" value={stats.summary.total_clicks} />
+            <Metric title="Клики в Telegram" value={stats.summary.cta_clicks} />
+            <Metric title="Переходы в бота (start=landing)" value={stats.summary.bot_conversions} />
+            <Metric title="Конверсия в бота" value={`${stats.summary.conversion_rate_pct}%`} hint="Сессии → /start landing" />
+          </div>
+
+          <section className="panel">
+            <h2>Посещения по дням</h2>
+            <div className="chart">
+              {stats.daily.map((d) => (
+                <div key={d.date} className="chart-bar-wrap" title={`${d.date}: ${d.sessions} визитов`}>
+                  <div className="chart-bar" style={{ height: `${(d.sessions / maxDaily) * 100}%` }} />
+                  <span className="chart-label">{d.date.slice(5)}</span>
+                </div>
+              ))}
+              {stats.daily.length === 0 && <p className="muted">Пока нет данных — трекинг начнёт собирать статистику после деплоя</p>}
+            </div>
+          </section>
+
+          <div className="grid-2">
+            <section className="panel">
+              <h2>Топ кликов</h2>
+              <table>
+                <thead>
+                  <tr><th>Элемент</th><th>Секция</th><th>Кликов</th></tr>
+                </thead>
+                <tbody>
+                  {stats.top_clicks.map((row, i) => (
+                    <tr key={`${row.label}-${i}`}>
+                      <td>{row.label}</td>
+                      <td>{row.section ? sectionLabel(row.section) : "—"}</td>
+                      <td>{row.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {stats.top_clicks.length === 0 && <p className="muted">Кликов пока нет</p>}
+            </section>
+
+            <section className="panel">
+              <h2>Просмотры секций</h2>
+              <table>
+                <thead>
+                  <tr><th>Секция</th><th>Просмотров</th></tr>
+                </thead>
+                <tbody>
+                  {stats.top_sections.map((row) => (
+                    <tr key={row.section_id}>
+                      <td>{sectionLabel(row.section_id)}</td>
+                      <td>{row.views}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {stats.top_sections.length === 0 && <p className="muted">Просмотров секций пока нет</p>}
+            </section>
+          </div>
+
+          <div className="grid-2">
+            <section className="panel">
+              <h2>Устройства</h2>
+              <table>
+                <thead><tr><th>Тип</th><th>Сессии</th></tr></thead>
+                <tbody>
+                  {stats.devices.map((row) => (
+                    <tr key={row.device}><td>{row.device}</td><td>{row.sessions}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+
+            <section className="panel">
+              <h2>UTM source</h2>
+              <table>
+                <thead><tr><th>Источник</th><th>Сессии</th></tr></thead>
+                <tbody>
+                  {stats.utm_sources.map((row) => (
+                    <tr key={row.source}><td>{row.source}</td><td>{row.sessions}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              {stats.utm_sources.length === 0 && <p className="muted">UTM-меток пока нет</p>}
+            </section>
+          </div>
+
+          <section className="panel">
+            <h2>Последние визиты</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Устройство</th>
+                  <th>Время на сайте</th>
+                  <th>Скролл</th>
+                  <th>Клики</th>
+                  <th>UTM</th>
+                  <th>Referrer</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.recent_sessions.map((row) => (
+                  <tr key={row.id}>
+                    <td>{new Date(row.created_at).toLocaleString("ru")}</td>
+                    <td>{row.device_type ?? "—"}</td>
+                    <td>{formatDuration(row.duration_sec)}</td>
+                    <td>{row.max_scroll_pct}%</td>
+                    <td>{row.click_count}</td>
+                    <td>{row.utm_source ?? "—"}</td>
+                    <td className="muted">{row.referrer ? row.referrer.slice(0, 60) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {stats.recent_sessions.length === 0 && <p className="muted">Визитов пока нет</p>}
+          </section>
+        </>
+      )}
     </>
   );
 }

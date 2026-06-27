@@ -350,6 +350,47 @@ class AnalyticsEvent(UUIDMixin, TimestampMixin, Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class LandingSession(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "landing_sessions"
+
+    visitor_id: Mapped[str] = mapped_column(String(64), index=True)
+    page: Mapped[str] = mapped_column(String(64), default="index", index=True)
+    referrer: Mapped[str | None] = mapped_column(String(2048))
+    utm_source: Mapped[str | None] = mapped_column(String(128))
+    utm_medium: Mapped[str | None] = mapped_column(String(128))
+    utm_campaign: Mapped[str | None] = mapped_column(String(128))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+    device_type: Mapped[str | None] = mapped_column(String(32))
+    screen_width: Mapped[int | None] = mapped_column(Integer)
+    screen_height: Mapped[int | None] = mapped_column(Integer)
+    duration_sec: Mapped[int | None] = mapped_column(Integer)
+    max_scroll_pct: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    click_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    events: Mapped[list["LandingEvent"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+
+
+class LandingEvent(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "landing_events"
+
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("landing_sessions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(64), index=True)
+    element_id: Mapped[str | None] = mapped_column(String(128))
+    element_label: Mapped[str | None] = mapped_column(String(255))
+    section_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    value: Mapped[str | None] = mapped_column(String(128))
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    session: Mapped["LandingSession"] = relationship(back_populates="events")
+
+
 class AdminUser(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "admin_users"
 
