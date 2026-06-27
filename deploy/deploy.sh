@@ -38,6 +38,18 @@ else
   cp deploy/nginx.bootstrap.conf deploy/nginx.active.conf
 fi
 
+if [ -f frontend-admin/dist/index.html ]; then
+  set +e
+  docker compose -f "$COMPOSE_FILE" build --pull=false admin
+  admin_build_rc=$?
+  set -e
+  if [ "$admin_build_rc" -ne 0 ]; then
+    echo "WARN: admin build failed; panel may serve an older build"
+  fi
+else
+  echo "WARN: frontend-admin/dist/index.html missing; upload admin build in CI before deploy"
+fi
+
 build_ok=0
 set +e
 docker compose -f "$COMPOSE_FILE" build --pull=false api worker
@@ -55,8 +67,9 @@ else
   docker compose -f "$COMPOSE_FILE" up -d --no-build
 fi
 
-mkdir -p frontend-admin/dist
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin
+if [ -f frontend-admin/dist/index.html ]; then
+  docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin
+fi
 
 docker compose -f "$COMPOSE_FILE" exec -T api alembic upgrade head
 docker compose -f "$COMPOSE_FILE" restart api worker admin nginx
