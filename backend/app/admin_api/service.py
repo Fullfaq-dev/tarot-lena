@@ -234,6 +234,7 @@ async def list_users(session: AsyncSession, limit: int = 200) -> list[dict[str, 
                 "last_active_at": _dt(last_msg),
                 "is_active": bool(last_msg and last_msg >= week_ago),
                 "created_at": _dt(user.created_at),
+                "referral_reward_percent": user.referral_reward_percent,
             }
         )
     return items
@@ -275,6 +276,7 @@ async def user_detail(session: AsyncSession, user_id: str) -> dict[str, Any] | N
         "is_active": bool(last_msg and last_msg >= week_ago),
         "last_active_at": _dt(last_msg),
         "created_at": _dt(user.created_at),
+        "referral_reward_percent": user.referral_reward_percent,
         "soul_profile": _soul_profile_dict(profile) if profile else None,
         "onboarding": {
             "current_step": onboarding.current_step if onboarding else None,
@@ -622,7 +624,7 @@ async def list_withdrawals(session: AsyncSession) -> list[dict[str, Any]]:
 
 async def list_referrals(session: AsyncSession) -> list[dict[str, Any]]:
     result = await session.execute(
-        select(Referral, User.first_name, User.username)
+        select(Referral, User.first_name, User.username, User.telegram_id, User.referral_reward_percent)
         .join(User, User.id == Referral.referrer_user_id)
     )
     return [
@@ -630,12 +632,14 @@ async def list_referrals(session: AsyncSession) -> list[dict[str, Any]]:
             "id": ref.id,
             "referrer_user_id": ref.referrer_user_id,
             "referrer_name": name or username,
+            "referrer_telegram_id": telegram_id,
+            "partner_reward_percent": partner_percent,
             "referred_user_id": ref.referred_user_id,
             "reward_percent": ref.reward_percent,
             "accrued_rub": _dec(ref.accrued_rub),
             "created_at": _dt(ref.created_at),
         }
-        for ref, name, username in result.all()
+        for ref, name, username, telegram_id, partner_percent in result.all()
     ]
 
 

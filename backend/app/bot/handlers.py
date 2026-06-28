@@ -1037,8 +1037,9 @@ async def referral_share_callback(callback: CallbackQuery) -> None:
     await callback.answer()
     bot_user = await callback.message.bot.get_me()
     link = ReferralService().build_referral_link(bot_user.username, callback.from_user.id)
+    percent = await ReferralService().reward_percent_for_telegram(callback.from_user.id)
     await callback.message.answer(
-        t("referral_share_text", lang, link=link),
+        t("referral_share_text", lang, link=link, percent=percent),
         reply_markup=inline_referral_menu(share_link=link, lang=lang),
     )
 
@@ -1101,12 +1102,14 @@ async def referral_withdraw_callback(callback: CallbackQuery, state: FSMContext)
         await callback.message.answer(t("error_need_start_short", lang))
         return
     if available < MIN_WITHDRAWAL_RUB:
+        percent = await ReferralService().reward_percent_for_telegram(callback.from_user.id)
         await callback.message.answer(
             t(
                 "withdraw_min",
                 lang,
                 min=format_balance(MIN_WITHDRAWAL_RUB),
                 available=format_balance(available),
+                percent=percent,
             )
         )
         return

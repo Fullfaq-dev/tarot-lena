@@ -171,10 +171,10 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
         ),
     },
     "billing_panel_referral": {
-        "ru": "🤝 Приглашай друзей и получай <b>40%</b> с их оплат. Вывод от {min_withdraw} в USDT.",
-        "en": "🤝 Invite friends and get <b>40%</b> of their payments. Withdraw from {min_withdraw} in USDT.",
-        "es": "🤝 Invita amigos y gana <b>40%</b> de sus pagos. Retiro desde {min_withdraw} en USDT.",
-        "pt": "🤝 Convide amigos e ganhe <b>40%</b> dos pagamentos. Saque a partir de {min_withdraw} em USDT.",
+        "ru": "🤝 Приглашай друзей и получай <b>{percent}%</b> с их оплат. Вывод от {min_withdraw} в USDT.",
+        "en": "🤝 Invite friends and get <b>{percent}%</b> of their payments. Withdraw from {min_withdraw} in USDT.",
+        "es": "🤝 Invita amigos y gana <b>{percent}%</b> de sus pagos. Retiro desde {min_withdraw} en USDT.",
+        "pt": "🤝 Convide amigos e ganhe <b>{percent}%</b> dos pagamentos. Saque a partir de {min_withdraw} em USDT.",
     },
     "tier_free": {"ru": "Бесплатный", "en": "Free", "es": "Gratis", "pt": "Grátis"},
     "proactive_nudge": {
@@ -889,25 +889,25 @@ SERVICE_STRINGS: dict[str, dict[str, str]] = {
     "referral_share_text": {
         "ru": (
             "🔗 Твоя личная ссылка:\n{link}\n\n"
-            "Перешли её другу — с каждой его или её оплаты тебе будет приходить 40% на реферальный баланс. 💰"
+            "Перешли её другу — с каждой его или её оплаты тебе будет приходить {percent}% на реферальный баланс. 💰"
         ),
         "en": (
             "🔗 Your personal link:\n{link}\n\n"
-            "Share it — you get 40% of each friend's payment to your referral balance. 💰"
+            "Share it — you get {percent}% of each friend's payment to your referral balance. 💰"
         ),
-        "es": "🔗 Tu enlace:\n{link}\n\n40% de cada pago de amigos. 💰",
-        "pt": "🔗 Seu link:\n{link}\n\n40% de cada pagamento de amigos. 💰",
+        "es": "🔗 Tu enlace:\n{link}\n\n{percent}% de cada pago de amigos. 💰",
+        "pt": "🔗 Seu link:\n{link}\n\n{percent}% de cada pagamento de amigos. 💰",
     },
     "withdraw_min": {
         "ru": (
             "💸 Вывод доступен от {min}.\n"
             "Сейчас на балансе: {available}.\n\n"
-            "Приглашай друзей по своей ссылке — 40% с каждой их оплаты твои. ✨"
+            "Приглашай друзей по своей ссылке — {percent}% с каждой их оплаты твои. ✨"
         ),
         "en": (
             "💸 Withdrawal from {min}.\n"
             "Available: {available}.\n\n"
-            "Invite friends — 40% of their payments is yours. ✨"
+            "Invite friends — {percent}% of their payments is yours. ✨"
         ),
         "es": "💸 Retiro desde {min}. Disponible: {available}.",
         "pt": "💸 Saque a partir de {min}. Disponível: {available}.",

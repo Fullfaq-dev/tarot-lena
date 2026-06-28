@@ -36,6 +36,15 @@ async function patch(path: string, params: Record<string, string>) {
   return handleResponse(res);
 }
 
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  return handleResponse<T>(res);
+}
+
 async function del(path: string) {
   const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: authHeaders() });
   return handleResponse(res);
@@ -106,6 +115,11 @@ export const api = {
       `/users/${id}/balance/topup`,
       { amount_rub, comment: comment ?? "" },
     ),
+  updateReferralPercent: (id: string, referral_reward_percent: number) =>
+    patchJson<{ user_id: string; telegram_id: number; referral_reward_percent: number }>(
+      `/users/${id}/referral-percent`,
+      { referral_reward_percent },
+    ),
   botLogs: () => get<LogRow[]>("/logs/bot"),
   requestLogs: () => get<RequestLogRow[]>("/logs/requests"),
   payments: () => get<PaymentRow[]>("/billing/payments"),
@@ -145,6 +159,7 @@ export type UserRow = {
   last_active_at: string | null;
   is_active: boolean;
   created_at: string;
+  referral_reward_percent?: number;
 };
 
 export type UserDetail = UserRow & {
@@ -328,7 +343,10 @@ export type WithdrawalRow = {
 
 export type ReferralRow = {
   id: string;
+  referrer_user_id: string;
   referrer_name: string | null;
+  referrer_telegram_id: number;
+  partner_reward_percent: number;
   referred_user_id: string;
   accrued_rub: string;
   reward_percent: number;

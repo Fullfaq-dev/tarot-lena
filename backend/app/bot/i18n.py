@@ -611,10 +611,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "pt": "💳 Recarregar saldo",
     },
     "btn_referrals": {
-        "ru": "🤝 Пригласить друга · 40%",
-        "en": "🤝 Invite friend · 40%",
-        "es": "🤝 Invitar amigo · 40%",
-        "pt": "🤝 Convidar amigo · 40%",
+        "ru": "🤝 Реферальная программа",
+        "en": "🤝 Referral program",
+        "es": "🤝 Programa de referidos",
+        "pt": "🤝 Programa de indicação",
     },
     "zen_btn_daily": {
         "ru": "✨ Вопрос дня",

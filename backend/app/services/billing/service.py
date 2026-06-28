@@ -462,7 +462,11 @@ class BillingService:
         return usage
 
     async def panel_text(self, telegram_id: int) -> str:
-        from app.services.referrals.service import MIN_WITHDRAWAL_RUB, ReferralService
+        from app.services.referrals.service import (
+            MIN_WITHDRAWAL_RUB,
+            ReferralService,
+            reward_percent_for_user,
+        )
 
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
@@ -529,6 +533,7 @@ class BillingService:
                     "billing_panel_referral",
                     lang,
                     min_withdraw=format_balance(MIN_WITHDRAWAL_RUB),
+                    percent=reward_percent_for_user(user),
                 )
             )
             return "\n\n".join(p for p in parts if p)

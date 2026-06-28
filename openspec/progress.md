@@ -7,3 +7,4 @@
 - [Completed] Add dual iPhone bot screenshots and interactive referral earning section to the landing page.
 - [Completed] Localize daily-card generation and prevent cross-language daily-card cache reuse.
 - [Completed] Landing page analytics: click/scroll/section tracking, session duration, admin dashboard page.
+- [Completed] Per-partner referral reward percent in DB with admin editing; 50% for telegram_id 8082467889.

@@ -534,14 +534,23 @@ function UserDetailPage({ id }: { id: string }) {
   const [topupComment, setTopupComment] = useState("");
   const [topupStatus, setTopupStatus] = useState<string | null>(null);
   const [topupLoading, setTopupLoading] = useState(false);
+  const [referralPercent, setReferralPercent] = useState("40");
+  const [referralStatus, setReferralStatus] = useState<string | null>(null);
+  const [referralLoading, setReferralLoading] = useState(false);
 
   const reloadUserData = () => {
-    api.user(id).then(setUser);
+    api.user(id).then((data) => {
+      setUser(data);
+      setReferralPercent(String(data.referral_reward_percent ?? 40));
+    });
     api.userBilling(id).then(setBilling);
   };
 
   useEffect(() => {
-    api.user(id).then(setUser);
+    api.user(id).then((data) => {
+      setUser(data);
+      setReferralPercent(String(data.referral_reward_percent ?? 40));
+    });
     api.userMessages(id).then(setMessages);
     api.userMemories(id).then(setMemories);
     api.userPeople(id).then(setPeople);
@@ -566,6 +575,25 @@ function UserDetailPage({ id }: { id: string }) {
       setTopupStatus(err instanceof Error ? err.message : "Не удалось пополнить баланс");
     } finally {
       setTopupLoading(false);
+    }
+  };
+
+  const handleReferralPercent = async () => {
+    const percent = Number(referralPercent);
+    if (!Number.isInteger(percent) || percent < 1 || percent > 100) {
+      setReferralStatus("Укажи процент от 1 до 100");
+      return;
+    }
+    setReferralLoading(true);
+    setReferralStatus(null);
+    try {
+      const result = await api.updateReferralPercent(id, percent);
+      setReferralStatus(`Реферальный процент обновлён: ${result.referral_reward_percent}%`);
+      reloadUserData();
+    } catch (err) {
+      setReferralStatus(err instanceof Error ? err.message : "Не удалось обновить процент");
+    } finally {
+      setReferralLoading(false);
     }
   };
 
@@ -600,6 +628,23 @@ function UserDetailPage({ id }: { id: string }) {
             <p>Баланс: {user.balance_rub} ₽</p>
             <p>Анкета: {user.is_onboarded ? "завершена" : "в процессе"}</p>
             <p>Регистрация: {new Date(user.created_at).toLocaleString("ru")}</p>
+            <h3>Реферальная программа</h3>
+            <p>Текущий партнёрский процент: <strong>{user.referral_reward_percent ?? 40}%</strong></p>
+            <div className="toolbar">
+              <input
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value={referralPercent}
+                onChange={(e) => setReferralPercent(e.target.value)}
+                placeholder="Процент"
+              />
+              <button onClick={handleReferralPercent} disabled={referralLoading}>
+                {referralLoading ? "Сохраняем…" : "Сохранить %"}
+              </button>
+            </div>
+            {referralStatus && <p className="muted">{referralStatus}</p>}
           </div>
           <div>
             <h3>Онбординг</h3>
@@ -939,10 +984,24 @@ function ReferralsPage() {
       <section className="panel">
         <h2>Рефералы</h2>
         <table>
-          <thead><tr><th>Реферер</th><th>%</th><th>Начислено</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Реферер</th>
+              <th>Telegram ID</th>
+              <th>Партнёр %</th>
+              <th>% связи</th>
+              <th>Начислено</th>
+            </tr>
+          </thead>
           <tbody>
             {refs.map((r) => (
-              <tr key={r.id}><td>{r.referrer_name}</td><td>{r.reward_percent}%</td><td>{r.accrued_rub} ₽</td></tr>
+              <tr key={r.id} className="clickable" onClick={() => navigate({ page: "user", id: r.referrer_user_id })}>
+                <td>{r.referrer_name}</td>
+                <td>{r.referrer_telegram_id}</td>
+                <td>{r.partner_reward_percent}%</td>
+                <td>{r.reward_percent}%</td>
+                <td>{r.accrued_rub} ₽</td>
+              </tr>
             ))}
           </tbody>
         </table>

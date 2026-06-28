@@ -15,6 +15,7 @@ from app.database.session import get_session
 from app.services.billing.platega_client import fetch_balances
 from app.services.billing.service import BillingService
 from app.services.landing import analytics as landing_analytics
+from app.services.referrals.service import ReferralService
 from app.services.telegram_notify import notify_owner, notify_telegram_message
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin)])
@@ -102,6 +103,10 @@ class AdminTopupRequest(BaseModel):
     comment: str = ""
 
 
+class ReferralPercentRequest(BaseModel):
+    referral_reward_percent: int = Field(ge=1, le=100)
+
+
 @router.post("/users/{user_id}/balance/topup")
 async def admin_topup_balance(
     user_id: str,
@@ -125,6 +130,28 @@ async def admin_topup_balance(
         "user_id": user.id,
         "amount_rub": str(result["amount_rub"]),
         "balance_rub": str(result["balance_rub"]),
+    }
+
+
+@router.patch("/users/{user_id}/referral-percent")
+async def update_referral_percent(
+    user_id: str,
+    body: ReferralPercentRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    user = await session.scalar(select(User).where(User.id == user_id))
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    percent = await ReferralService().set_partner_reward_percent(
+        session,
+        user,
+        body.referral_reward_percent,
+    )
+    await session.commit()
+    return {
+        "user_id": user.id,
+        "telegram_id": user.telegram_id,
+        "referral_reward_percent": percent,
     }
 
 

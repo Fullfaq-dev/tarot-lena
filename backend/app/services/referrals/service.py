@@ -17,6 +17,16 @@ DEFAULT_REWARD_PERCENT = 40
 REFERRAL_LIST_PAGE_SIZE = 8
 _RESERVED_WITHDRAWAL_STATUSES = ("pending", "approved")
 
+
+def reward_percent_for_user(user: User | None) -> int:
+    if user is None:
+        return DEFAULT_REWARD_PERCENT
+    try:
+        percent = int(user.referral_reward_percent)
+    except (TypeError, ValueError):
+        return DEFAULT_REWARD_PERCENT
+    return max(1, min(100, percent))
+
 _TRC20_WALLET_RE = re.compile(r"^T[1-9A-HJ-NP-Za-km-z]{33}$")
 
 
@@ -73,7 +83,7 @@ class ReferralService:
         referral = Referral(
             referrer_user_id=referrer.id,
             referred_user_id=referred.id,
-            reward_percent=DEFAULT_REWARD_PERCENT,
+            reward_percent=reward_percent_for_user(referrer),
         )
         session.add(referral)
         return referral
@@ -106,13 +116,14 @@ class ReferralService:
             referred_name = (
                 referred.first_name or referred.username or t("referral_new_user", lang)
             )
+            partner_percent = reward_percent_for_user(referrer)
             notify_telegram_message(
                 referrer.telegram_id,
                 t(
                     "referral_joined_notify",
                     lang,
                     name=referred_name,
-                    percent=DEFAULT_REWARD_PERCENT,
+                    percent=partner_percent,
                 ),
             )
             return referrer.first_name or referrer.username or t("referral_friend", lang)
@@ -329,10 +340,25 @@ class ReferralService:
                 available=format_balance(stats["available"]),
                 total=format_balance(stats["total_accrued"]),
                 count=stats["referred_count"],
-                percent=DEFAULT_REWARD_PERCENT,
+                percent=reward_percent_for_user(user),
                 min_withdraw=format_balance(MIN_WITHDRAWAL_RUB),
                 link=link,
             )
+
+    async def set_partner_reward_percent(
+        self,
+        session: AsyncSession,
+        user: User,
+        percent: int,
+    ) -> int:
+        percent = max(1, min(100, int(percent)))
+        user.referral_reward_percent = percent
+        referrals = await session.scalars(
+            select(Referral).where(Referral.referrer_user_id == user.id)
+        )
+        for referral in referrals:
+            referral.reward_percent = percent
+        return percent
 
     async def request_withdrawal(
         self, session: AsyncSession, user: User, amount: Decimal, details: dict
@@ -425,6 +451,11 @@ class ReferralService:
         async with AsyncSessionLocal() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
             return user.usdt_trc20_wallet if user else None
+
+    async def reward_percent_for_telegram(self, telegram_id: int) -> int:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            return reward_percent_for_user(user)
 
     @staticmethod
     def _parse_referrer_telegram_id(start_code: str) -> int | None:
