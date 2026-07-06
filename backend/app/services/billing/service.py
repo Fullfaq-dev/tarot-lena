@@ -30,7 +30,7 @@ from app.services.billing.limits import (
     includes_free_infographics,
     is_unlimited_chat,
 )
-from app.services.billing.providers import PaymentIntent, PlategaProvider
+from app.services.billing.providers import PaymentFlowResult, PaymentIntent, PlategaProvider
 from app.services.billing.tokens import (
     charge_rub,
     estimate_messages_tokens,
@@ -47,9 +47,17 @@ from app.services.billing.tokens import (
 logger = logging.getLogger(__name__)
 
 _PAYMENT_DESCRIPTIONS = {
-    "topup": "Пополнение баланса Arcana AI",
-    "subscription_plus": "Подписка Plus Arcana AI",
-    "subscription_premium": "Подписка Premium Arcana AI",
+    "topup": "Пополнение баланса",
+    "subscription_plus": "Подписка Plus",
+    "subscription_premium": "Подписка Premium",
+    "subscription_love_plus": "ЛЮБОВЬ+ — подписка на месяц",
+    "subscription_vip": "VIP-пакет — подписка на месяц",
+    "combo_happy_woman": "Комбо «Счастливая женщина»",
+    "product_love_full": "Любовь — полная расшифровка",
+    "product_wealth_full": "Денежный код — полная расшифровка",
+    "product_negative_full": "Диагностика негатива — полная",
+    "product_forecast_full": "Личный прогноз — полная",
+    "product_question_full": "Ответ на вопрос — полная",
 }
 
 
@@ -79,7 +87,13 @@ class BillingService:
             )
         elif payment.purpose.startswith("subscription_"):
             tier = payment.purpose.removeprefix("subscription_")
-            label = "Plus" if tier == "plus" else "Premium"
+            labels = {
+                "plus": "Plus",
+                "premium": "Premium",
+                "love_plus": "ЛЮБОВЬ+",
+                "vip": "VIP",
+            }
+            label = labels.get(tier, tier)
             expires_at = subscription.expires_at if subscription else None
             expires = expires_at.strftime("%d.%m.%Y") if expires_at else "—"
             text = t(
@@ -88,6 +102,23 @@ class BillingService:
                 label=label,
                 expires=expires,
             )
+        elif payment.purpose == "combo_happy_woman":
+            text = (
+                "🎁 Пакет «Счастливая женщина» активирован!\n\n"
+                "Три полных разбора ждут тебя: 💞 Любовь, 💰 Деньги, 📆 Прогноз — выбери в меню."
+            )
+        elif payment.purpose.startswith("product_") and payment.purpose.endswith("_full"):
+            product_text = (payment.payload or {}).get("generated_text")
+            if product_text:
+                text = product_text
+            elif (payment.payload or {}).get("awaiting_context"):
+                product_id = payment.purpose.removeprefix("product_").removesuffix("_full")
+                if product_id == "love":
+                    text = "Оплата прошла ✨ Введите дату рождения партнёра (ДД.ММ.ГГГГ):"
+                else:
+                    text = "Оплата прошла ✨ Напишите свой вопрос:"
+            else:
+                text = "Оплата прошла ✨ Полная расшифровка готовится — открой меню."
         else:
             return None
         return {"telegram_id": user.telegram_id, "text": text}
@@ -294,14 +325,9 @@ class BillingService:
             return format_balance(user.balance_rub)
 
     async def reply_main_menu_markup(self, telegram_id: int):
-        from app.bot.keyboards import main_menu
-        from app.services.settings.service import SettingsService
-        from app.services.gift.service import GiftService
+        from app.bot.leia_keyboards import inline_product_menu
 
-        balance = await self.get_balance_label(telegram_id)
-        lang = await SettingsService().get_ui_language(telegram_id)
-        show_gift = await GiftService().is_available(telegram_id)
-        return main_menu(balance, lang, show_gift=show_gift)
+        return inline_product_menu()
 
     async def record_chat_usage(
         self,
@@ -757,9 +783,15 @@ class BillingService:
             lang = await self._user_lang(session, user.id) if user else "en"
             if user is None:
                 return t("error_need_start", lang), ""
-            intent = await self.create_topup(session, user, amount)
+            flow = await self.create_topup(session, user, amount)
+            if flow.completed:
+                return (
+                    flow.user_text
+                    or f"✅ Демо-пополнение: {format_balance(amount)} зачислено на баланс.",
+                    "",
+                )
             text = t("billing_topup_link", lang, amount=amount)
-            return text, intent.payment_url
+            return text, flow.payment_url or ""
 
     async def create_subscription_for_telegram(self, telegram_id: int, tier: str) -> tuple[str, str]:
         amount = SUBSCRIPTION_PRICES_RUB.get(tier)
@@ -772,15 +804,20 @@ class BillingService:
             if user is None:
                 return t("error_need_start", lang), ""
 
-            intent = await self._initiate_platega_payment(
+            flow = await self._initiate_platega_payment(
                 session,
                 user,
                 amount,
                 f"subscription_{tier}",
             )
+            if flow.completed:
+                return (
+                    flow.user_text or f"✅ Демо-подписка {tier} активирована.",
+                    "",
+                )
             label = "Plus" if tier == "plus" else "Premium"
             text = t("billing_sub_link", lang, label=label, amount=amount)
-            return text, intent.payment_url
+            return text, flow.payment_url or ""
 
     async def admin_topup_balance(
         self,
@@ -806,8 +843,29 @@ class BillingService:
             "balance_rub": user.balance_rub,
         }
 
-    async def create_topup(self, session: AsyncSession, user: User, amount: Decimal) -> PaymentIntent:
+    async def create_topup(
+        self, session: AsyncSession, user: User, amount: Decimal
+    ) -> PaymentFlowResult:
         return await self._initiate_platega_payment(session, user, amount, "topup")
+
+    def _demo_mode_enabled(self) -> bool:
+        settings = get_settings()
+        return settings.payments_demo_mode or not settings.platega_configured
+
+    def _flow_result_from_complete(self, result: dict, amount: str) -> PaymentFlowResult:
+        notify = result.get("telegram_notify")
+        user_text = notify.get("text") if isinstance(notify, dict) else None
+        purpose = str(result.get("purpose") or "")
+        product_text = None
+        if purpose.startswith("product_") and purpose.endswith("_full") and user_text:
+            product_text = user_text
+            user_text = None
+        return PaymentFlowResult(
+            amount_rub=amount,
+            completed=True,
+            user_text=user_text,
+            product_text=product_text,
+        )
 
     async def _initiate_platega_payment(
         self,
@@ -815,7 +873,9 @@ class BillingService:
         user: User,
         amount: Decimal,
         purpose: str,
-    ) -> PaymentIntent:
+        *,
+        extra_payload: dict | None = None,
+    ) -> PaymentFlowResult:
         payment = Payment(
             user_id=user.id,
             provider="platega",
@@ -826,7 +886,20 @@ class BillingService:
         session.add(payment)
         await session.flush()
 
-        description = _PAYMENT_DESCRIPTIONS.get(purpose, f"Оплата Arcana AI ({purpose})")
+        amount_label = str(amount)
+
+        if self._demo_mode_enabled():
+            payment.provider = "demo"
+            payment.provider_payment_id = f"demo_{payment.id}"
+            payload = {"demo": True}
+            if extra_payload:
+                payload.update(extra_payload)
+            payment.payload = payload
+            result = await self.complete_payment(session, payment)
+            await session.commit()
+            return self._flow_result_from_complete(result, amount_label)
+
+        description = _PAYMENT_DESCRIPTIONS.get(purpose, f"Оплата Лея ({purpose})")
         try:
             intent = await self.provider.create_payment(
                 payment_id=str(payment.id),
@@ -838,9 +911,12 @@ class BillingService:
             await session.rollback()
             raise
         payment.provider_payment_id = intent.provider_payment_id
-        payment.payload = {"payment_url": intent.payment_url}
+        payload = {"payment_url": intent.payment_url}
+        if extra_payload:
+            payload.update(extra_payload)
+        payment.payload = payload
         await session.commit()
-        return intent
+        return PaymentFlowResult(amount_rub=amount_label, payment_url=intent.payment_url)
 
     async def process_platega_callback(
         self,
@@ -913,6 +989,26 @@ class BillingService:
                         payment_id=payment.id,
                     )
                 )
+        elif payment.purpose == "combo_happy_woman":
+            from app.services.products.entitlements import EntitlementService
+
+            await EntitlementService().grant_combo_happy_woman(session, user.id, payment.id)
+        elif payment.purpose == "subscription_love_plus":
+            from app.services.products.entitlements import EntitlementService
+
+            await EntitlementService().grant_subscription(
+                session, user.id, "love_plus", payment.id
+            )
+            subscription = await session.scalar(
+                select(Subscription).where(Subscription.user_id == user.id)
+            )
+        elif payment.purpose == "subscription_vip":
+            from app.services.products.entitlements import EntitlementService
+
+            await EntitlementService().grant_subscription(session, user.id, "vip", payment.id)
+            subscription = await session.scalar(
+                select(Subscription).where(Subscription.user_id == user.id)
+            )
         elif payment.purpose.startswith("subscription_"):
             tier = payment.purpose.removeprefix("subscription_")
             if tier not in SUBSCRIPTION_PRICES_RUB:
@@ -933,6 +1029,14 @@ class BillingService:
             subscription.expires_at = now + timedelta(days=30)
             subscription.provider = payment.provider
             subscription.provider_subscription_id = payment.provider_payment_id
+        elif payment.purpose.startswith("product_") and payment.purpose.endswith("_full"):
+            from app.services.products.service import ProductService
+
+            product_text = await ProductService().fulfill_payment(session, payment)
+            if product_text:
+                payload = dict(payment.payload or {})
+                payload["generated_text"] = product_text
+                payment.payload = payload
         else:
             raise ValueError(f"Неизвестное назначение платежа: {payment.purpose}")
 
@@ -961,12 +1065,21 @@ class BillingService:
             owner_item = format_balance(payment.amount_rub)
         elif payment.purpose.startswith("subscription_"):
             tier = payment.purpose.removeprefix("subscription_")
-            tier_label = {"plus": "Plus", "premium": "Premium"}.get(tier, tier)
+            tier_labels = {
+                "plus": "Plus",
+                "premium": "Premium",
+                "love_plus": "ЛЮБОВЬ+",
+                "vip": "VIP",
+            }
+            tier_label = tier_labels.get(tier, tier)
             owner_title = "⭐ Покупка подписки"
             owner_item = f"{tier_label} ({format_balance(payment.amount_rub)})"
-        else:
+        elif payment.purpose == "combo_happy_woman":
+            owner_title = "🎁 Комбо-пакет"
+            owner_item = f"Счастливая женщина ({format_balance(payment.amount_rub)})"
+        elif payment.purpose.startswith("product_"):
             owner_title = "🛒 Покупка"
-            owner_item = format_balance(payment.amount_rub)
+            owner_item = _PAYMENT_DESCRIPTIONS.get(payment.purpose, format_balance(payment.amount_rub))
         result["owner_notify"] = (
             f"{owner_title}\n"
             f"Пользователь: {owner_name}{owner_handle}\n"

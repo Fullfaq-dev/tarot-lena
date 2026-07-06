@@ -91,6 +91,12 @@ from app.bot.feature_handlers import (
     handle_zen_question,
     router as feature_router,
 )
+from app.bot.leia_handlers import (
+    complete_onboarding_flow,
+    onboarding_markup_for_step,
+    router as leia_router,
+    show_leia_menu,
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -219,9 +225,7 @@ async def _handle_gift(message: Message, telegram_id: int) -> None:
 
 async def _go_home(message: Message, state: FSMContext) -> None:
     await state.clear()
-    telegram_id = message.from_user.id
-    menu_text, menu_markup = await _main_menu_inline(telegram_id)
-    await present_rich_panel(message, menu_text, reply_markup=menu_markup)
+    await show_leia_menu(message)
 
 
 async def _main_menu_inline(telegram_id: int):
@@ -731,14 +735,12 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
             )
 
         if onboarded:
-            await message.answer(text, reply_markup=await _user_main_menu(message.from_user.id))
-            menu_text, menu_markup = await _main_menu_inline(message.from_user.id)
-            await present_rich_panel(message, menu_text, reply_markup=menu_markup)
+            await show_leia_menu(message)
         else:
             step_key = await service.get_current_step_key(message.from_user) or ONBOARDING_STEPS[0][0]
-            markup = onboarding_keyboard(step_key, lang)
+            markup = onboarding_markup_for_step(step_key)
             hint = ""
-            if markup is None:
+            if markup is None and step_key not in ("legal_consent", "birth_time"):
                 hint = f"\n\n{t('onboarding_type_hint', lang)}"
             await message.answer(f"{text}{hint}", reply_markup=markup)
 
@@ -782,10 +784,7 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
 
     if target == "main":
-        menu_text, menu_markup = await _main_menu_inline(callback.from_user.id)
-        await present_rich_panel(
-            callback.message, menu_text, reply_markup=menu_markup, edit_message=callback.message
-        )
+        await show_leia_menu(callback.message, edit=callback.message)
         return
 
     if target == "readings":
@@ -1522,32 +1521,23 @@ async def _process_onboarding_answer(
                 )
                 next_step_key = onboarding.current_step if onboarding else None
 
-    markup = onboarding_keyboard(next_step_key, lang) if next_step_key else None
+    markup = onboarding_markup_for_step(next_step_key) if next_step_key else None
     reply_text = onboarding_reply
     if markup is None and not completed:
         reply_text = f"{onboarding_reply}\n\n{t('onboarding_type_hint', lang)}"
 
     if isinstance(source, CallbackQuery):
         if completed:
-            await source.message.answer(
-                onboarding_reply,
-                reply_markup=await _user_main_menu(telegram_user.id),
-            )
-            await source.message.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
-            await _send_daily_card(source.message, telegram_user.id)
-            menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
-            await present_rich_panel(source.message, menu_text, reply_markup=menu_markup)
+            await source.message.answer(onboarding_reply)
+            await complete_onboarding_flow(source.message, telegram_user.id)
         elif edit:
             await safe_edit(source.message, reply_text, markup)
         else:
             await source.message.answer(reply_text, reply_markup=markup)
     else:
         if completed:
-            await source.answer(onboarding_reply, reply_markup=await _user_main_menu(telegram_user.id))
-            await source.answer(t("first_daily_gift", await _user_language(telegram_user.id)))
-            await _send_daily_card(source, telegram_user.id)
-            menu_text, menu_markup = await _main_menu_inline(telegram_user.id)
-            await present_rich_panel(source, menu_text, reply_markup=menu_markup)
+            await source.answer(onboarding_reply)
+            await complete_onboarding_flow(source, telegram_user.id)
         else:
             await source.answer(reply_text, reply_markup=markup)
 
@@ -2000,5 +1990,6 @@ async def sticker_file_id_hint(message: Message) -> None:
 
 
 def register_handlers(dispatcher: Dispatcher) -> None:
+    dispatcher.include_router(leia_router)
     dispatcher.include_router(feature_router)
     dispatcher.include_router(router)

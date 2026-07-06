@@ -1,24 +1,34 @@
-# Arcana AI Project
+# Tarot Lena (бот «Лея»)
+
+> Форк Arcana AI под новый продукт. Репозиторий: `https://github.com/Fullfaq-dev/tarot-lena.git`
 
 ## Stack
 
 - Backend: Python 3.12, FastAPI, aiogram 3, SQLAlchemy async, asyncpg, Alembic, Redis FSM storage.
-- AI/media providers: KIE.ai chat and image jobs, 302.ai STT, ElevenLabs TTS.
-- Payments: Platega via local SDK, balance and subscription records in PostgreSQL.
-- Frontend assets: static landing/legal site in `site/`, admin SPA in `frontend-admin`.
-- Production: Docker Compose on VPS, nginx serves `site/` and proxies API/admin routes.
+- AI: KIE.ai для генерации текстов (таро, нумерология, астрология).
+- Payments: Platega — фиксированные продукты и подписки (без pay-per-token в MVP).
+- Frontend: статический лендинг `site/`, admin SPA `frontend-admin`.
+- Production: Docker Compose на **новом VPS** (`/opt/tarot-lena`), nginx + SSL.
+
+## Продукт
+
+- Персона: **Лея** — таро, нумерология (Матрица Судьбы / Хшановская), западный зодиак.
+- 5 платных продуктов + комбо-пакеты + 2 подписки.
+- Бесплатно: утренняя рассылка (1 нед.), нумеропортрет, недельный гороскоп.
+- Язык: **ru only** (MVP).
 
 ## Architecture
 
-- Telegram bot handlers live in `backend/app/bot/handlers.py`; user-facing texts are centralized in i18n modules.
-- Services encapsulate business logic under `backend/app/services/*`.
-- Database models live in `backend/app/database/models.py`; schema changes require Alembic migrations.
-- Static public website is mounted by nginx from `site/` and should remain dependency-free.
-- Owner notifications are sent through `app.services.telegram_notify.notify_owner`.
+- Handlers: `backend/app/bot/handlers.py` — упрощённое меню из 5 продуктов.
+- Products: `backend/app/services/products/` — каталог, entitlements, мини/полная логика.
+- Numerology / Astrology: новые сервисы расчёта + AI-интерпретация.
+- Funnels / Broadcasts: воронки день 1–2, scheduler утро/вечер/понедельник.
+- Prompts: `prompts/system_ru.md`, `numerology_ru.md`, `astro_ru.md`.
+- Spec: `openspec/proposals/tarot-lena-migration.md`.
 
 ## Naming And Change Rules
 
-- Keep bot start payloads short and explicit, e.g. `landing`, `ref_<id>`.
-- Preserve public/legal pages when changing the website.
-- Use existing service and helper patterns instead of adding framework dependencies.
-- Track task progress in `openspec/progress.md`.
+- Start payloads: `landing`, `ref_<id>`.
+- Payment purposes: `product_*`, `combo_*`, `subscription_*`.
+- Токены и секреты — только `.env`, не в git.
+- Track progress in `openspec/progress.md`.

@@ -32,13 +32,15 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: "frontend-admin/dist/*"
-          target: "/opt/arcane-ai/frontend-admin/dist"
+          target: "/opt/tarot-lena/frontend-admin/dist"
           strip_components: 2
           overwrite: true
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KIE_API_KEY: ${{ secrets.KIE_API_KEY }}
           AI302_API_KEY: ${{ secrets.AI302_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           PLATEGA_MERCHANT_ID: ${{ secrets.PLATEGA_MERCHANT_ID }}
@@ -47,10 +49,10 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY
+          envs: TELEGRAM_BOT_TOKEN,KIE_API_KEY,AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY
           script: |
             set -euo pipefail
-            cd /opt/arcane-ai
+            cd /opt/tarot-lena
 
             set_env() {
               local key="$1"
@@ -63,51 +65,39 @@ jobs:
               fi
             }
 
-            set_env TELEGRAM_PLACEHOLDER_STICKER_ID "CAACAgIAAxkBAAEEhLJqK-RBbkGoDx15NCs0aJp0IsmNgwACRZsAAvgWYEnemsvTUs4FqzwE"
+            set_env PAYMENTS_DEMO_MODE "1"
+            set_env PUBLIC_BASE_URL "http://43.165.5.18:8080"
+            set_env PLATEGA_RETURN_URL "http://43.165.5.18:8080/payment/success"
+            set_env PLATEGA_FAILED_URL "http://43.165.5.18:8080/payment/failed"
+            set_env TELEGRAM_USE_POLLING "1"
 
-            bash deploy/deploy.sh
+            if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+              set_env TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN}"
+            fi
 
-            RECREATE_API=0
+            if [ -n "${KIE_API_KEY:-}" ]; then
+              set_env KIE_API_KEY "${KIE_API_KEY}"
+            fi
 
             if [ -n "${ELEVENLABS_API_KEY:-}" ]; then
               set_env ELEVENLABS_API_KEY "${ELEVENLABS_API_KEY}"
               set_env ELEVENLABS_TTS_MODEL "eleven_turbo_v2_5"
               set_env ELEVENLABS_DEFAULT_VOICE_ID "hLjwV7lYzk15SWLUmhEH"
-              RECREATE_API=1
             fi
 
             if [ -n "${AI302_API_KEY:-}" ]; then
               set_env AI302_API_KEY "${AI302_API_KEY}"
               set_env AI302_BASE_URL "https://api.302.ai"
               set_env AI302_STT_MODEL "whisper-1"
-              RECREATE_API=1
             fi
 
             if [ -n "${PLATEGA_MERCHANT_ID:-}" ] && [ -n "${PLATEGA_API_KEY:-}" ]; then
               set_env PLATEGA_MERCHANT_ID "${PLATEGA_MERCHANT_ID}"
               set_env PLATEGA_API_KEY "${PLATEGA_API_KEY}"
               set_env PLATEGA_PAYMENT_METHOD "0"
-              set_env PUBLIC_BASE_URL "https://arcaneai.online"
-              set_env PLATEGA_RETURN_URL "https://arcaneai.online/payment/success"
-              set_env PLATEGA_FAILED_URL "https://arcaneai.online/payment/failed"
-              set_env APP_ENV "production"
-              RECREATE_API=1
+              set_env PAYMENTS_DEMO_MODE "0"
             fi
 
-            if [ "$RECREATE_API" -eq 1 ]; then
-              docker compose -f docker-compose.prod.yml up -d --force-recreate --no-deps api worker
-              docker compose -f docker-compose.prod.yml restart nginx
-            fi
+            bash deploy/deploy.sh
 
-            if [ -n "${AI302_API_KEY:-}" ]; then
-              docker compose -f docker-compose.prod.yml exec -T api python -c "from app.core.config import get_settings; k=get_settings().ai302_api_key; print('AI302 configured:', k[:7]+'...' if k and k!='replace-me' else 'MISSING')"
-            fi
-
-            if [ -n "${PLATEGA_MERCHANT_ID:-}" ] && [ -n "${PLATEGA_API_KEY:-}" ]; then
-              docker compose -f docker-compose.prod.yml exec -T api python -c "
-            import asyncio
-            from app.services.billing.platega_client import fetch_balances
-            balances, err = asyncio.run(fetch_balances())
-            print('Platega balances:', balances if balances else err)
-            "
-            fi
+            curl -sf "http://127.0.0.1:8080/health" && echo " health OK"

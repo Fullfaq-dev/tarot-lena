@@ -14,3 +14,5 @@ class BotStates(StatesGroup):
     waiting_rune_question = State()
     waiting_stone_query = State()
     waiting_bracelet_query = State()
+    waiting_partner_birth_date = State()
+    waiting_product_question = State()

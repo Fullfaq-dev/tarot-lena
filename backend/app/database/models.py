@@ -392,6 +392,28 @@ class LandingEvent(UUIDMixin, TimestampMixin, Base):
     session: Mapped["LandingSession"] = relationship(back_populates="events")
 
 
+class ProductUsage(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "product_usages"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    product_id: Mapped[str] = mapped_column(String(32))
+    level: Mapped[str] = mapped_column(String(16))  # mini | full
+    payment_id: Mapped[str | None] = mapped_column(ForeignKey("payments.id", ondelete="SET NULL"))
+    content_preview: Mapped[str | None] = mapped_column(Text)
+
+
+class ProductEntitlement(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "product_entitlements"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uses_remaining: Mapped[int | None] = mapped_column(Integer)
+    source_payment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("payments.id", ondelete="SET NULL")
+    )
+
+
 class AdminUser(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "admin_users"
 

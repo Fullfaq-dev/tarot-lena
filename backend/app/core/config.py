@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "local"
-    app_name: str = "AI Tarot Bot"
+    app_name: str = "Лея — Таро и Нумерология"
     public_base_url: str = "http://localhost:8000"
 
     database_url: str = "postgresql+asyncpg://tarot:tarot@localhost:5432/tarot"
@@ -17,7 +17,8 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = "replace-me"
     telegram_webhook_secret: str = "replace-me"
-    telegram_admin_ids: str = ""
+    telegram_use_polling: bool = False
+    telegram_admin_ids: str = "267409502,7670490295"
     telegram_placeholder_sticker_id: str = ""
 
     # Personal owner who receives new-user and top-up notifications.
@@ -60,6 +61,11 @@ class Settings(BaseSettings):
     platega_payment_method: int = Field(default=0, alias="PLATEGA_PAYMENT_METHOD")
     platega_return_url: str = Field(default="", alias="PLATEGA_RETURN_URL")
     platega_failed_url: str = Field(default="", alias="PLATEGA_FAILED_URL")
+    payments_demo_mode: bool = Field(default=True, alias="PAYMENTS_DEMO_MODE")
+
+    @property
+    def platega_configured(self) -> bool:
+        return bool(self.platega_merchant_id and self.platega_api_key)
 
     @property
     def platega_callback_url(self) -> str:

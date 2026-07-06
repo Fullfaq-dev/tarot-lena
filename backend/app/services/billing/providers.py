@@ -19,6 +19,15 @@ class PaymentIntent:
     amount_rub: Decimal
 
 
+@dataclass(frozen=True)
+class PaymentFlowResult:
+    amount_rub: str
+    payment_url: str | None = None
+    completed: bool = False
+    user_text: str | None = None
+    product_text: str | None = None
+
+
 class PaymentProvider(Protocol):
     async def create_payment(
         self,

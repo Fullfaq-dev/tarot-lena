@@ -1,6 +1,11 @@
 from app.core.config import get_settings
 
-LEGAL_URL = "https://arcaneai.online/"
+
+def legal_url() -> str:
+    return get_settings().legal_page_url
+
+
+LEGAL_URL = legal_url()
 
 
 def support_url() -> str:

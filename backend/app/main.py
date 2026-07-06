@@ -58,6 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if (
         settings.app_env != "local"
         and settings.telegram_bot_token != "replace-me"
+        and not settings.telegram_use_polling
         and settings.public_base_url.startswith("https://")
     ):
         try:

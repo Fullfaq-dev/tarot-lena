@@ -1,81 +1,69 @@
-# Deploy
+# Deploy — Tarot Lena (бот «Лея»)
 
 ## GitHub
 
-Repository: https://github.com/Fullfaq-dev/arcane-ai
+Repository: https://github.com/Fullfaq-dev/tarot-lena
 
 Autodeploy runs on every push to `main` via `.github/workflows/deploy.yml`.
 
 Required GitHub secrets:
 
-- `VPS_HOST` — server IP
-- `VPS_USER` — SSH user (`root`)
+- `VPS_HOST` — `43.165.5.18`
+- `VPS_USER` — `ubuntu`
 - `VPS_SSH_KEY` — private deploy key
+- `TELEGRAM_BOT_TOKEN` — токен @astro_leia_bot
+- `KIE_API_KEY` — ключ KIE.ai
+- `PLATEGA_MERCHANT_ID`, `PLATEGA_API_KEY` — Platega (опционально)
 
 ## Server layout
 
-- App path: `/opt/arcane-ai`
-- Env file: `/opt/arcane-ai/.env` (not in git)
+- App path: `/opt/tarot-lena`
+- Env file: `/opt/tarot-lena/.env` (not in git)
 - Compose: `docker-compose.prod.yml`
+- Telegram: **long polling** (контейнер `bot`), webhook — после появления домена
 
 Manual deploy on server:
 
 ```bash
-cd /opt/arcane-ai
+cd /opt/tarot-lena
 bash deploy/deploy.sh
 ```
 
-## URLs
+## URLs (IP-only MVP)
 
-- Admin: `http://<server-ip>/`
-- API health: `http://<server-ip>/health`
-- Static uploads for KIE: `http://<server-ip>/static/generated/...`
+- Site: `http://43.165.5.18:8080/`
+- Legal: `http://43.165.5.18:8080/legal`
+- Admin: `http://43.165.5.18:8080/panel/`
+- API health: `http://43.165.5.18:8080/health`
+- Bot: https://t.me/astro_leia_bot
 
-## Domain arcaneai.online
-
-1. At the registrar, set nameservers to Vercel (if the domain is managed in Vercel DNS).
-2. In Vercel DNS add `A` records for `@` and `www` → `147.45.228.92`.
-3. Wait until `dig +short arcaneai.online` returns the VPS IP.
-4. On the server run:
+## First-time server setup
 
 ```bash
-cd /opt/arcane-ai
-bash deploy/retry-ssl.sh
+# On VPS as ubuntu
+sudo bash deploy/setup-server.sh
+# Configure .env, then:
+bash deploy/deploy.sh
 ```
 
-Cron (optional, retries SSL every 15 minutes until DNS is live):
-
-```bash
-echo "*/15 * * * * cd /opt/arcane-ai && bash deploy/retry-ssl.sh >> /var/log/arcane-ssl.log 2>&1" | crontab -
-```
-
-Set in `/opt/arcane-ai/.env`:
-
-```env
-APP_ENV=production
-PUBLIC_BASE_URL=https://arcaneai.online
-AI302_API_KEY=your-302ai-key
-AI302_BASE_URL=https://api.302.ai
-AI302_STT_MODEL=whisper-v3-turbo
-
-PLATEGA_MERCHANT_ID=your-merchant-uuid
-PLATEGA_API_KEY=your-platega-api-secret
-PLATEGA_PAYMENT_METHOD=10
-```
-
-### Platega callback URL
-
-In the Platega merchant dashboard, set the callback (webhook) URL to:
+## Platega callback URL
 
 ```
-https://arcaneai.online/callbacks/platega
+http://43.165.5.18:8080/callbacks/platega
 ```
 
-Platega sends `POST` with headers `X-MerchantId` and `X-Secret` (same as API key). On `CONFIRMED`, the bot credits balance or activates a subscription automatically.
+Return URLs:
 
-After payment, users are redirected to:
+- Success: `http://43.165.5.18:8080/payment/success`
+- Failed: `http://43.165.5.18:8080/payment/failed`
 
-- Success: `https://arcaneai.online/payment/success`
-- Failed/cancelled: `https://arcaneai.online/payment/failed`
+**Note:** Port 80/443 заняты Zeabur proxy — наш nginx на **8080**.
 
-On deploy, `AI302_API_KEY` is synced from GitHub secret `AI302_API_KEY` when set.
+## Domain (later)
+
+When a domain is available:
+
+1. DNS A-record → `43.165.5.18`
+2. Run `bash deploy/retry-ssl.sh`
+3. Set `PUBLIC_BASE_URL=https://<domain>`, `TELEGRAM_USE_POLLING=0`
+4. Restart `api`, stop `bot` container (webhook mode)
