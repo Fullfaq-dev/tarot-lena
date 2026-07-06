@@ -13,7 +13,14 @@ Required GitHub secrets:
 - `VPS_SSH_KEY` — private deploy key
 - `TELEGRAM_BOT_TOKEN` — токен @astro_leia_bot
 - `KIE_API_KEY` — ключ KIE.ai
-- `PLATEGA_MERCHANT_ID`, `PLATEGA_API_KEY` — Platega (опционально)
+- `PLATEGA_MERCHANT_ID`, `PLATEGA_API_KEY` — Platega (опционально; без них включён демо-режим оплаты)
+
+Скопируйте secrets из репозитория `arcane-ai` (Settings → Secrets) в `tarot-lena`.
+
+## Демо-оплата
+
+`PAYMENTS_DEMO_MODE=1` (по умолчанию) — кнопка «Купить» сразу проводит платёж на указанную сумму без Platega.
+Когда добавите ключи Platega в secrets, CI автоматически выставит `PAYMENTS_DEMO_MODE=0`.
 
 ## Server layout
 

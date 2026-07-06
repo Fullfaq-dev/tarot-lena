@@ -42,8 +42,12 @@ if ! grep -q "^TELEGRAM_WEBHOOK_SECRET=" .env 2>/dev/null || grep -q "^TELEGRAM_
 fi
 
 if [ -d .git ]; then
-  git fetch origin main 2>/dev/null || true
-  git reset --hard origin/main 2>/dev/null || true
+  git fetch origin main
+  git reset --hard origin/main
+else
+  echo "ERROR: ${APP_DIR} is not a git clone. On VPS run:"
+  echo "  git clone git@github.com:Fullfaq-dev/tarot-lena.git ${APP_DIR}"
+  exit 1
 fi
 
 if [ -f /etc/letsencrypt/live/*/fullchain.pem ] 2>/dev/null; then
