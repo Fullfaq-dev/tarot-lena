@@ -88,6 +88,10 @@ export type DashboardStats = {
   inactive_users: number;
   plus_subscribers: number;
   premium_subscribers: number;
+  vip_subscribers: number;
+  love_plus_subscribers: number;
+  combo_sales: number;
+  product_usages: number;
   pending_withdrawals: number;
   platega_balances?: PlategaBalance[];
   platega_balances_error?: string;
@@ -169,6 +173,8 @@ export type UserDetail = UserRow & {
   free_readings_used_month: number;
   subscription_status: string | null;
   subscription_expires_at: string | null;
+  entitlements: { kind: string; kind_label: string; expires_at: string | null; uses_remaining: number | null }[];
+  product_usages: { product_id: string; level: string; created_at: string }[];
 };
 
 export type MessageRow = {

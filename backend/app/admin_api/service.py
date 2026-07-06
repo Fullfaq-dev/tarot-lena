@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, cast, func, select
+from sqlalchemy import Date, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.models import (
     AnalyticsEvent,
@@ -12,6 +12,8 @@ from app.database.models import (
     NotificationLog,
     OnboardingSession,
     Payment,
+    ProductEntitlement,
+    ProductUsage,
     Referral,
     ReferralWithdrawalRequest,
     RelationshipPerson,
@@ -79,6 +81,27 @@ async def dashboard_stats(session: AsyncSession) -> dict[str, Any]:
         select(func.count()).select_from(Subscription).where(Subscription.tier == "premium")
     ) or 0
 
+    active_entitlement = or_(
+        ProductEntitlement.expires_at.is_(None),
+        ProductEntitlement.expires_at > now,
+    )
+    vip_count = await session.scalar(
+        select(func.count())
+        .select_from(ProductEntitlement)
+        .where(ProductEntitlement.kind == "vip", active_entitlement)
+    ) or 0
+    love_plus_count = await session.scalar(
+        select(func.count())
+        .select_from(ProductEntitlement)
+        .where(ProductEntitlement.kind == "love_plus", active_entitlement)
+    ) or 0
+    combo_sales = await session.scalar(
+        select(func.count()).select_from(Payment).where(Payment.purpose == "combo_happy_woman")
+    ) or 0
+    product_usages = await session.scalar(
+        select(func.count()).select_from(ProductUsage)
+    ) or 0
+
     pending_withdrawals = await session.scalar(
         select(func.count())
         .select_from(ReferralWithdrawalRequest)
@@ -98,6 +121,10 @@ async def dashboard_stats(session: AsyncSession) -> dict[str, Any]:
         "inactive_users": inactive_users,
         "plus_subscribers": plus_count,
         "premium_subscribers": premium_count,
+        "vip_subscribers": vip_count,
+        "love_plus_subscribers": love_plus_count,
+        "combo_sales": combo_sales,
+        "product_usages": product_usages,
         "pending_withdrawals": pending_withdrawals,
     }
 
@@ -258,6 +285,13 @@ async def user_detail(session: AsyncSession, user_id: str) -> dict[str, Any] | N
     )
     week_ago = datetime.now(UTC) - timedelta(days=7)
 
+    entitlements_rows = await session.scalars(
+        select(ProductEntitlement).where(ProductEntitlement.user_id == user.id)
+    )
+    usage_rows = await session.scalars(
+        select(ProductUsage).where(ProductUsage.user_id == user.id)
+    )
+
     return {
         "id": user.id,
         "telegram_id": user.telegram_id,
@@ -285,6 +319,23 @@ async def user_detail(session: AsyncSession, user_id: str) -> dict[str, Any] | N
         }
         if onboarding
         else None,
+        "entitlements": [
+            {
+                "kind": row.kind,
+                "kind_label": _ENTITLEMENT_KIND_LABELS.get(row.kind, row.kind),
+                "expires_at": _dt(row.expires_at),
+                "uses_remaining": row.uses_remaining,
+            }
+            for row in entitlements_rows
+        ],
+        "product_usages": [
+            {
+                "product_id": row.product_id,
+                "level": row.level,
+                "created_at": _dt(row.created_at),
+            }
+            for row in usage_rows
+        ],
     }
 
 
@@ -562,8 +613,24 @@ async def request_logs(session: AsyncSession, limit: int = 200) -> list[dict[str
 
 _PAYMENT_PURPOSE_LABELS = {
     "topup": "Пополнение баланса",
-    "subscription_plus": "Подписка Plus",
-    "subscription_premium": "Подписка Premium",
+    "subscription_plus": "Подписка Plus (legacy)",
+    "subscription_premium": "Подписка Premium (legacy)",
+    "subscription_love_plus": "ЛЮБОВЬ+ — подписка на месяц",
+    "subscription_vip": "VIP-пакет — подписка на месяц",
+    "combo_happy_woman": "Комбо «Счастливая женщина»",
+    "product_love_full": "Любовь — полная расшифровка",
+    "product_wealth_full": "Денежный код — полная расшифровка",
+    "product_negative_full": "Диагностика негатива — полная",
+    "product_forecast_full": "Личный прогноз — полная",
+    "product_question_full": "Ответ на вопрос — полная",
+}
+
+_ENTITLEMENT_KIND_LABELS = {
+    "vip": "VIP-пакет",
+    "love_plus": "ЛЮБОВЬ+",
+    "combo_love": "Комбо: Любовь",
+    "combo_wealth": "Комбо: Деньги",
+    "combo_forecast": "Комбо: Прогноз",
 }
 
 _PAYMENT_STATUS_LABELS = {

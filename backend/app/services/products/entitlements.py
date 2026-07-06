@@ -57,6 +57,20 @@ class EntitlementService:
             return await self.combo_credits(user_id, product_id) > 0
         return False
 
+    async def full_access_label(self, user_id: str, product_id: str) -> str | None:
+        if await self.has_vip(user_id):
+            return "VIP"
+        if product_id == "love" and await self.has_love_plus(user_id):
+            return "ЛЮБОВЬ+"
+        if product_id in COMBO_PRODUCTS:
+            credits = await self.combo_credits(user_id, product_id)
+            if credits > 0:
+                return f"пакет · {credits} шт."
+        return None
+
+    async def has_any_plan(self, user_id: str) -> bool:
+        return await self.active_plan_label(user_id) is not None
+
     async def active_plan_label(self, user_id: str) -> str | None:
         if await self.has_vip(user_id):
             return "👑 VIP активен"

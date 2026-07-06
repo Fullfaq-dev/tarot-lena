@@ -1,6 +1,6 @@
 (function () {
   var API = "/api/landing";
-  var VISITOR_KEY = "arcana_landing_vid";
+  var VISITOR_KEY = "leia_landing_vid";
   var visitorId = localStorage.getItem(VISITOR_KEY);
   if (!visitorId) {
     visitorId = (window.crypto && crypto.randomUUID)
@@ -64,7 +64,7 @@
       if (node.classList) {
         if (node.classList.contains("hero")) return "hero";
         if (node.classList.contains("wide-cta")) return "wide-cta";
-        if (node.classList.contains("referral-section")) return "referral";
+        if (node.classList.contains("referral-section")) return node.id === "packages" ? "packages" : "packages";
         if (node.classList.contains("topbar")) return "header";
       }
       node = node.parentElement;
@@ -123,7 +123,7 @@
       });
     }, true);
 
-    var sections = document.querySelectorAll("#features, #referral, #how, .hero, .wide-cta, .topbar");
+    var sections = document.querySelectorAll("#features, #packages, #how, .hero, .wide-cta, .topbar");
     if ("IntersectionObserver" in window) {
       var observer = new IntersectionObserver(function (entries) {
         entries.forEach(function (entry) {
@@ -146,7 +146,7 @@
         track("slider_change", {
           element_id: "refSlider",
           element_label: "Калькулятор рефералов",
-          section_id: "referral",
+          section_id: "packages",
           value: String(slider.value || ""),
         });
       });

@@ -4,8 +4,15 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/tarot-lena}"
 COMPOSE_FILE="docker-compose.prod.yml"
 VPS_IP="${VPS_IP:-43.165.5.18}"
+HTTP_PORT="${HTTP_PORT:-80}"
 
 cd "$APP_DIR"
+
+if [ "$HTTP_PORT" = "80" ]; then
+  PUBLIC_URL="http://${VPS_IP}"
+else
+  PUBLIC_URL="http://${VPS_IP}:${HTTP_PORT}"
+fi
 
 ensure_env() {
   local key="$1"
@@ -20,12 +27,12 @@ ensure_env() {
 ensure_env APP_NAME "Лея — Таро и Нумерология"
 ensure_env ADMIN_BOOTSTRAP_EMAIL "admin@tarot-lena.local"
 ensure_env ADMIN_BOOTSTRAP_PASSWORD "LeiaPanel#2026!Km"
-ensure_env LEGAL_PAGE_URL "http://${VPS_IP}:8080/legal"
+ensure_env LEGAL_PAGE_URL "${PUBLIC_URL}/legal"
 ensure_env SUPPORT_TELEGRAM_URL "https://t.me/astro_leia_bot"
 ensure_env APP_ENV "production"
-ensure_env PUBLIC_BASE_URL "http://${VPS_IP}:8080"
-ensure_env PLATEGA_RETURN_URL "http://${VPS_IP}:8080/payment/success"
-ensure_env PLATEGA_FAILED_URL "http://${VPS_IP}:8080/payment/failed"
+ensure_env PUBLIC_BASE_URL "${PUBLIC_URL}"
+ensure_env PLATEGA_RETURN_URL "${PUBLIC_URL}/payment/success"
+ensure_env PLATEGA_FAILED_URL "${PUBLIC_URL}/payment/failed"
 ensure_env PLATEGA_PAYMENT_METHOD "0"
 ensure_env TELEGRAM_ADMIN_IDS "267409502,7670490295"
 ensure_env OWNER_TELEGRAM_ID "7670490295"
@@ -41,13 +48,11 @@ if ! grep -q "^TELEGRAM_WEBHOOK_SECRET=" .env 2>/dev/null || grep -q "^TELEGRAM_
   ensure_env TELEGRAM_WEBHOOK_SECRET "$(openssl rand -hex 24)"
 fi
 
-if [ -d .git ]; then
+if [ -d .git ] && [ "${SKIP_GIT_PULL:-0}" != "1" ]; then
   git fetch origin main
   git reset --hard origin/main
-else
-  echo "ERROR: ${APP_DIR} is not a git clone. On VPS run:"
-  echo "  git clone git@github.com:Fullfaq-dev/tarot-lena.git ${APP_DIR}"
-  exit 1
+elif [ ! -d .git ]; then
+  echo "WARN: no .git — deploying synced files as-is (SKIP_GIT_PULL or rsync deploy)"
 fi
 
 if [ -f /etc/letsencrypt/live/*/fullchain.pem ] 2>/dev/null; then
@@ -92,7 +97,8 @@ if [ -f frontend-admin/dist/index.html ]; then
   docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin
 fi
 
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic upgrade head
+docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic upgrade 202606090001
+docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic stamp head
 docker compose -f "$COMPOSE_FILE" restart api worker bot admin nginx
 
 docker image prune -f

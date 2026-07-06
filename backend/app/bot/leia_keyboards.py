@@ -1,6 +1,6 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from app.bot.leia_texts import legal_url
+from app.bot.leia_texts import BTN_MENU, BTN_PROFILE, legal_url
 from app.services.products.catalog import PRODUCTS
 from app.services.products.packages import PACKAGES
 
@@ -33,13 +33,17 @@ def inline_product_menu() -> InlineKeyboardMarkup:
             ]
         )
     rows.append([InlineKeyboardButton(text="📦 Пакеты и подписки", callback_data="leia:packages")])
+    rows.append([InlineKeyboardButton(text="👤 Профиль", callback_data="leia:profile")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def inline_product_actions(product_id: str, *, entitled: bool = False) -> InlineKeyboardMarkup:
+def inline_product_actions(product_id: str, *, access_label: str | None = None) -> InlineKeyboardMarkup:
     product = PRODUCTS[product_id]
     price = int(product.price_rub)
-    full_label = "🔓 Полная — по подписке" if entitled else f"🔓 Полная — {price} ₽"
+    if access_label:
+        full_label = f"✅ Полная — {access_label}"
+    else:
+        full_label = f"🔓 Полная — {price} ₽"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🆓 Мини-версия", callback_data=f"leia:mini:{product_id}")],
@@ -54,10 +58,13 @@ def inline_product_actions(product_id: str, *, entitled: bool = False) -> Inline
     )
 
 
-def inline_after_mini(product_id: str, *, entitled: bool = False) -> InlineKeyboardMarkup:
+def inline_after_mini(product_id: str, *, access_label: str | None = None) -> InlineKeyboardMarkup:
     product = PRODUCTS[product_id]
     price = int(product.price_rub)
-    full_label = "🔓 Полная — по подписке" if entitled else f"🔓 Полная расшифровка — {price} ₽"
+    if access_label:
+        full_label = f"✅ Полная — {access_label}"
+    else:
+        full_label = f"🔓 Полная расшифровка — {price} ₽"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -110,4 +117,14 @@ def inline_legal_links() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="📄 Документы", url=url)],
             [InlineKeyboardButton(text="✅ Соглашаюсь", callback_data="leia:consent")],
         ]
+    )
+
+
+def leia_reply_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_MENU), KeyboardButton(text=BTN_PROFILE)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
     )

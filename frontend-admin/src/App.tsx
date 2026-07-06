@@ -50,7 +50,7 @@ function LoginPage({ onSuccess }: { onSuccess: () => void }) {
   return (
     <div className="login-page">
       <form className="login-card" onSubmit={submit}>
-        <h1>Arcana AI Panel</h1>
+        <h1>Лея · Панель</h1>
         <p className="muted">Вход в панель управления</p>
         <label>
           Email
@@ -91,7 +91,7 @@ export function App() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="brand">Arcana AI Panel</div>
+        <div className="brand">Лея · Панель</div>
         <nav>
           <NavItem active={route.page === "dashboard"} onClick={() => navigate({ page: "dashboard" })}>Статистика</NavItem>
           <NavItem active={route.page === "landing"} onClick={() => navigate({ page: "landing" })}>Лендинг</NavItem>
@@ -153,11 +153,12 @@ function DashboardPage() {
         <Metric title="MAU" value={Number(stats?.mau ?? 0)} />
         <Metric title="Активные (7д)" value={Number(stats?.active_users ?? 0)} />
         <Metric title="Неактивные" value={Number(stats?.inactive_users ?? 0)} />
-        <Metric title="Расклады" value={Number(stats?.readings ?? 0)} />
+        <Metric title="Разборы (продукты)" value={Number(stats?.product_usages ?? 0)} />
         <Metric title="Платежи" value={Number(stats?.payments_count ?? 0)} />
         <Metric title="Сумма платежей" value={`${stats?.payments_total_rub ?? 0} ₽`} />
-        <Metric title="Plus" value={Number(stats?.plus_subscribers ?? 0)} />
-        <Metric title="Premium" value={Number(stats?.premium_subscribers ?? 0)} />
+        <Metric title="VIP" value={Number(stats?.vip_subscribers ?? 0)} />
+        <Metric title="ЛЮБОВЬ+" value={Number(stats?.love_plus_subscribers ?? 0)} />
+        <Metric title="Комбо «Счастливая женщина»" value={Number(stats?.combo_sales ?? 0)} />
         <Metric title="Заявки на вывод" value={Number(stats?.pending_withdrawals ?? 0)} />
       </div>
 
@@ -230,7 +231,8 @@ function LandingPage() {
   const sectionLabel = (id: string) => ({
     hero: "Главный экран",
     features: "Возможности",
-    referral: "Реферальная программа",
+    packages: "Пакеты",
+    referral: "Пакеты",
     how: "Как начать",
     "wide-cta": "Финальный CTA",
     header: "Шапка",
@@ -628,6 +630,30 @@ function UserDetailPage({ id }: { id: string }) {
             <p>Баланс: {user.balance_rub} ₽</p>
             <p>Анкета: {user.is_onboarded ? "завершена" : "в процессе"}</p>
             <p>Регистрация: {new Date(user.created_at).toLocaleString("ru")}</p>
+            <h3>Пакеты и права</h3>
+            {user.entitlements && user.entitlements.length > 0 ? (
+              <ul className="kv-list">
+                {user.entitlements.map((e) => (
+                  <li key={e.kind}>
+                    <strong>{e.kind_label}</strong>
+                    {e.uses_remaining != null && ` · осталось ${e.uses_remaining}`}
+                    {e.expires_at && ` · до ${new Date(e.expires_at).toLocaleDateString("ru")}`}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="muted">Нет активных пакетов</p>}
+            {user.product_usages && user.product_usages.length > 0 && (
+              <>
+                <h3>Разборы</h3>
+                <ul className="kv-list">
+                  {user.product_usages.map((u, i) => (
+                    <li key={`${u.product_id}-${u.level}-${i}`}>
+                      {u.product_id} ({u.level}) — {new Date(u.created_at).toLocaleDateString("ru")}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <h3>Реферальная программа</h3>
             <p>Текущий партнёрский процент: <strong>{user.referral_reward_percent ?? 40}%</strong></p>
             <div className="toolbar">

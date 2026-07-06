@@ -92,6 +92,7 @@ from app.bot.feature_handlers import (
     router as feature_router,
 )
 from app.bot.leia_handlers import (
+    attach_leia_reply_keyboard,
     complete_onboarding_flow,
     onboarding_markup_for_step,
     router as leia_router,
@@ -736,6 +737,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
 
         if onboarded:
             await show_leia_menu(message)
+            await attach_leia_reply_keyboard(message)
         else:
             step_key = await service.get_current_step_key(message.from_user) or ONBOARDING_STEPS[0][0]
             markup = onboarding_markup_for_step(step_key)
@@ -1723,6 +1725,11 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                 return
             if text:
                 await _process_onboarding_answer(message, text, edit=False)
+            return
+
+        from app.bot.leia_texts import LEIA_REPLY_BUTTONS
+
+        if text in LEIA_REPLY_BUTTONS:
             return
 
         # Menu buttons cancel any stale feature FSM and open the chosen section.

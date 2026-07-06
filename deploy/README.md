@@ -4,73 +4,132 @@
 
 Repository: https://github.com/Fullfaq-dev/tarot-lena
 
-Autodeploy runs on every push to `main` via `.github/workflows/deploy.yml`.
+## Голый VPS (рекомендуется)
 
-Required GitHub secrets:
+**Не Zeabur, не k3s** — обычный Ubuntu 24.04 (или 22.04), минимум 2 GB RAM, 1 CPU.
+Порты Zeabur (4222, 6443, 30000+) **не нужны** — только **22, 80, 443**.
 
-- `VPS_HOST` — `43.165.5.18`
-- `VPS_USER` — `ubuntu`
-- `VPS_SSH_KEY` — private deploy key
-- `TELEGRAM_BOT_TOKEN` — токен @astro_leia_bot
-- `KIE_API_KEY` — ключ KIE.ai
-- `PLATEGA_MERCHANT_ID`, `PLATEGA_API_KEY` — Platega (опционально; без них включён демо-режим оплаты)
+### 1. Подключиться к серверу
 
-Скопируйте secrets из репозитория `arcane-ai` (Settings → Secrets) в `tarot-lena`.
+```bash
+ssh root@<IP>
+# или ssh ubuntu@<IP>
+```
 
-## Демо-оплата
+### 2. Bootstrap (Docker + git + firewall)
 
-`PAYMENTS_DEMO_MODE=1` (по умолчанию) — кнопка «Купить» сразу проводит платёж на указанную сумму без Platega.
-Когда добавите ключи Platega в secrets, CI автоматически выставит `PAYMENTS_DEMO_MODE=0`.
+```bash
+curl -fsSL https://raw.githubusercontent.com/Fullfaq-dev/tarot-lena/main/deploy/setup-server.sh | sudo bash
+```
 
-## Server layout
+Или вручную после `git clone`:
 
-- App path: `/opt/tarot-lena`
-- Env file: `/opt/tarot-lena/.env` (not in git)
-- Compose: `docker-compose.prod.yml`
-- Telegram: **long polling** (контейнер `bot`), webhook — после появления домена
+```bash
+sudo bash /opt/tarot-lena/deploy/setup-server.sh
+```
 
-Manual deploy on server:
+### 3. Клонировать проект
+
+```bash
+sudo mkdir -p /opt/tarot-lena
+sudo chown $USER:$USER /opt/tarot-lena
+git clone https://github.com/Fullfaq-dev/tarot-lena.git /opt/tarot-lena
+cd /opt/tarot-lena
+```
+
+### 4. Настроить `.env`
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Обязательно:
+
+```
+TELEGRAM_BOT_TOKEN=...
+KIE_API_KEY=...
+TELEGRAM_USE_POLLING=1
+PAYMENTS_DEMO_MODE=1
+```
+
+Опционально в `.env` или перед деплоем:
+
+```
+VPS_IP=<IP_сервера>
+HTTP_PORT=80
+```
+
+На голом сервере nginx слушает **порт 80** (не 8080 как на Zeabur).
+
+### 5. Запуск
 
 ```bash
 cd /opt/tarot-lena
 bash deploy/deploy.sh
 ```
 
-## URLs (IP-only MVP)
-
-- Site: `http://43.165.5.18:8080/`
-- Legal: `http://43.165.5.18:8080/legal`
-- Admin: `http://43.165.5.18:8080/panel/`
-- API health: `http://43.165.5.18:8080/health`
-- Bot: https://t.me/astro_leia_bot
-
-## First-time server setup
+Проверка:
 
 ```bash
-# On VPS as ubuntu
-sudo bash deploy/setup-server.sh
-# Configure .env, then:
-bash deploy/deploy.sh
+curl http://127.0.0.1/health
+curl http://<IP>/health
 ```
 
-## Platega callback URL
+### 6. Обновления
+
+Локально пушишь в GitHub → на сервере:
+
+```bash
+cd /opt/tarot-lena && bash deploy/deploy.sh
+```
+
+---
+
+## Альтернатива: залить с локальной машины (без git на сервере)
+
+```bash
+# с Mac, из папки проекта
+rsync -az --exclude '.git' --exclude 'node_modules' --exclude '.env' \
+  ./ ubuntu@<IP>:/opt/tarot-lena/
+
+ssh ubuntu@<IP> 'cd /opt/tarot-lena && bash deploy/deploy.sh'
+```
+
+`.env` на сервере создаётся один раз вручную и не перезаписывается.
+
+---
+
+## Zeabur VPS (legacy)
+
+Если 80/443 заняты k3s — в `.env`:
 
 ```
-http://43.165.5.18:8080/callbacks/platega
+HTTP_PORT=8080
 ```
 
-Return URLs:
+Тогда URLs: `http://<IP>:8080/health`
 
-- Success: `http://43.165.5.18:8080/payment/success`
-- Failed: `http://43.165.5.18:8080/payment/failed`
+---
 
-**Note:** Port 80/443 заняты Zeabur proxy — наш nginx на **8080**.
+## Демо-оплата
+
+`PAYMENTS_DEMO_MODE=1` — кнопка «Купить» сразу проводит платёж без Platega.
+
+## URLs
+
+- Site: `http://<IP>/`
+- Legal: `http://<IP>/legal`
+- Admin: `http://<IP>/panel/`
+- Health: `http://<IP>/health`
+- Bot: https://t.me/astro_leia_bot
+
+## Platega (когда подключите)
+
+Callback: `http://<IP>/callbacks/platega`
 
 ## Domain (later)
 
-When a domain is available:
-
-1. DNS A-record → `43.165.5.18`
-2. Run `bash deploy/retry-ssl.sh`
-3. Set `PUBLIC_BASE_URL=https://<domain>`, `TELEGRAM_USE_POLLING=0`
-4. Restart `api`, stop `bot` container (webhook mode)
+1. DNS A → IP сервера
+2. `bash deploy/retry-ssl.sh`
+3. `PUBLIC_BASE_URL=https://<domain>`, при webhook — `TELEGRAM_USE_POLLING=0`

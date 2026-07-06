@@ -19,10 +19,11 @@
 - [Completed] Фаза 0: VPS Zeabur `43.165.5.18`, Docker, polling-бот, health OK на `:8080`.
 - [Completed] Фаза 1: Лея — onboarding, нумеропортрет, 5 продуктов (мини→полная), Platega.
 - [Completed] Фаза 2: комбо «Счастливая женщина», ЛЮБОВЬ+, VIP, entitlements.
-- [Planned] Фаза 3: утренняя/вечерняя рассылка, гороскоп по понедельникам, воронки день 1–2.
-- [Planned] Фаза 4: реферал «Приведи подругу», лендинг, admin, E2E.
+- [Completed] Фаза 3: утренняя/вечерняя рассылка, гороскоп по понедельникам, воронка день 2.
+- [Completed] Сайт и legal под Лею (скрины оставлены); админ-панель: брендинг, метрики VIP/ЛЮБОВЬ+/комбо, entitlements в карточке пользователя.
+- [Planned] Фаза 4: реферал «Приведи подругу», admin E2E.
 
-**Инфра утверждена:** IP `43.165.5.18`, `@astro_leia_bot`, admins `267409502,7670490295`, polling, Platega тот же, legal docx в корне.
+**Инфра утверждена:** IP `85.234.106.108`, `@astro_leia_bot`, admins `267409502,7670490295`, polling, Platega тот же, legal docx в корне.
 
 **Деплой:** push в `Fullfaq-dev/tarot-lena` → GitHub Actions → `git pull` на VPS + `deploy/deploy.sh`.
 

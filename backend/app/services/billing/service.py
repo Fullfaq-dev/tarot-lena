@@ -85,13 +85,22 @@ class BillingService:
                 amount=format_balance(payment.amount_rub),
                 balance=format_balance(user.balance_rub),
             )
+        elif payment.purpose == "subscription_love_plus":
+            text = (
+                "💗 **ЛЮБОВЬ+** активирована на 30 дней!\n\n"
+                "Полные разборы по **Любви** — без лимитов. Открой меню и выбери 💞"
+            )
+        elif payment.purpose == "subscription_vip":
+            text = (
+                "👑 **VIP-пакет** активирован на 30 дней!\n\n"
+                "Все разборы без оплаты: любовь, деньги, прогноз, негатив, вопросы. "
+                "Открой меню ↓"
+            )
         elif payment.purpose.startswith("subscription_"):
             tier = payment.purpose.removeprefix("subscription_")
             labels = {
                 "plus": "Plus",
                 "premium": "Premium",
-                "love_plus": "ЛЮБОВЬ+",
-                "vip": "VIP",
             }
             label = labels.get(tier, tier)
             expires_at = subscription.expires_at if subscription else None

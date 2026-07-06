@@ -16,6 +16,7 @@ fi
 
 ufw allow OpenSSH
 ufw allow 80/tcp
+ufw allow 443/tcp
 ufw --force enable
 
 mkdir -p "$APP_DIR"

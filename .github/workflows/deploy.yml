@@ -45,14 +45,17 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           PLATEGA_MERCHANT_ID: ${{ secrets.PLATEGA_MERCHANT_ID }}
           PLATEGA_API_KEY: ${{ secrets.PLATEGA_API_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: TELEGRAM_BOT_TOKEN,KIE_API_KEY,AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY
+          envs: TELEGRAM_BOT_TOKEN,KIE_API_KEY,AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY,VPS_HOST
           script: |
             set -euo pipefail
             cd /opt/tarot-lena
+            VPS_IP="${VPS_HOST:-85.234.106.108}"
+            PUBLIC_URL="http://${VPS_IP}"
 
             set_env() {
               local key="$1"
@@ -66,10 +69,12 @@ jobs:
             }
 
             set_env PAYMENTS_DEMO_MODE "1"
-            set_env PUBLIC_BASE_URL "http://43.165.5.18:8080"
-            set_env PLATEGA_RETURN_URL "http://43.165.5.18:8080/payment/success"
-            set_env PLATEGA_FAILED_URL "http://43.165.5.18:8080/payment/failed"
+            set_env PUBLIC_BASE_URL "${PUBLIC_URL}"
+            set_env PLATEGA_RETURN_URL "${PUBLIC_URL}/payment/success"
+            set_env PLATEGA_FAILED_URL "${PUBLIC_URL}/payment/failed"
+            set_env LEGAL_PAGE_URL "${PUBLIC_URL}/legal"
             set_env TELEGRAM_USE_POLLING "1"
+            set_env HTTP_PORT "80"
 
             if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
               set_env TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN}"
@@ -98,6 +103,8 @@ jobs:
               set_env PAYMENTS_DEMO_MODE "0"
             fi
 
-            bash deploy/deploy.sh
+            git fetch origin main
+            git reset --hard origin/main
+            VPS_IP="${VPS_HOST:-85.234.106.108}" HTTP_PORT=80 bash deploy/deploy.sh
 
-            curl -sf "http://127.0.0.1:8080/health" && echo " health OK"
+            curl -sf "http://127.0.0.1/health" && echo " health OK"

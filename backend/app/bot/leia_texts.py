@@ -42,6 +42,10 @@ WELCOME_BACK = (
 
 MENU_TEXT = "Выбери, что хочешь узнать:"
 
+BTN_PROFILE = "👤 Профиль"
+BTN_MENU = "🏠 Меню"
+LEIA_REPLY_BUTTONS = frozenset({BTN_PROFILE, BTN_MENU})
+
 COMBO_OFFER = (
     "📦 **КОМБО-ПАКЕТЫ** — выгоднее, чем по отдельности!\n\n"
     "Нажми «Пакеты и подписки» в меню, чтобы посмотреть детали."

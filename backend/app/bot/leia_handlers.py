@@ -18,10 +18,14 @@ from app.bot.leia_keyboards import (
     inline_product_actions,
     inline_product_menu,
     inline_skip_birth_time,
+    leia_reply_keyboard,
 )
 from app.bot.leia_texts import (
+    BTN_MENU,
+    BTN_PROFILE,
     COMBO_OFFER,
     ENTITLED_FULL,
+    LEIA_REPLY_BUTTONS,
     MENU_TEXT,
     PACKAGE_PAYMENT,
     PAYMENT_LINK,
@@ -38,6 +42,7 @@ from app.services.onboarding.service import OnboardingService
 from app.services.products.catalog import PRODUCTS
 from app.services.products.entitlements import EntitlementService
 from app.services.products.packages import PACKAGES
+from app.services.products.profile_view import build_leia_profile_text
 from app.services.products.service import ProductService
 from app.services.profile.service import ProfileService
 
@@ -48,6 +53,21 @@ router = Router()
 async def _db_user(telegram_id: int) -> User | None:
     async with AsyncSessionLocal() as session:
         return await session.scalar(select(User).where(User.telegram_id == telegram_id))
+
+
+async def attach_leia_reply_keyboard(message: Message) -> None:
+    await message.answer("⌨️", reply_markup=leia_reply_keyboard())
+
+
+async def show_leia_profile(message: Message) -> None:
+    text = await build_leia_profile_text(
+        message.from_user.id if message.from_user else message.chat.id
+    )
+    await answer_rich_message(
+        message,
+        text,
+        reply_markup=inline_product_menu(),
+    )
 
 
 async def show_leia_menu(message: Message, *, edit: Message | None = None) -> None:
@@ -83,6 +103,24 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
             reply_markup=inline_product_menu(),
         )
     await message.answer(COMBO_OFFER, reply_markup=inline_packages_menu())
+    await attach_leia_reply_keyboard(message)
+
+
+@router.message(F.text.in_(LEIA_REPLY_BUTTONS))
+async def leia_reply_buttons(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    if message.text == BTN_MENU:
+        await show_leia_menu(message)
+        return
+    if message.text == BTN_PROFILE:
+        await show_leia_profile(message)
+
+
+@router.callback_query(F.data == "leia:profile")
+async def leia_profile_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await state.clear()
+    await show_leia_profile(callback.message)
 
 
 def onboarding_markup_for_step(step_key: str):
@@ -97,6 +135,27 @@ async def _product_entitled(user_id: str, product_id: str) -> bool:
     return await EntitlementService().can_use_full_free(user_id, product_id)
 
 
+async def _product_access_label(user_id: str, product_id: str) -> str | None:
+    return await EntitlementService().full_access_label(user_id, product_id)
+
+
+def _product_pitch_text(product_id: str, *, access_label: str | None, has_plan: bool) -> str:
+    product = PRODUCTS[product_id]
+    text = product.pitch
+    if access_label:
+        return (
+            f"✅ **Полный разбор уже включён** ({access_label})\n"
+            f"Нажми кнопку ниже — **без оплаты**.\n\n{text}"
+        )
+    if has_plan and product_id in ("negative", "question"):
+        return (
+            f"{text}\n\n"
+            "ℹ️ _В комбо «Счастливая женщина» этот продукт не входит — "
+            "нужна отдельная оплата или VIP-пакет._"
+        )
+    return text
+
+
 async def _deliver_payment_flow(message: Message, flow: PaymentFlowResult) -> None:
     if flow.completed:
         if flow.product_text:
@@ -104,12 +163,13 @@ async def _deliver_payment_flow(message: Message, flow: PaymentFlowResult) -> No
                 message, flow.product_text, reply_markup=inline_product_menu()
             )
         elif flow.user_text:
-            await message.answer(flow.user_text, reply_markup=inline_product_menu())
+            await message.answer(flow.user_text)
+            await show_leia_menu(message)
         else:
             await message.answer(
                 f"✅ Оплата прошла — {flow.amount_rub} ₽",
-                reply_markup=inline_product_menu(),
             )
+            await show_leia_menu(message)
         return
     if flow.payment_url:
         await message.answer(PAYMENT_LINK.format(url=flow.payment_url))
@@ -204,11 +264,16 @@ async def leia_product_pitch(callback: CallbackQuery, state: FSMContext) -> None
     if product is None:
         return
     user = await _db_user(callback.from_user.id)
-    entitled = bool(user and await _product_entitled(user.id, product_id))
+    ent = EntitlementService()
+    access_label = None
+    has_plan = False
+    if user:
+        access_label = await _product_access_label(user.id, product_id)
+        has_plan = await ent.has_any_plan(user.id)
     await present_rich_panel(
         callback.message,
-        product.pitch,
-        reply_markup=inline_product_actions(product_id, entitled=entitled),
+        _product_pitch_text(product_id, access_label=access_label, has_plan=has_plan),
+        reply_markup=inline_product_actions(product_id, access_label=access_label),
         edit_message=callback.message,
     )
 
@@ -242,9 +307,9 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer(PRODUCT_LOADING)
     try:
         text = await ProductService().generate_mini(user.id, product_id)
-        entitled = await _product_entitled(user.id, product_id)
+        access_label = await _product_access_label(user.id, product_id)
         await answer_rich_message(
-            callback.message, text, reply_markup=inline_after_mini(product_id, entitled=entitled)
+            callback.message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
         )
     except Exception:
         logger.exception("Mini product failed")
@@ -354,9 +419,9 @@ async def partner_birth_date(message: Message, state: FSMContext) -> None:
 
     await message.answer(PRODUCT_LOADING)
     text = await ProductService().generate_mini(user.id, product_id, extra_context=partner_info)
-    entitled = await _product_entitled(user.id, product_id)
+    access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
-        message, text, reply_markup=inline_after_mini(product_id, entitled=entitled)
+        message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
     )
 
 
@@ -397,7 +462,7 @@ async def product_question(message: Message, state: FSMContext) -> None:
 
     await message.answer(PRODUCT_LOADING)
     text = await ProductService().generate_mini(user.id, product_id, extra_context=question)
-    entitled = await _product_entitled(user.id, product_id)
+    access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
-        message, text, reply_markup=inline_after_mini(product_id, entitled=entitled)
+        message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
     )
