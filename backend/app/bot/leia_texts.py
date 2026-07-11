@@ -43,9 +43,8 @@ WELCOME_BACK = "С возвращением! Выбери тему — я ряд
 
 MENU_TEXT = "Выбери, что хочешь узнать:"
 
-BTN_PROFILE = "👤 Профиль"
 BTN_MENU = "🏠 Меню"
-LEIA_REPLY_BUTTONS = frozenset({BTN_PROFILE, BTN_MENU})
+LEIA_REPLY_BUTTONS = frozenset({BTN_MENU})
 
 COMBO_OFFER = (
     "📦 **Пакеты выгоднее**, чем покупать разборы по одному.\n\n"

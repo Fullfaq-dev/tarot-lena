@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from app.bot.leia_texts import BTN_MENU, BTN_PROFILE, legal_url
+from app.bot.leia_texts import BTN_MENU, legal_url
 from app.services.products.catalog import PRODUCTS
 from app.services.products.packages import PACKAGES
 
@@ -147,9 +147,7 @@ def inline_legal_links() -> InlineKeyboardMarkup:
 
 def leia_reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=BTN_MENU), KeyboardButton(text=BTN_PROFILE)],
-        ],
+        keyboard=[[KeyboardButton(text=BTN_MENU)]],
         resize_keyboard=True,
         is_persistent=True,
     )

@@ -129,18 +129,16 @@ def format_leia_profile_rich(
             ["Число пути", life_path],
             ["Время рождения", birth_time],
             ["Место рождения", birth_city],
+            [
+                "Пакет",
+                plan_label if plan_label else "без пакета — смотри «Пакеты и подписки»",
+            ],
         ]
         if partner_birth:
             profile_rows.append(["Дата рождения партнёра", partner_birth])
         parts.append(markdown_table(["О тебе", " "], profile_rows))
     else:
         parts.append("_Анкета ещё не заполнена — нажми /start_")
-
-    parts.extend(["", "### 📦 Пакет", ""])
-    if plan_label:
-        parts.append(plan_label)
-    else:
-        parts.append("_Пока без пакета — загляни в «Пакеты и подписки»_")
 
     parts.extend(["", "### ✨ Разборы", ""])
     if product_rows:

@@ -33,7 +33,6 @@ from app.bot.leia_rich import (
 )
 from app.bot.leia_texts import (
     BTN_MENU,
-    BTN_PROFILE,
     COMBO_OFFER,
     ENTITLED_FULL,
     LEIA_REPLY_BUTTONS,
@@ -136,9 +135,6 @@ async def leia_reply_buttons(message: Message, state: FSMContext) -> None:
     await state.clear()
     if message.text == BTN_MENU:
         await show_leia_menu(message)
-        return
-    if message.text == BTN_PROFILE:
-        await show_leia_profile(message)
 
 
 @router.callback_query(F.data == "leia:profile")
