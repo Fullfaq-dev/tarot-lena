@@ -54,7 +54,7 @@ async def platega_callback(request: Request) -> PlainTextResponse:
 
     if notify:
         telegram_id = int(notify["telegram_id"])
-        keyboard = await billing.reply_main_menu_markup(telegram_id)
+        keyboard = await billing.reply_main_menu_markup(telegram_id, notify=notify)
         await send_telegram_message(telegram_id, str(notify["text"]), reply_markup=keyboard)
 
     if owner_text:

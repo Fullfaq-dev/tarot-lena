@@ -92,7 +92,7 @@ from app.bot.feature_handlers import (
     router as feature_router,
 )
 from app.bot.leia_handlers import (
-    attach_leia_reply_keyboard,
+    _ensure_reply_keyboard,
     complete_onboarding_flow,
     onboarding_markup_for_step,
     router as leia_router,
@@ -737,14 +737,14 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
 
         if onboarded:
             await show_leia_menu(message)
-            await attach_leia_reply_keyboard(message)
+            await _ensure_reply_keyboard(message)
         else:
             step_key = await service.get_current_step_key(message.from_user) or ONBOARDING_STEPS[0][0]
             markup = onboarding_markup_for_step(step_key)
             hint = ""
             if markup is None and step_key not in ("legal_consent", "birth_time"):
                 hint = f"\n\n{t('onboarding_type_hint', lang)}"
-            await message.answer(f"{text}{hint}", reply_markup=markup)
+            await answer_rich_message(message, f"{text}{hint}", reply_markup=markup)
 
         await _track(
             user_id,

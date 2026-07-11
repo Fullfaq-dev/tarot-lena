@@ -1,12 +1,12 @@
 from aiogram.types import User as TelegramUser
 from sqlalchemy import select
 
+from app.bot.leia_rich import format_welcome_onboarding_rich, normalize_leia_rich
 from app.bot.leia_texts import (
     LEGAL_CONSENT,
     ONBOARDING_COMPLETE,
     ONBOARDING_PROMPTS,
     ONBOARDING_RESUME,
-    WELCOME,
     legal_url,
 )
 from app.database.models import (
@@ -124,7 +124,7 @@ class OnboardingService:
                 invalidate_language_cache(telegram_user.id)
 
                 return (
-                    f"{WELCOME}\n\n{self.prompt_for_step('legal_consent')}",
+                    format_welcome_onboarding_rich(self.prompt_for_step("legal_consent")),
                     user.id,
                     True,
                 )
@@ -141,9 +141,11 @@ class OnboardingService:
             )
             step = onboarding.current_step if onboarding else ONBOARDING_STEP_KEYS[0]
             if step == "legal_consent":
-                text = f"{WELCOME}\n\n{self.prompt_for_step(step)}"
+                text = format_welcome_onboarding_rich(self.prompt_for_step(step))
             else:
-                text = f"{ONBOARDING_RESUME}\n{self.prompt_for_step(step)}"
+                text = normalize_leia_rich(
+                    f"{ONBOARDING_RESUME}\n\n{self.prompt_for_step(step)}"
+                )
             return text, user.id, False
 
     async def advance_from_consent(self, telegram_user: TelegramUser | None) -> tuple[str | None, str | None]:

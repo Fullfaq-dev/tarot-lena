@@ -98,6 +98,9 @@ async def dashboard_stats(session: AsyncSession) -> dict[str, Any]:
     combo_sales = await session.scalar(
         select(func.count()).select_from(Payment).where(Payment.purpose == "combo_happy_woman")
     ) or 0
+    referred_users = await session.scalar(
+        select(func.count()).select_from(Referral)
+    ) or 0
     product_usages = await session.scalar(
         select(func.count()).select_from(ProductUsage)
     ) or 0
@@ -124,6 +127,7 @@ async def dashboard_stats(session: AsyncSession) -> dict[str, Any]:
         "vip_subscribers": vip_count,
         "love_plus_subscribers": love_plus_count,
         "combo_sales": combo_sales,
+        "referred_users": referred_users,
         "product_usages": product_usages,
         "pending_withdrawals": pending_withdrawals,
     }

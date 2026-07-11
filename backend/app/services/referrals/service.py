@@ -126,6 +126,10 @@ class ReferralService:
                     percent=partner_percent,
                 ),
             )
+            notify_telegram_message(
+                referred.telegram_id,
+                "🎁 Тебя пригласила подруга — **скидка 20%** на все разборы и пакеты при оплате!",
+            )
             return referrer.first_name or referrer.username or t("referral_friend", lang)
 
     async def accrue_reward(

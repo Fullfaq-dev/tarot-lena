@@ -130,7 +130,12 @@ class BillingService:
                 text = "Оплата прошла ✨ Полная расшифровка готовится — открой меню."
         else:
             return None
-        return {"telegram_id": user.telegram_id, "text": text}
+        payload = {"telegram_id": user.telegram_id, "text": text, "purpose": payment.purpose}
+        if payment.purpose.startswith("product_") and payment.purpose.endswith("_full"):
+            generated = (payment.payload or {}).get("generated_text")
+            if generated:
+                payload["has_full_reading"] = True
+        return payload
 
     @staticmethod
     def _quota_month_for_timezone(timezone_name: str) -> str:
@@ -333,9 +338,11 @@ class BillingService:
                 return format_balance(Decimal("0"))
             return format_balance(user.balance_rub)
 
-    async def reply_main_menu_markup(self, telegram_id: int):
-        from app.bot.leia_keyboards import inline_product_menu
+    async def reply_main_menu_markup(self, telegram_id: int, *, notify: dict | None = None):
+        from app.bot.leia_keyboards import inline_after_full_reading, inline_product_menu
 
+        if notify and notify.get("has_full_reading"):
+            return inline_after_full_reading()
         return inline_product_menu()
 
     async def record_chat_usage(
@@ -885,6 +892,17 @@ class BillingService:
         *,
         extra_payload: dict | None = None,
     ) -> PaymentFlowResult:
+        from app.services.referrals.discount import apply_percent_discount, discount_percent_for_user
+
+        payload_extra = dict(extra_payload or {})
+        if purpose != "topup":
+            discount = await discount_percent_for_user(session, user.id)
+            if discount:
+                original = amount
+                amount = apply_percent_discount(amount, discount)
+                payload_extra["referral_discount_percent"] = discount
+                payload_extra["original_amount_rub"] = str(original)
+
         payment = Payment(
             user_id=user.id,
             provider="platega",
@@ -901,14 +919,16 @@ class BillingService:
             payment.provider = "demo"
             payment.provider_payment_id = f"demo_{payment.id}"
             payload = {"demo": True}
-            if extra_payload:
-                payload.update(extra_payload)
+            if payload_extra:
+                payload.update(payload_extra)
             payment.payload = payload
             result = await self.complete_payment(session, payment)
             await session.commit()
             return self._flow_result_from_complete(result, amount_label)
 
         description = _PAYMENT_DESCRIPTIONS.get(purpose, f"Оплата Лея ({purpose})")
+        if payload_extra.get("referral_discount_percent"):
+            description = f"{description} (скидка {payload_extra['referral_discount_percent']}%)"
         try:
             intent = await self.provider.create_payment(
                 payment_id=str(payment.id),
@@ -921,8 +941,8 @@ class BillingService:
             raise
         payment.provider_payment_id = intent.provider_payment_id
         payload = {"payment_url": intent.payment_url}
-        if extra_payload:
-            payload.update(extra_payload)
+        if payload_extra:
+            payload.update(payload_extra)
         payment.payload = payload
         await session.commit()
         return PaymentFlowResult(amount_rub=amount_label, payment_url=intent.payment_url)
@@ -1052,6 +1072,10 @@ class BillingService:
         from app.services.referrals.service import ReferralService
 
         await ReferralService().accrue_reward(session, user.id, payment.amount_rub)
+
+        from app.services.referrals.invite import schedule_friend_invite
+
+        await schedule_friend_invite(session, user, payment)
 
         payment.status = "completed"
         if admin_comment.strip():

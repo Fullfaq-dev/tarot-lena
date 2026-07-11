@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Payment, ProductUsage, SoulProfile, User
 from app.database.session import AsyncSessionLocal
+from app.bot.leia_rich import enrich_ai_prompt, normalize_leia_rich
 from app.services.ai.kie_client import KieClient
 from app.services.astrology.zodiac import zodiac_sign
 from app.services.numerology.calculations import life_path_number, personal_year_number
@@ -111,6 +112,10 @@ class ProductService:
                 package.purpose,
             )
 
+    async def _complete_leia(self, messages: list) -> str:
+        text = await self.kie.chat_completion(messages)
+        return normalize_leia_rich(text)
+
     async def generate_portrait(self, user_id: str) -> str:
         async with AsyncSessionLocal() as session:
             profile = await self._profile(session, user_id)
@@ -123,14 +128,14 @@ class ProductService:
             sign, emoji = zodiac_sign(profile.birth_date)
             year = date.today().year
 
-            user_prompt = (
+            user_prompt = enrich_ai_prompt(
                 f"Составь нумерологический портрет для {name}.\n"
                 f"Дата рождения: {profile.birth_date.strftime('%d.%m.%Y')}\n"
                 f"Место: {profile.birth_city or 'не указано'}\n"
                 f"Число жизненного пути: {lp}\n"
                 f"Личное число года {year}: {py}\n"
                 f"Знак зодиака: {sign} {emoji}\n\n"
-                "Формат как в примере: заголовок, число пути, сила, точка роста, "
+                "Структура: заголовок ###, таблица ключевых чисел, сила, точка роста, "
                 f"задача на {year}, аркан-покровитель, совет от Леи. "
                 "В конце: «💎 Хочешь узнать больше о какой-то из сфер жизни?»"
             )
@@ -138,7 +143,7 @@ class ProductService:
                 {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
-            return await self.kie.chat_completion(messages)
+            return await self._complete_leia(messages)
 
     async def generate_mini(
         self,
@@ -158,36 +163,36 @@ class ProductService:
             sign, emoji = zodiac_sign(profile.birth_date) if profile.birth_date else ("—", "")
 
             prompts = {
-                "love": (
+                "love": enrich_ai_prompt(
                     f"Мини-разбор отношений для {name} (ДР: {bd}).\n"
                     f"Партнёр: {extra_context}\n"
-                    "Формат: 🧠 МЫСЛИ, ❤️ ЧУВСТВА, 🎯 ДЕЙСТВИЯ (кратко). "
-                    "В конце: «💎 Хотите полную расшифровку?»"
+                    "Секции: 🧠 Мысли, ❤️ Чувства, 🎯 Действия — кратко. "
+                    "В конце: «💎 Хочешь полную расшифровку?»"
                 ),
-                "wealth": (
+                "wealth": enrich_ai_prompt(
                     f"Мини денежный код для {name}, ДР {bd}. "
                     "Число богатства + 1 совет + куда утекают деньги. Кратко."
                 ),
-                "negative": (
+                "negative": enrich_ai_prompt(
                     f"Мини энергодиагностика для {name}, ДР {bd}. "
-                    "Индекс чистоты 0-10 + одна сфера внимания. Кратко."
+                    "Индекс чистоты 0–10 + одна сфера внимания. Кратко."
                 ),
-                "forecast": (
+                "forecast": enrich_ai_prompt(
                     f"Мини-прогноз на неделю для {name}, знак {sign} {emoji}, ДР {bd}. "
                     "Любовь, деньги, здоровье — по 1 предложению."
                 ),
-                "question": (
+                "question": enrich_ai_prompt(
                     f"Мини-ответ Леи для {name} (ДР {bd}, {sign}):\n"
                     f"Вопрос: {extra_context}\n"
-                    "Краткий ответ таро+нумерология, 4-6 предложений."
+                    "Краткий ответ таро+нумерология, 4–6 предложений."
                 ),
             }
-            user_prompt = prompts.get(product_id, product.mini_hint)
+            user_prompt = prompts.get(product_id, enrich_ai_prompt(product.mini_hint))
             messages = [
                 {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
-            text = await self.kie.chat_completion(messages)
+            text = await self._complete_leia(messages)
             await self.record_usage(session, user_id, product_id, "mini", content=text)
             await session.commit()
             return text
@@ -211,34 +216,34 @@ class ProductService:
             sign, emoji = zodiac_sign(profile.birth_date) if profile.birth_date else ("—", "")
 
             full_prompts = {
-                "love": (
-                    f"ПОЛНЫЙ разбор отношений для {name} (ДР: {bd}). Партнёр: {extra_context}. "
-                    "Совместимость по нумерологии, кармический аркан пары, астрология, "
+                "love": enrich_ai_prompt(
+                    f"Полный разбор отношений для {name} (ДР: {bd}). Партнёр: {extra_context}. "
+                    "Совместимость, кармический аркан пары, астрология, "
                     "мысли/чувства/действия партнёра, подводные камни, совет."
                 ),
-                "wealth": (
-                    f"ПОЛНЫЙ нумерологический расчёт богатства для {name}, ДР {bd}. "
+                "wealth": enrich_ai_prompt(
+                    f"Полный нумерологический расчёт богатства для {name}, ДР {bd}. "
                     "Число богатства, чёрные дыры, топ-3 профессии, даты на 3 месяца, аффирмация."
                 ),
-                "negative": (
-                    f"ПОЛНАЯ диагностика негатива для {name}, ДР {bd}. "
+                "negative": enrich_ai_prompt(
+                    f"Полная диагностика негатива для {name}, ДР {bd}. "
                     "5 сфер, блоки, индекс чистоты, ритуал/практика, аркан-защитник."
                 ),
-                "forecast": (
-                    f"ПОЛНЫЙ прогноз на месяц для {name}, {sign} {emoji}, ДР {bd}. "
+                "forecast": enrich_ai_prompt(
+                    f"Полный прогноз на месяц для {name}, {sign} {emoji}, ДР {bd}. "
                     "4 недели, даты, аркан месяца, астросоветы."
                 ),
-                "question": (
-                    f"ПОЛНЫЙ ответ для {name} (ДР {bd}): {extra_context}. "
+                "question": enrich_ai_prompt(
+                    f"Полный ответ для {name} (ДР {bd}): {extra_context}. "
                     "Таро + нумерология, развёрнуто, с конкретными шагами."
                 ),
             }
-            user_prompt = full_prompts.get(product_id, extra_context)
+            user_prompt = full_prompts.get(product_id, enrich_ai_prompt(extra_context))
             messages = [
                 {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
-            text = await self.kie.chat_completion(messages)
+            text = await self._complete_leia(messages)
             await self.record_usage(
                 session, user_id, product_id, "full", payment_id=payment_id, content=text
             )
@@ -288,34 +293,34 @@ class ProductService:
         sign, emoji = zodiac_sign(profile.birth_date) if profile.birth_date else ("—", "")
 
         full_prompts = {
-            "love": (
-                f"ПОЛНЫЙ разбор отношений для {name} (ДР: {bd}). Партнёр: {extra_context}. "
-                "Совместимость по нумерологии, кармический аркан пары, астрология, "
+            "love": enrich_ai_prompt(
+                f"Полный разбор отношений для {name} (ДР: {bd}). Партнёр: {extra_context}. "
+                "Совместимость, кармический аркан пары, астрология, "
                 "мысли/чувства/действия партнёра, подводные камни, совет."
             ),
-            "wealth": (
-                f"ПОЛНЫЙ нумерологический расчёт богатства для {name}, ДР {bd}. "
+            "wealth": enrich_ai_prompt(
+                f"Полный нумерологический расчёт богатства для {name}, ДР {bd}. "
                 "Число богатства, чёрные дыры, топ-3 профессии, даты на 3 месяца, аффирмация."
             ),
-            "negative": (
-                f"ПОЛНАЯ диагностика негатива для {name}, ДР {bd}. "
+            "negative": enrich_ai_prompt(
+                f"Полная диагностика негатива для {name}, ДР {bd}. "
                 "5 сфер, блоки, индекс чистоты, ритуал/практика, аркан-защитник."
             ),
-            "forecast": (
-                f"ПОЛНЫЙ прогноз на месяц для {name}, {sign} {emoji}, ДР {bd}. "
+            "forecast": enrich_ai_prompt(
+                f"Полный прогноз на месяц для {name}, {sign} {emoji}, ДР {bd}. "
                 "4 недели, даты, аркан месяца, астросоветы."
             ),
-            "question": (
-                f"ПОЛНЫЙ ответ для {name} (ДР {bd}): {extra_context}. "
+            "question": enrich_ai_prompt(
+                f"Полный ответ для {name} (ДР {bd}): {extra_context}. "
                 "Таро + нумерология, развёрнуто, с конкретными шагами."
             ),
         }
-        user_prompt = full_prompts.get(product_id, extra_context)
+        user_prompt = full_prompts.get(product_id, enrich_ai_prompt(extra_context))
         messages = [
             {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
             {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
         ]
-        text = await self.kie.chat_completion(messages)
+        text = await self._complete_leia(messages)
         await self.record_usage(
             session, user_id, product_id, "full", payment_id=payment_id, content=text
         )

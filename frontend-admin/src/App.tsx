@@ -159,6 +159,7 @@ function DashboardPage() {
         <Metric title="VIP" value={Number(stats?.vip_subscribers ?? 0)} />
         <Metric title="ЛЮБОВЬ+" value={Number(stats?.love_plus_subscribers ?? 0)} />
         <Metric title="Комбо «Счастливая женщина»" value={Number(stats?.combo_sales ?? 0)} />
+        <Metric title="По реферальной ссылке" value={Number(stats?.referred_users ?? 0)} />
         <Metric title="Заявки на вывод" value={Number(stats?.pending_withdrawals ?? 0)} />
       </div>
 

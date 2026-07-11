@@ -91,6 +91,7 @@ export type DashboardStats = {
   vip_subscribers: number;
   love_plus_subscribers: number;
   combo_sales: number;
+  referred_users: number;
   product_usages: number;
   pending_withdrawals: number;
   platega_balances?: PlategaBalance[];

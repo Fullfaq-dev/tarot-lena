@@ -5,20 +5,31 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
+from aiogram.enums import ChatAction
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
 from app.bot.helpers import safe_callback_answer
 from app.bot.leia_keyboards import (
+    inline_after_full_reading,
     inline_after_mini,
     inline_legal_consent,
     inline_package_actions,
     inline_packages_menu,
     inline_product_actions,
     inline_product_menu,
+    inline_referral_share,
     inline_skip_birth_time,
     leia_reply_keyboard,
+)
+from app.bot.leia_rich import (
+    format_leia_menu_rich,
+    format_package_pitch_rich,
+    format_packages_menu_rich,
+    format_product_pitch_rich,
+    format_referral_friend_rich,
+    normalize_leia_rich,
 )
 from app.bot.leia_texts import (
     BTN_MENU,
@@ -26,12 +37,11 @@ from app.bot.leia_texts import (
     COMBO_OFFER,
     ENTITLED_FULL,
     LEIA_REPLY_BUTTONS,
-    MENU_TEXT,
     PACKAGE_PAYMENT,
     PAYMENT_LINK,
     PORTRAIT_LOADING,
     PRODUCT_LOADING,
-    WELCOME_BACK,
+    READING_FOLLOWUP_PROMPT,
 )
 from app.bot.rich_messages import answer_rich_message, present_rich_panel
 from app.bot.states import BotStates
@@ -41,10 +51,12 @@ from app.services.billing.providers import PaymentFlowResult
 from app.services.onboarding.service import OnboardingService
 from app.services.products.catalog import PRODUCTS
 from app.services.products.entitlements import EntitlementService
+from app.services.products.followup import ReadingFollowupService
 from app.services.products.packages import PACKAGES
 from app.services.products.profile_view import build_leia_profile_text
 from app.services.products.service import ProductService
 from app.services.profile.service import ProfileService
+from app.services.referrals.service import ReferralService
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -55,8 +67,12 @@ async def _db_user(telegram_id: int) -> User | None:
         return await session.scalar(select(User).where(User.telegram_id == telegram_id))
 
 
-async def attach_leia_reply_keyboard(message: Message) -> None:
-    await message.answer("⌨️", reply_markup=leia_reply_keyboard())
+async def _ensure_reply_keyboard(message: Message) -> None:
+    await message.answer("‎", reply_markup=leia_reply_keyboard())
+
+
+async def _typing(message: Message) -> None:
+    await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
 
 async def show_leia_profile(message: Message) -> None:
@@ -70,21 +86,26 @@ async def show_leia_profile(message: Message) -> None:
     )
 
 
-async def show_leia_menu(message: Message, *, edit: Message | None = None) -> None:
+async def show_leia_menu(message: Message) -> None:
     telegram_id = message.from_user.id if message.from_user else message.chat.id
     user = await _db_user(telegram_id)
     plan = None
     if user:
         plan = await EntitlementService().active_plan_label(user.id)
-    text = f"{WELCOME_BACK}\n\n{MENU_TEXT}"
-    if plan:
-        text = f"{WELCOME_BACK}\n{plan}\n\n{MENU_TEXT}"
+    text = format_leia_menu_rich(plan_label=plan)
+    await present_rich_panel(message, text, reply_markup=inline_product_menu())
+
+
+async def show_packages_menu(message: Message) -> None:
     await present_rich_panel(
         message,
-        text,
-        reply_markup=inline_product_menu(),
-        edit_message=edit,
+        format_packages_menu_rich(),
+        reply_markup=inline_packages_menu(),
     )
+
+
+async def _deliver_full_reading(message: Message, text: str) -> None:
+    await answer_rich_message(message, text, reply_markup=inline_after_full_reading())
 
 
 async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
@@ -92,7 +113,8 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
     if user is None:
         return
 
-    await message.answer(PORTRAIT_LOADING)
+    await _typing(message)
+    await message.answer(PORTRAIT_LOADING, reply_markup=leia_reply_keyboard())
     try:
         portrait = await ProductService().generate_portrait(user.id)
         await answer_rich_message(message, portrait, reply_markup=inline_product_menu())
@@ -102,8 +124,11 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
             "Портрет временно недоступен — но меню уже готово ✨",
             reply_markup=inline_product_menu(),
         )
-    await message.answer(COMBO_OFFER, reply_markup=inline_packages_menu())
-    await attach_leia_reply_keyboard(message)
+    await present_rich_panel(
+        message,
+        normalize_leia_rich(COMBO_OFFER),
+        reply_markup=inline_packages_menu(),
+    )
 
 
 @router.message(F.text.in_(LEIA_REPLY_BUTTONS))
@@ -139,40 +164,48 @@ async def _product_access_label(user_id: str, product_id: str) -> str | None:
     return await EntitlementService().full_access_label(user_id, product_id)
 
 
-def _product_pitch_text(product_id: str, *, access_label: str | None, has_plan: bool) -> str:
-    product = PRODUCTS[product_id]
-    text = product.pitch
-    if access_label:
-        return (
-            f"✅ **Полный разбор уже включён** ({access_label})\n"
-            f"Нажми кнопку ниже — **без оплаты**.\n\n{text}"
-        )
-    if has_plan and product_id in ("negative", "question"):
-        return (
-            f"{text}\n\n"
-            "ℹ️ _В комбо «Счастливая женщина» этот продукт не входит — "
-            "нужна отдельная оплата или VIP-пакет._"
-        )
-    return text
-
-
-async def _deliver_payment_flow(message: Message, flow: PaymentFlowResult) -> None:
+async def _deliver_payment_flow(
+    message: Message, flow: PaymentFlowResult, *, state: FSMContext | None = None
+) -> None:
     if flow.completed:
         if flow.product_text:
-            await answer_rich_message(
-                message, flow.product_text, reply_markup=inline_product_menu()
-            )
+            await _deliver_full_reading(message, flow.product_text)
+            if state is not None:
+                await state.update_data(last_reading_text=flow.product_text[:4000])
         elif flow.user_text:
             await message.answer(flow.user_text)
             await show_leia_menu(message)
         else:
-            await message.answer(
-                f"✅ Оплата прошла — {flow.amount_rub} ₽",
-            )
+            await message.answer(f"✅ Оплата прошла — {flow.amount_rub} ₽")
             await show_leia_menu(message)
         return
     if flow.payment_url:
         await message.answer(PAYMENT_LINK.format(url=flow.payment_url))
+
+
+async def _run_entitled_full(
+    message: Message,
+    *,
+    user: User,
+    product_id: str,
+    extra_context: str = "",
+    state: FSMContext | None = None,
+) -> None:
+    await _typing(message)
+    await message.answer(ENTITLED_FULL)
+    try:
+        text = await ProductService().generate_full(
+            user.id, product_id, extra_context=extra_context, use_entitlement=True
+        )
+        await _deliver_full_reading(message, text)
+        if state is not None:
+            await state.update_data(
+                last_reading_text=text[:4000],
+                last_product_id=product_id,
+            )
+    except Exception:
+        logger.exception("Entitled full failed")
+        await message.answer("Не получилось сейчас — попробуй чуть позже.")
 
 
 @router.callback_query(F.data == "leia:consent")
@@ -203,19 +236,34 @@ async def leia_skip_time(callback: CallbackQuery) -> None:
 async def leia_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await safe_callback_answer(callback)
     await state.clear()
-    await show_leia_menu(callback.message, edit=callback.message)
+    await show_leia_menu(callback.message)
 
 
 @router.callback_query(F.data == "leia:packages")
 async def leia_packages(callback: CallbackQuery, state: FSMContext) -> None:
     await safe_callback_answer(callback)
     await state.clear()
+    await show_packages_menu(callback.message)
+
+
+@router.callback_query(F.data == "leia:referral")
+async def leia_referral(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await state.clear()
+    bot_user = await callback.bot.get_me()
+    link = ReferralService().build_referral_link(bot_user.username, callback.from_user.id)
     await present_rich_panel(
         callback.message,
-        "📦 **Пакеты и подписки**\n\nВыбери вариант — каждый выгоднее разовых покупок.",
-        reply_markup=inline_packages_menu(),
-        edit_message=callback.message,
+        format_referral_friend_rich(link),
+        reply_markup=inline_referral_share(link),
     )
+
+
+@router.callback_query(F.data == "leia:followup")
+async def leia_followup_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await state.set_state(BotStates.waiting_reading_followup)
+    await callback.message.answer(READING_FOLLOWUP_PROMPT)
 
 
 @router.callback_query(F.data.startswith("leia:package:"))
@@ -226,11 +274,18 @@ async def leia_package_pitch(callback: CallbackQuery, state: FSMContext) -> None
     package = PACKAGES.get(package_id)
     if package is None:
         return
+    active = False
+    user = await _db_user(callback.from_user.id)
+    if user:
+        ent = EntitlementService()
+        if package_id == "vip":
+            active = await ent.has_vip(user.id)
+        elif package_id == "love_plus":
+            active = await ent.has_love_plus(user.id)
     await present_rich_panel(
         callback.message,
-        package.pitch,
-        reply_markup=inline_package_actions(package_id),
-        edit_message=callback.message,
+        format_package_pitch_rich(package_id, active=active),
+        reply_markup=inline_package_actions(package_id, active=active),
     )
 
 
@@ -272,10 +327,38 @@ async def leia_product_pitch(callback: CallbackQuery, state: FSMContext) -> None
         has_plan = await ent.has_any_plan(user.id)
     await present_rich_panel(
         callback.message,
-        _product_pitch_text(product_id, access_label=access_label, has_plan=has_plan),
+        format_product_pitch_rich(
+            product_id, access_label=access_label, has_plan=has_plan
+        ),
         reply_markup=inline_product_actions(product_id, access_label=access_label),
-        edit_message=callback.message,
     )
+
+
+@router.callback_query(F.data.startswith("leia:launch:"))
+async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    product_id = callback.data.removeprefix("leia:launch:")
+    if product_id not in PRODUCTS:
+        return
+    user = await _db_user(callback.from_user.id)
+    if user is None:
+        return
+    if not await _product_entitled(user.id, product_id):
+        await callback.answer("Сначала оформи пакет или оплати разбор", show_alert=True)
+        return
+
+    if product_id == "love":
+        await state.set_state(BotStates.waiting_partner_birth_date)
+        await state.update_data(product_id=product_id, mode="full_entitled")
+        await callback.message.answer(PRODUCTS["love"].mini_hint)
+        return
+    if product_id == "question":
+        await state.set_state(BotStates.waiting_product_question)
+        await state.update_data(product_id=product_id, mode="full_entitled")
+        await callback.message.answer(PRODUCTS["question"].mini_hint)
+        return
+
+    await _run_entitled_full(callback.message, user=user, product_id=product_id, state=state)
 
 
 @router.callback_query(F.data.startswith("leia:mini:"))
@@ -304,6 +387,7 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(product.mini_hint)
         return
 
+    await _typing(callback.message)
     await callback.message.answer(PRODUCT_LOADING)
     try:
         text = await ProductService().generate_mini(user.id, product_id)
@@ -352,13 +436,7 @@ async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if entitled:
-        await callback.message.answer(ENTITLED_FULL)
-        try:
-            text = await service.generate_full(user.id, product_id, use_entitlement=True)
-            await answer_rich_message(callback.message, text, reply_markup=inline_product_menu())
-        except Exception:
-            logger.exception("Entitled full failed")
-            await callback.message.answer("Не получилось сейчас — попробуй чуть позже.")
+        await _run_entitled_full(callback.message, user=user, product_id=product_id, state=state)
         return
 
     try:
@@ -367,6 +445,44 @@ async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
     except Exception as exc:
         logger.exception("Payment create failed")
         await callback.message.answer(f"Оплата временно недоступна. ({exc})")
+
+
+@router.message(BotStates.waiting_reading_followup)
+async def reading_followup(message: Message, state: FSMContext) -> None:
+    question = (message.text or "").strip()
+    if len(question) < 2:
+        await message.answer("Напиши вопрос чуть подробнее 🙏")
+        return
+    data = await state.get_data()
+    reading = str(data.get("last_reading_text", "")).strip()
+    if not reading:
+        await message.answer(
+            "Сначала получи разбор — потом смогу ответить на вопросы к нему 💫",
+            reply_markup=inline_product_menu(),
+        )
+        await state.clear()
+        return
+
+    user = await _db_user(message.from_user.id)
+    name = "дорогая"
+    if user:
+        async with AsyncSessionLocal() as session:
+            profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
+            if profile and profile.name:
+                name = profile.name
+
+    await _typing(message)
+    await message.answer("Думаю над твоим вопросом…")
+    try:
+        answer = await ReadingFollowupService().answer(
+            reading_excerpt=reading,
+            question=question,
+            user_name=name,
+        )
+        await answer_rich_message(message, answer, reply_markup=inline_after_full_reading())
+    except Exception:
+        logger.exception("Reading followup failed")
+        await message.answer("Не получилось ответить сейчас — попробуй переформулировать вопрос.")
 
 
 @router.message(BotStates.waiting_partner_birth_date)
@@ -391,12 +507,13 @@ async def partner_birth_date(message: Message, state: FSMContext) -> None:
                 profile.preferences = prefs
                 await session.commit()
 
-    await state.clear()
     user = await _db_user(message.from_user.id)
     if user is None:
+        await state.clear()
         return
 
     if mode == "full_pay":
+        await state.clear()
         try:
             flow = await ProductService().create_full_payment(
                 user, product_id, extra_context=partner_info
@@ -407,16 +524,13 @@ async def partner_birth_date(message: Message, state: FSMContext) -> None:
         return
 
     if mode == "full_entitled":
-        await message.answer(ENTITLED_FULL)
-        try:
-            text = await ProductService().generate_full(
-                user.id, product_id, extra_context=partner_info, use_entitlement=True
-            )
-            await answer_rich_message(message, text, reply_markup=inline_product_menu())
-        except Exception:
-            await message.answer("Не получилось сейчас — попробуй чуть позже.")
+        await _run_entitled_full(
+            message, user=user, product_id=product_id, extra_context=partner_info, state=state
+        )
+        await state.clear()
         return
 
+    await state.clear()
     await message.answer(PRODUCT_LOADING)
     text = await ProductService().generate_mini(user.id, product_id, extra_context=partner_info)
     access_label = await _product_access_label(user.id, product_id)
@@ -434,12 +548,14 @@ async def product_question(message: Message, state: FSMContext) -> None:
     if len(question) < 3:
         await message.answer("Напиши вопрос чуть подробнее 🙏")
         return
-    await state.clear()
+
     user = await _db_user(message.from_user.id)
     if user is None:
+        await state.clear()
         return
 
     if mode == "full_pay":
+        await state.clear()
         try:
             flow = await ProductService().create_full_payment(
                 user, product_id, extra_context=question
@@ -450,16 +566,13 @@ async def product_question(message: Message, state: FSMContext) -> None:
         return
 
     if mode == "full_entitled":
-        await message.answer(ENTITLED_FULL)
-        try:
-            text = await ProductService().generate_full(
-                user.id, product_id, extra_context=question, use_entitlement=True
-            )
-            await answer_rich_message(message, text, reply_markup=inline_product_menu())
-        except Exception:
-            await message.answer("Не получилось сейчас — попробуй чуть позже.")
+        await _run_entitled_full(
+            message, user=user, product_id=product_id, extra_context=question, state=state
+        )
+        await state.clear()
         return
 
+    await state.clear()
     await message.answer(PRODUCT_LOADING)
     text = await ProductService().generate_mini(user.id, product_id, extra_context=question)
     access_label = await _product_access_label(user.id, product_id)

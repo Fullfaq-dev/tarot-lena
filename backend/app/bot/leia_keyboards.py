@@ -33,6 +33,7 @@ def inline_product_menu() -> InlineKeyboardMarkup:
             ]
         )
     rows.append([InlineKeyboardButton(text="📦 Пакеты и подписки", callback_data="leia:packages")])
+    rows.append([InlineKeyboardButton(text="👭 Приведи подругу", callback_data="leia:referral")])
     rows.append([InlineKeyboardButton(text="👤 Профиль", callback_data="leia:profile")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -40,40 +41,50 @@ def inline_product_menu() -> InlineKeyboardMarkup:
 def inline_product_actions(product_id: str, *, access_label: str | None = None) -> InlineKeyboardMarkup:
     product = PRODUCTS[product_id]
     price = int(product.price_rub)
+    rows = []
     if access_label:
-        full_label = f"✅ Полная — {access_label}"
+        rows.append(
+            [InlineKeyboardButton(text="▶️ Запустить", callback_data=f"leia:launch:{product_id}")]
+        )
     else:
-        full_label = f"🔓 Полная — {price} ₽"
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🆓 Мини-версия", callback_data=f"leia:mini:{product_id}")],
+        rows.append(
+            [InlineKeyboardButton(text="🆓 Мини-версия", callback_data=f"leia:mini:{product_id}")]
+        )
+        rows.append(
             [
                 InlineKeyboardButton(
-                    text=full_label,
+                    text=f"🔓 Полная — {price} ₽",
                     callback_data=f"leia:full:{product_id}",
                 )
-            ],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="leia:menu")],
-        ]
-    )
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="◀️ Назад", callback_data="leia:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def inline_after_mini(product_id: str, *, access_label: str | None = None) -> InlineKeyboardMarkup:
     product = PRODUCTS[product_id]
     price = int(product.price_rub)
     if access_label:
-        full_label = f"✅ Полная — {access_label}"
+        full_label = "▶️ Запустить"
+        callback = f"leia:launch:{product_id}"
     else:
         full_label = f"🔓 Полная расшифровка — {price} ₽"
+        callback = f"leia:full:{product_id}"
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=full_label,
-                    callback_data=f"leia:full:{product_id}",
-                )
-            ],
+            [InlineKeyboardButton(text=full_label, callback_data=callback)],
             [InlineKeyboardButton(text="◀️ Меню", callback_data="leia:menu")],
+        ]
+    )
+
+
+def inline_after_full_reading() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💬 Задать вопрос к разбору", callback_data="leia:followup")],
+            [InlineKeyboardButton(text="📦 Тарифы и пакеты", callback_data="leia:packages")],
+            [InlineKeyboardButton(text="🏠 Меню", callback_data="leia:menu")],
         ]
     )
 
@@ -94,11 +105,16 @@ def inline_packages_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def inline_package_actions(package_id: str) -> InlineKeyboardMarkup:
+def inline_package_actions(package_id: str, *, active: bool = False) -> InlineKeyboardMarkup:
     package = PACKAGES[package_id]
     price = int(package.price_rub)
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+    if active:
+        rows = [
+            [InlineKeyboardButton(text="▶️ Запустить — выбери продукт", callback_data="leia:menu")],
+            [InlineKeyboardButton(text="◀️ Пакеты", callback_data="leia:packages")],
+        ]
+    else:
+        rows = [
             [
                 InlineKeyboardButton(
                     text=f"💳 Купить — {price} ₽",
@@ -106,6 +122,15 @@ def inline_package_actions(package_id: str) -> InlineKeyboardMarkup:
                 )
             ],
             [InlineKeyboardButton(text="◀️ Пакеты", callback_data="leia:packages")],
+        ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def inline_referral_share(link: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📤 Поделиться", url=f"https://t.me/share/url?url={link}")],
+            [InlineKeyboardButton(text="◀️ Меню", callback_data="leia:menu")],
         ]
     )
 

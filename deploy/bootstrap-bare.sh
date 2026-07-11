@@ -36,6 +36,9 @@ sshpass -e rsync -az --delete \
   "${PROJECT_DIR}/" "${VPS_USER}@${VPS_HOST}:${APP_DIR}/"
 
 echo "==> Write .env..."
+if remote "test -f ${APP_DIR}/.env"; then
+  echo "==> Keep existing .env on server"
+else
 PG_PASS="$(openssl rand -hex 16)"
 JWT_SECRET="$(openssl rand -hex 32)"
 WEBHOOK_SECRET="$(openssl rand -hex 24)"
@@ -77,6 +80,7 @@ MEDIA_STORAGE_DIR=backend/static/generated
 TAROT_CARDS_DIR=Cards-jpg
 HTTP_PORT=80
 EOF
+fi
 
 echo "==> Deploy..."
 remote "cd ${APP_DIR} && chmod +x deploy/deploy.sh && SKIP_GIT_PULL=1 VPS_IP=${VPS_HOST} HTTP_PORT=80 bash deploy/deploy.sh"

@@ -204,7 +204,7 @@ async def update_payment(
     notify = result.get("telegram_notify")
     if isinstance(notify, dict):
         billing = BillingService()
-        keyboard = await billing.reply_main_menu_markup(int(notify["telegram_id"]))
+        keyboard = await billing.reply_main_menu_markup(int(notify["telegram_id"]), notify=notify)
         notify_telegram_message(
             int(notify["telegram_id"]),
             str(notify["text"]),
