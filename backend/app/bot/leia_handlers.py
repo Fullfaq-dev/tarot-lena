@@ -33,6 +33,7 @@ from app.bot.leia_rich import (
 )
 from app.bot.leia_texts import (
     BTN_MENU,
+    BTN_PROFILE,
     COMBO_OFFER,
     ENTITLED_FULL,
     LEIA_REPLY_BUTTONS,
@@ -74,10 +75,11 @@ async def _typing(message: Message) -> None:
     await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
 
-async def show_leia_profile(message: Message) -> None:
-    text = await build_leia_profile_text(
-        message.from_user.id if message.from_user else message.chat.id
-    )
+async def show_leia_profile(message: Message, *, telegram_id: int | None = None) -> None:
+    tid = telegram_id
+    if tid is None:
+        tid = message.from_user.id if message.from_user else message.chat.id
+    text = await build_leia_profile_text(tid)
     await answer_rich_message(
         message,
         text,
@@ -115,8 +117,19 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
     await _typing(message)
     await message.answer(PORTRAIT_LOADING, reply_markup=leia_reply_keyboard())
     try:
-        portrait = await ProductService().generate_portrait(user.id)
+        portrait = await ProductService().generate_mini_portrait(user.id)
         await answer_rich_message(message, portrait, reply_markup=inline_product_menu())
+        async with AsyncSessionLocal() as session:
+            from datetime import UTC, datetime
+
+            from app.database.models import UserSettings
+
+            settings = await session.scalar(
+                select(UserSettings).where(UserSettings.user_id == user.id)
+            )
+            if settings:
+                settings.mini_portrait_sent_at = datetime.now(UTC)
+                await session.commit()
     except Exception:
         logger.exception("Portrait generation failed for %s", telegram_id)
         await message.answer(
@@ -135,13 +148,18 @@ async def leia_reply_buttons(message: Message, state: FSMContext) -> None:
     await state.clear()
     if message.text == BTN_MENU:
         await show_leia_menu(message)
+        return
+    if message.text == BTN_PROFILE:
+        await show_leia_profile(message)
+        await _ensure_reply_keyboard(message)
+        return
 
 
 @router.callback_query(F.data == "leia:profile")
 async def leia_profile_callback(callback: CallbackQuery, state: FSMContext) -> None:
     await safe_callback_answer(callback)
     await state.clear()
-    await show_leia_profile(callback.message)
+    await show_leia_profile(callback.message, telegram_id=callback.from_user.id)
 
 
 def onboarding_markup_for_step(step_key: str):

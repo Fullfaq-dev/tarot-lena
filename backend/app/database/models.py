@@ -91,6 +91,10 @@ class UserSettings(UUIDMixin, TimestampMixin, Base):
     quiet_hours_end: Mapped[str] = mapped_column(String(5), default="09:00")
     daily_card_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     proactive_messages_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    morning_digest_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    weekly_horoscope_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    free_morning_week_ends_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    mini_portrait_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="settings")
 

@@ -98,6 +98,7 @@ from app.bot.leia_handlers import (
     router as leia_router,
     show_leia_menu,
 )
+from app.bot.leia_keyboards import inline_product_menu
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -710,17 +711,22 @@ async def _chat_reply(message: Message, text: str, *, state: FSMContext | None =
 async def start(message: Message, command: CommandObject, state: FSMContext) -> None:
     lang = await _user_language(message.from_user.id)
     await state.clear()
+    service = OnboardingService()
+    user_id: str | None = None
+    is_new = False
     try:
-        service = OnboardingService()
         text, user_id, is_new = await service.start_or_resume(telegram_user=message.from_user)
         onboarded = await service.is_onboarded(message.from_user)
 
         referrer_name: str | None = None
         if is_new and command.args and message.from_user:
-            referrer_name = await ReferralService().attach_from_start_code(
-                message.from_user.id,
-                command.args,
-            )
+            try:
+                referrer_name = await ReferralService().attach_from_start_code(
+                    message.from_user.id,
+                    command.args,
+                )
+            except Exception:
+                logger.exception("referral attach failed on /start")
             if referrer_name:
                 text = f"{text}\n\n{t('referral_invited', lang, name=referrer_name)}"
 
@@ -736,7 +742,13 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
             )
 
         if onboarded:
-            await show_leia_menu(message)
+            try:
+                await show_leia_menu(message)
+            except Exception:
+                logger.exception("show_leia_menu failed on /start")
+                from app.bot.leia_texts import WELCOME_BACK
+
+                await message.answer(WELCOME_BACK, reply_markup=inline_product_menu())
             await _ensure_reply_keyboard(message)
         else:
             step_key = await service.get_current_step_key(message.from_user) or ONBOARDING_STEPS[0][0]
@@ -744,7 +756,11 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
             hint = ""
             if markup is None and step_key not in ("legal_consent", "birth_time"):
                 hint = f"\n\n{t('onboarding_type_hint', lang)}"
-            await answer_rich_message(message, f"{text}{hint}", reply_markup=markup)
+            try:
+                await answer_rich_message(message, f"{text}{hint}", reply_markup=markup)
+            except Exception:
+                logger.exception("onboarding rich message failed on /start")
+                await message.answer(f"{text}{hint}", reply_markup=markup, parse_mode=None)
 
         await _track(
             user_id,
@@ -755,8 +771,20 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
             },
         )
     except Exception as exc:
+        logger.exception("start failed: %s", exc)
         await _track(None, "bot.error", {"handler": "start", "error": str(exc)})
-        await message.answer(t("error_generic", lang))
+        try:
+            if await service.is_onboarded(message.from_user):
+                from app.bot.leia_texts import WELCOME_BACK
+
+                await message.answer(WELCOME_BACK)
+                await _ensure_reply_keyboard(message)
+            else:
+                await message.answer(
+                    "Привет! Я — Лея ✨ Нажми /start ещё раз. Если не сработает — напиши в поддержку."
+                )
+        except Exception:
+            await message.answer(t("error_generic", lang))
 
 
 @router.callback_query(F.data == "nav:noop")
@@ -1864,7 +1892,12 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if not text:
             return
 
-        await _chat_reply(message, text, state=state)
+        from app.bot.leia_texts import FREE_TEXT_HINT
+
+        await answer_rich_message(message, FREE_TEXT_HINT)
+        await show_leia_menu(message)
+        await _ensure_reply_keyboard(message)
+        return
     except Exception as exc:
         logger.exception("fallback_message failed")
         await _track(

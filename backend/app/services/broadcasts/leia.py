@@ -1,12 +1,12 @@
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from sqlalchemy import func, select
 
 from app.bot.formatting import to_telegram_html
-from app.bot.leia_keyboards import inline_product_menu
+from app.bot.leia_keyboards import inline_broadcast_products
 from app.database.models import (
     DailyPrediction,
     Message,
@@ -23,6 +23,7 @@ from app.services.broadcasts.content import (
     format_morning_message,
     format_weekly_horoscope,
 )
+from app.services.products.service import ProductService
 from app.services.tarot.service import TarotService
 from app.services.telegram_notify import send_bot_html, send_bot_photo
 
@@ -67,41 +68,33 @@ def _local_day_bounds(now_local: datetime) -> tuple[datetime, datetime]:
     return start, end
 
 
+def _morning_trial_active(settings: UserSettings, today: date) -> bool:
+    ends = settings.free_morning_week_ends_at
+    if ends is None:
+        return True
+    return today <= ends
+
+
 class LeiaBroadcastService:
     async def tick(self, bot: Bot) -> None:
-        try:
-            await self._send_morning(bot)
-        except Exception:
-            logger.exception("leia morning broadcast failed")
-        try:
-            await self._send_weekly(bot)
-        except Exception:
-            logger.exception("leia weekly broadcast failed")
-        try:
-            await self._send_evening(bot)
-        except Exception:
-            logger.exception("leia evening broadcast failed")
-        try:
-            await self._send_funnel_day2(bot)
-        except Exception:
-            logger.exception("leia funnel day2 failed")
+        for fn in (
+            self._send_morning,
+            self._send_weekly,
+            self._send_evening,
+            self._send_funnel_day2,
+            self._send_pending_mini_portraits,
+        ):
+            try:
+                await fn(bot)
+            except Exception:
+                logger.exception("leia broadcast %s failed", fn.__name__)
 
-    async def _eligible(self, session, *, morning: bool, evening: bool):
-        if morning:
-            column = UserSettings.daily_card_enabled
-        elif evening:
-            column = UserSettings.proactive_messages_enabled
-        else:
-            column = UserSettings.daily_card_enabled
+    async def _onboarded_users(self, session):
         rows = await session.execute(
             select(User, UserSettings, SoulProfile)
             .join(UserSettings, UserSettings.user_id == User.id)
             .outerjoin(SoulProfile, SoulProfile.user_id == User.id)
-            .where(
-                User.is_onboarded.is_(True),
-                User.is_blocked.is_(False),
-                column.is_(True),
-            )
+            .where(User.is_onboarded.is_(True), User.is_blocked.is_(False))
             .limit(500)
         )
         return rows.all()
@@ -134,26 +127,32 @@ class LeiaBroadcastService:
 
     async def _send_morning(self, bot: Bot) -> None:
         async with AsyncSessionLocal() as session:
-            candidates = await self._eligible(session, morning=True, evening=False)
+            candidates = await self._onboarded_users(session)
 
         sent = 0
         tarot = TarotService()
-        keyboard = inline_product_menu()
+        keyboard = inline_broadcast_products()
 
         for user, user_settings, profile in candidates:
             if sent >= BATCH:
                 break
+            if not user_settings.morning_digest_enabled:
+                continue
+
             now_local = _local_now(user_settings.timezone)
+            today = now_local.date()
             if now_local.hour < MORNING_HOUR:
                 continue
             if _is_quiet(now_local, user_settings.quiet_hours_start, user_settings.quiet_hours_end):
+                continue
+            if not _morning_trial_active(user_settings, today):
                 continue
 
             async with AsyncSessionLocal() as session:
                 already = await session.scalar(
                     select(DailyPrediction.id).where(
                         DailyPrediction.user_id == user.id,
-                        DailyPrediction.prediction_date == now_local.date(),
+                        DailyPrediction.prediction_date == today,
                     )
                 )
             if already:
@@ -163,12 +162,15 @@ class LeiaBroadcastService:
             birth = profile.birth_date if profile else None
 
             try:
-                interpretation, card = await tarot.daily_card_for_telegram(user.telegram_id)
+                _interpretation, card = await tarot.daily_card_for_telegram(user.telegram_id)
+                card_name = str(card.get("name", "Карта дня")) if card else "Карта дня"
+                card_meaning = str(card.get("description", "")) if card else "послание на сегодня"
                 text = format_morning_message(
                     name=name,
-                    for_day=now_local.date(),
+                    for_day=today,
                     birth=birth,
-                    card_text=interpretation.strip(),
+                    card_name=card_name,
+                    card_meaning=card_meaning,
                 )
                 if card is None:
                     ok = await send_bot_html(
@@ -184,11 +186,6 @@ class LeiaBroadcastService:
                         reply_markup=keyboard,
                     )
                 if ok:
-                    await tarot.record_daily_card_context(
-                        user.telegram_id,
-                        interpretation.strip(),
-                        card_name=str(card.get("name", "")) if card else "",
-                    )
                     async with AsyncSessionLocal() as session:
                         await self._record_sent(session, user.id, "leia_morning", text)
                     sent += 1
@@ -197,14 +194,17 @@ class LeiaBroadcastService:
 
     async def _send_weekly(self, bot: Bot) -> None:
         async with AsyncSessionLocal() as session:
-            candidates = await self._eligible(session, morning=True, evening=False)
+            candidates = await self._onboarded_users(session)
 
         sent = 0
-        keyboard = inline_product_menu()
+        keyboard = inline_broadcast_products()
 
         for user, user_settings, profile in candidates:
             if sent >= BATCH:
                 break
+            if not user_settings.weekly_horoscope_enabled:
+                continue
+
             now_local = _local_now(user_settings.timezone)
             if now_local.weekday() != WEEKLY_WEEKDAY or now_local.hour < MORNING_HOUR:
                 continue
@@ -232,14 +232,17 @@ class LeiaBroadcastService:
 
     async def _send_evening(self, bot: Bot) -> None:
         async with AsyncSessionLocal() as session:
-            candidates = await self._eligible(session, morning=False, evening=True)
+            candidates = await self._onboarded_users(session)
 
         sent = 0
-        keyboard = inline_product_menu()
+        keyboard = inline_broadcast_products()
 
         for user, user_settings, profile in candidates:
             if sent >= BATCH:
                 break
+            if not user_settings.proactive_messages_enabled:
+                continue
+
             now_local = _local_now(user_settings.timezone)
             if now_local.hour < EVENING_HOUR:
                 continue
@@ -293,7 +296,7 @@ class LeiaBroadcastService:
             candidates = rows.all()
 
         sent = 0
-        keyboard = inline_product_menu()
+        keyboard = inline_broadcast_products()
 
         for user, profile in candidates:
             if sent >= BATCH:
@@ -325,3 +328,57 @@ class LeiaBroadcastService:
                 async with AsyncSessionLocal() as session:
                     await self._record_sent(session, user.id, "leia_funnel_day2", text)
                 sent += 1
+
+    async def _send_pending_mini_portraits(self, bot: Bot) -> None:
+        """Мини-портрет тем, кто не выбрал продукт и ещё не получал портрет."""
+        async with AsyncSessionLocal() as session:
+            rows = await session.execute(
+                select(User, UserSettings, SoulProfile)
+                .join(UserSettings, UserSettings.user_id == User.id)
+                .outerjoin(SoulProfile, SoulProfile.user_id == User.id)
+                .where(
+                    User.is_onboarded.is_(True),
+                    User.is_blocked.is_(False),
+                    UserSettings.mini_portrait_sent_at.is_(None),
+                )
+                .limit(50)
+            )
+            candidates = rows.all()
+
+        sent = 0
+        service = ProductService()
+        keyboard = inline_broadcast_products()
+
+        for user, user_settings, profile in candidates:
+            if sent >= BATCH:
+                break
+            if user.created_at and user.created_at > datetime.now(UTC) - timedelta(hours=2):
+                continue
+            if profile is None or profile.birth_date is None:
+                continue
+
+            async with AsyncSessionLocal() as session:
+                usage_count = await session.scalar(
+                    select(func.count()).select_from(ProductUsage).where(
+                        ProductUsage.user_id == user.id
+                    )
+                ) or 0
+            if usage_count > 0:
+                continue
+
+            try:
+                text = await service.generate_mini_portrait(user.id)
+                ok = await send_bot_html(
+                    bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
+                )
+                if ok:
+                    async with AsyncSessionLocal() as session:
+                        settings = await session.scalar(
+                            select(UserSettings).where(UserSettings.user_id == user.id)
+                        )
+                        if settings:
+                            settings.mini_portrait_sent_at = datetime.now(UTC)
+                            await session.commit()
+                    sent += 1
+            except Exception as exc:
+                logger.warning("Mini portrait broadcast failed for %s: %s", user.telegram_id, exc)

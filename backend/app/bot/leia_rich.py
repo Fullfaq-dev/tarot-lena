@@ -189,13 +189,7 @@ def format_leia_menu_rich(*, plan_label: str | None = None) -> str:
         parts.extend([f"_{plan_label}_", ""])
 
     rows = [[f"{p.emoji} {p.title}", _product_tagline(p.id)] for p in PRODUCTS.values()]
-    parts.extend(
-        [
-            markdown_table(["Тема", "О чём"], rows),
-            "",
-            "_Мини-версии бесплатные · полные — в один клик_",
-        ]
-    )
+    parts.append(markdown_table(["Тема", "О чём"], rows))
     return normalize_leia_rich("\n".join(parts))
 
 
@@ -209,6 +203,31 @@ def _product_tagline(product_id: str) -> str:
     }.get(product_id, "")
 
 
+def _product_instruction(
+    product_id: str,
+    *,
+    access_label: str | None,
+    has_plan: bool,
+    price: int,
+) -> str:
+    if access_label:
+        status = f"✅ **У тебя уже есть доступ** — {access_label}"
+        action = "Нажми **▶️ Запустить** — полный разбор без оплаты."
+        return f"{status}\n\n{action}"
+
+    if has_plan and product_id in ("negative", "question"):
+        return (
+            "Нажми **🆓 Мини-версия** — бесплатный пробный разбор.\n"
+            "Или **🔓 Полная** — полная расшифровка за отдельную оплату.\n\n"
+            "_Не входит в комбо «Счастливая женщина» — нужен VIP или разовая покупка._"
+        )
+
+    return (
+        f"Нажми **🆓 Мини-версия** — бесплатный пробный разбор (один раз).\n"
+        f"Или **🔓 Полная** — {price} ₽ за полную расшифровку."
+    )
+
+
 def format_product_pitch_rich(
     product_id: str,
     *,
@@ -217,38 +236,25 @@ def format_product_pitch_rich(
 ) -> str:
     product = PRODUCTS[product_id]
     price = int(product.price_rub)
-    parts = [f"### {product.emoji} {product.title}", ""]
-
-    if access_label:
-        parts.extend(
-            [
-                f"✅ **У тебя уже есть доступ** — {access_label}",
-                "",
-                "Нажми **▶️ Запустить** — полный разбор без оплаты.",
-                "",
-            ]
-        )
-    elif has_plan and product_id in ("negative", "question"):
-        parts.append(
-            "_Этот разбор не входит в комбо «Счастливая женщина» — "
-            "нужна отдельная оплата или VIP._"
-        )
-        parts.append("")
-
-    desc = _product_description(product_id)
-    parts.extend(
-        [
-            desc,
-            "",
-            markdown_table(
-                [" ", " "],
-                [
-                    ["Мини-версия", "бесплатно, один раз"],
-                    ["Полная", f"{price} ₽" if not access_label else "по пакету"],
-                ],
-            ),
-        ]
+    instruction = _product_instruction(
+        product_id, access_label=access_label, has_plan=has_plan, price=price
     )
+    desc = _product_description(product_id)
+    parts = [
+        f"### {product.emoji} {product.title}",
+        "",
+        instruction,
+        "",
+        desc,
+        "",
+        markdown_table(
+            [" ", " "],
+            [
+                ["Мини-версия", "бесплатно, один раз"],
+                ["Полная", f"{price} ₽" if not access_label else "по пакету"],
+            ],
+        ),
+    ]
     return normalize_leia_rich("\n".join(parts))
 
 

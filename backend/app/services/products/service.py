@@ -13,7 +13,8 @@ from app.services.astrology.zodiac import zodiac_sign
 from app.services.numerology.calculations import life_path_number, personal_year_number
 from app.services.products.catalog import PRODUCTS, product_purpose
 from app.services.products.entitlements import EntitlementService
-from app.services.products.prompts import astro_system, numerology_system
+from app.services.numerology.service import NumerologyService
+from app.services.products.prompts import leia_reading_system
 from app.services.billing.providers import PaymentFlowResult
 
 logger = logging.getLogger(__name__)
@@ -116,31 +117,55 @@ class ProductService:
         text = await self.kie.chat_completion(messages)
         return normalize_leia_rich(text)
 
+    async def generate_mini_portrait(self, user_id: str) -> str:
+        async with AsyncSessionLocal() as session:
+            profile = await self._profile(session, user_id)
+            if profile is None or profile.birth_date is None:
+                return "Для портрета нужна дата рождения. Нажми /start и заполни анкету."
+
+            name = profile.name or "дорогая"
+            ctx = NumerologyService().profile_context(
+                name=name,
+                birth=profile.birth_date,
+                birth_city=profile.birth_city,
+            )
+            user_prompt = enrich_ai_prompt(
+                f"Составь МИНИ нумерологический портрет для {name}.\n\n{ctx}\n\n"
+                "Формат: ### 🔮 Твой мини-портрет, таблица ключевых чисел матрицы, "
+                "архетип, одна сила, одна точка роста, аркан-покровитель, совет от Леи. "
+                "Кратко — не больше 8–10 предложений."
+            )
+            messages = [
+                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
+                {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+            ]
+            return await self._complete_leia(messages)
+
     async def generate_portrait(self, user_id: str) -> str:
+        return await self.generate_mini_portrait(user_id)
+
+    async def generate_portrait_full(self, user_id: str) -> str:
         async with AsyncSessionLocal() as session:
             profile = await self._profile(session, user_id)
             if profile is None or profile.birth_date is None:
                 return "Для портрета нужна дата рождения. Нажми /start и заполни анкету."
 
             name = profile.name or "друг"
-            lp = life_path_number(profile.birth_date)
-            py = personal_year_number(profile.birth_date)
-            sign, emoji = zodiac_sign(profile.birth_date)
+            ctx = NumerologyService().profile_context(
+                name=name,
+                birth=profile.birth_date,
+                birth_city=profile.birth_city,
+            )
             year = date.today().year
 
             user_prompt = enrich_ai_prompt(
-                f"Составь нумерологический портрет для {name}.\n"
-                f"Дата рождения: {profile.birth_date.strftime('%d.%m.%Y')}\n"
-                f"Место: {profile.birth_city or 'не указано'}\n"
-                f"Число жизненного пути: {lp}\n"
-                f"Личное число года {year}: {py}\n"
-                f"Знак зодиака: {sign} {emoji}\n\n"
-                "Структура: заголовок ###, таблица ключевых чисел, сила, точка роста, "
+                f"Составь полный нумерологический портрет для {name}.\n\n{ctx}\n\n"
+                "Структура: заголовок ###, таблица матрицы и ключевых чисел, сила, точка роста, "
                 f"задача на {year}, аркан-покровитель, совет от Леи. "
                 "В конце: «💎 Хочешь узнать больше о какой-то из сфер жизни?»"
             )
             messages = [
-                {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
+                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
             return await self._complete_leia(messages)
@@ -189,7 +214,7 @@ class ProductService:
             }
             user_prompt = prompts.get(product_id, enrich_ai_prompt(product.mini_hint))
             messages = [
-                {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
+                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
             text = await self._complete_leia(messages)
@@ -240,7 +265,7 @@ class ProductService:
             }
             user_prompt = full_prompts.get(product_id, enrich_ai_prompt(extra_context))
             messages = [
-                {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
+                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
             text = await self._complete_leia(messages)
@@ -317,7 +342,7 @@ class ProductService:
         }
         user_prompt = full_prompts.get(product_id, enrich_ai_prompt(extra_context))
         messages = [
-            {"role": "system", "content": [{"type": "text", "text": numerology_system()}]},
+            {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
             {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
         ]
         text = await self._complete_leia(messages)

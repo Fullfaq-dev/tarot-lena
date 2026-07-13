@@ -112,24 +112,27 @@ class ReferralService:
                 return None
             await session.commit()
 
-            lang = await self._user_lang(session, referrer)
-            referred_name = (
-                referred.first_name or referred.username or t("referral_new_user", lang)
-            )
-            partner_percent = reward_percent_for_user(referrer)
-            notify_telegram_message(
-                referrer.telegram_id,
-                t(
-                    "referral_joined_notify",
-                    lang,
-                    name=referred_name,
-                    percent=partner_percent,
-                ),
-            )
-            notify_telegram_message(
-                referred.telegram_id,
-                "🎁 Тебя пригласила подруга — **скидка 20%** на все разборы и пакеты при оплате!",
-            )
+            try:
+                lang = await self._user_lang(session, referrer)
+                referred_name = (
+                    referred.first_name or referred.username or t("referral_new_user", lang)
+                )
+                partner_percent = reward_percent_for_user(referrer)
+                notify_telegram_message(
+                    referrer.telegram_id,
+                    t(
+                        "referral_joined_notify",
+                        lang,
+                        name=referred_name,
+                        percent=partner_percent,
+                    ),
+                )
+                notify_telegram_message(
+                    referred.telegram_id,
+                    "🎁 Тебя пригласила подруга — **скидка 20%** на все разборы и пакеты при оплате!",
+                )
+            except Exception:
+                pass
             return referrer.first_name or referrer.username or t("referral_friend", lang)
 
     async def accrue_reward(

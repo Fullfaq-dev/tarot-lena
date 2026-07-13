@@ -1,7 +1,9 @@
 from datetime import date
 
+from app.services.astrology.service import AstrologyService
 from app.services.astrology.zodiac import zodiac_sign
-from app.services.numerology.calculations import day_number, personal_year_number
+from app.services.numerology.calculations import day_number
+from app.services.numerology.matrix import weekly_patron_arcana
 
 DAY_ADVICE: dict[int, str] = {
     1: "день новых начинаний — смело делай первый шаг",
@@ -45,6 +47,30 @@ SIGN_WEEKLY: dict[str, tuple[str, str, str]] = {
     "Рыбы": ("романтика и интуиция ведут к гармонии", "доверяй внутреннему голосу в тратах", "медитация и вода восстанавливают"),
 }
 
+SIGN_WEEKLY_ENERGY: dict[str, str] = {
+    "Овен": "Неделя зовёт к действию, но без суеты. Импульс сильный — направь его в одно важное дело, а не распыляйся.",
+    "Телец": "Время укреплять опору: быт, тело, отношения. Медленный ритм сейчас выгоднее резких рывков.",
+    "Близнецы": "Много информации и разговоров — фильтруй лишнее. Главное подсказка придёт через живое общение.",
+    "Рак": "Эмоции на поверхности — это ресурс, если не подавлять себя. Дом и близкие дают силу на всю неделю.",
+    "Лев": "Хочется сиять — и это уместно. Покажи себя миру, но оставь место для отдыха и честности с собой.",
+    "Весы": "Неделя про баланс: между желаниями и обязанностями, между «я» и «мы». Ищи компромисс без ущерба себе.",
+    "Скорпион": "Глубина и трансформация. Старое может отпадать — не цепляйся за то, что уже не питает.",
+    "Стрелец": "Горизонты расширяются: учёба, планы, поездки. Доверься оптимизму, но проверяй детали.",
+    "Козерог": "Дисциплина и терпение — твои союзники. Результат придёт к концу недели, если не сбиваться с курса.",
+    "Водолей": "Нестандартные идеи и свобода. Неделя благоприятна для экспериментов и новых знакомств.",
+    "Рыбы": "Интуиция особенно сильна. Прислушивайся к снам и телу — они подскажут верное направление.",
+}
+
+LEIA_WEEKLY_ADVICE = [
+    "Доверься ритму недели — ты уже на верном пути.",
+    "Не торопи события: всё важное приходит в своё время.",
+    "Слушай сердце, но держи ноги на земле.",
+    "Эта неделя — про заботу о себе без чувства вины.",
+    "Ты сильнее, чем думаешь — действуй из этой опоры.",
+    "Отпусти контроль там, где нужна гибкость.",
+    "Маленькие шаги каждый день дадут большой результат.",
+]
+
 AFFIRMATIONS = [
     "Я открыта чудесам этого дня",
     "Моя интуиция ведёт меня верным путём",
@@ -55,29 +81,19 @@ AFFIRMATIONS = [
     "Я излучаю спокойствие и уверенность",
 ]
 
-WEEKLY_CARDS = [
-    "Императрица — забота и изобилие",
-    "Звезда — надежда и вдохновение",
-    "Солнце — радость и успех",
-    "Мир — завершение и гармония",
-    "Колесо Фортуны — перемены к лучшему",
-    "Сила — внутренняя мощь",
-    "Луна — доверие интуиции",
-]
-
 
 def _affirmation_for_day(for_day: date) -> str:
     return AFFIRMATIONS[for_day.toordinal() % len(AFFIRMATIONS)]
 
 
+def _weekly_advice(for_day: date) -> str:
+    return LEIA_WEEKLY_ADVICE[for_day.isocalendar().week % len(LEIA_WEEKLY_ADVICE)]
+
+
 def numerology_block(birth: date | None, for_day: date) -> str:
     num = day_number(for_day)
     advice = DAY_ADVICE.get(num, DAY_ADVICE[1])
-    lines = [f"🔢 **ЧИСЛО ДНЯ: {num}** — {advice}"]
-    if birth:
-        py = personal_year_number(birth, for_day.year)
-        lines.append(f"📅 Число года: **{py}** — фокус на личном росте")
-    return "\n".join(lines)
+    return f"🔢 **ЧИСЛО ДНЯ: {num}** — {advice}"
 
 
 def astro_block(birth: date | None) -> str:
@@ -85,12 +101,7 @@ def astro_block(birth: date | None) -> str:
         return "♈ **АСТРОСОВЕТ:** укажи дату рождения в анкете — подсказки станут точнее"
     sign, emoji = zodiac_sign(birth)
     advice = SIGN_DAILY.get(sign, "прислушайся к знакам вокруг")
-    return f"{emoji} **АСТРОСОВЕТ ({sign}):** {advice}"
-
-
-def morning_footer(for_day: date) -> str:
-    aff = _affirmation_for_day(for_day)
-    return f"⭐ **СОВЕТ ДНЯ:** {aff}"
+    return f"{emoji} **АСТРОСОВЕТ:** {advice}"
 
 
 def format_morning_message(
@@ -98,39 +109,47 @@ def format_morning_message(
     name: str,
     for_day: date,
     birth: date | None,
-    card_text: str,
+    card_name: str,
+    card_meaning: str,
 ) -> str:
-    header = (
-        f"🔔 **ДОБРОЕ УТРО, {name}!**\n"
-        f"🌞 Сегодня {for_day.strftime('%d.%m.%Y')}\n\n"
-        f"🃏 **КАРТА ДНЯ**\n{card_text.strip()}\n\n"
+    return (
+        f"🔔 **ДОБРОЕ УТРО, {name}!**\n\n"
+        f"🌞 Сегодня {for_day.strftime('%d.%m.%Y')}\n"
+        f"Твой личный прогноз:\n\n"
+        f"🃏 **КАРТА ДНЯ:** {card_name} — {card_meaning}\n"
+        f"{numerology_block(birth, for_day)}\n"
+        f"{astro_block(birth)}\n\n"
+        f"⭐ **СОВЕТ ДНЯ:**\n{_affirmation_for_day(for_day)}"
     )
-    body = "\n".join(
-        [
-            numerology_block(birth, for_day),
-            astro_block(birth),
-            morning_footer(for_day),
-        ]
-    )
-    return header + body
 
 
 def format_weekly_horoscope(*, name: str, birth: date | None, for_day: date) -> str:
+    astro = AstrologyService()
+    week_dates = astro.week_range_label(for_day)
+
     if birth:
         sign, emoji = zodiac_sign(birth)
         love, money, health = SIGN_WEEKLY.get(sign, SIGN_WEEKLY["Рыбы"])
+        energy = SIGN_WEEKLY_ENERGY.get(sign, SIGN_WEEKLY_ENERGY["Рыбы"])
+        patron_name, patron_meaning = weekly_patron_arcana(birth, for_day)
     else:
         sign, emoji = "—", "♈"
         love = money = health = "заполни анкету — прогноз станет персональным"
-    card = WEEKLY_CARDS[for_day.isocalendar().week % len(WEEKLY_CARDS)]
+        energy = "Заполни анкету — и я соберу прогноз точно под тебя."
+        patron_name, patron_meaning = "Звезда", "надежда и вдохновение"
+
     return (
-        f"🌟 **ГОРОСКОП НА НЕДЕЛЮ, {name}!**\n\n"
-        f"{emoji} **{sign}**\n"
-        f"💞 Любовь: {love}\n"
-        f"💰 Деньги: {money}\n"
-        f"🌿 Здоровье: {health}\n"
-        f"🃏 Карта-покровитель: {card}\n\n"
-        "Открой меню — выбери разбор ↓"
+        f"🔮 **{name}, твой еженедельный прогноз от Леи!**\n\n"
+        f"🌟 **ДАТЫ НЕДЕЛИ:** {week_dates}\n"
+        f"{emoji} **{sign}**\n\n"
+        f"✨ **ОБЩАЯ ЭНЕРГИЯ НЕДЕЛИ:**\n{energy}\n\n"
+        f"❤️ **ЛЮБОВЬ И ОТНОШЕНИЯ:**\n{love}\n\n"
+        f"💰 **ДЕНЬГИ И РАБОТА:**\n{money}\n\n"
+        f"🧘 **ЗДОРОВЬЕ И ЭНЕРГИЯ:**\n{health}\n\n"
+        f"⭐ **СОВЕТ НЕДЕЛИ ОТ ЛЕИ:**\n{_weekly_advice(for_day)}\n\n"
+        f"🃏 **КАРТА-ПОКРОВИТЕЛЬ НЕДЕЛИ:**\n{patron_name} — {patron_meaning}\n\n"
+        "---\n"
+        "💎 Хочешь более подробный прогноз по любой из тем?"
     )
 
 
@@ -147,6 +166,5 @@ def format_funnel_day2(*, name: str) -> str:
         f"Привет, **{name}**! 👋\n\n"
         "Вчера я приготовила для тебя карту дня — загляни в бот.\n\n"
         "🔔 **Утренняя рассылка** — 7 дней бесплатно: карта, число дня и астросовет каждое утро.\n\n"
-        "А ещё можешь попробовать **бесплатную мини-версию** — 💞 Любовь, 💰 Деньги или 📆 Прогноз. "
-        "Открой меню и выбери разбор ↓"
+        "А ещё можешь попробовать **бесплатную мини-версию** — 💞 Любовь, 💰 Деньги или 📆 Прогноз."
     )

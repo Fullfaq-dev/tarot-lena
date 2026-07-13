@@ -1,3 +1,5 @@
+from datetime import date
+
 from aiogram.types import User as TelegramUser
 from sqlalchemy import select
 
@@ -253,3 +255,13 @@ class OnboardingService:
             from app.database.base import utcnow
 
             onboarding.completed_at = utcnow()
+
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+        if settings:
+            from datetime import timedelta
+
+            today = date.today()
+            settings.morning_digest_enabled = True
+            settings.weekly_horoscope_enabled = True
+            settings.daily_card_enabled = True
+            settings.free_morning_week_ends_at = today + timedelta(days=7)

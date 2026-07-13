@@ -22,3 +22,14 @@ def astro_system() -> str:
     base = load_system_prompt("ru")
     extra = _load("astro_ru.md")
     return f"{base}\n\n{extra}" if extra else base
+
+
+def tarot_system() -> str:
+    base = load_system_prompt("ru")
+    extra = _load("tarot_ru.md")
+    return f"{base}\n\n{extra}" if extra else base
+
+
+def leia_reading_system() -> str:
+    parts = [numerology_system(), _load("tarot_ru.md"), _load("astro_ru.md")]
+    return "\n\n".join(p for p in parts if p)

@@ -97,8 +97,7 @@ if [ -f frontend-admin/dist/index.html ]; then
   docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin
 fi
 
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic upgrade 202606090001
-docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic stamp head
+docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic upgrade head
 docker compose -f "$COMPOSE_FILE" restart api worker bot admin nginx
 
 docker image prune -f

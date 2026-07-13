@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from app.bot.leia_texts import BTN_MENU, legal_url
+from app.bot.leia_texts import BTN_MENU, BTN_PROFILE, legal_url
 from app.services.products.catalog import PRODUCTS
 from app.services.products.packages import PACKAGES
 
@@ -34,7 +34,6 @@ def inline_product_menu() -> InlineKeyboardMarkup:
         )
     rows.append([InlineKeyboardButton(text="📦 Пакеты и подписки", callback_data="leia:packages")])
     rows.append([InlineKeyboardButton(text="👭 Приведи подругу", callback_data="leia:referral")])
-    rows.append([InlineKeyboardButton(text="👤 Профиль", callback_data="leia:profile")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -145,9 +144,42 @@ def inline_legal_links() -> InlineKeyboardMarkup:
     )
 
 
+def inline_broadcast_products() -> InlineKeyboardMarkup:
+    """Кнопки только 5 продуктов — для рассылок."""
+    p = PRODUCTS
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{p['love'].emoji} {p['love'].title}",
+                    callback_data="leia:product:love",
+                ),
+                InlineKeyboardButton(
+                    text=f"{p['wealth'].emoji} {p['wealth'].title}",
+                    callback_data="leia:product:wealth",
+                ),
+                InlineKeyboardButton(
+                    text=f"{p['negative'].emoji} {p['negative'].title}",
+                    callback_data="leia:product:negative",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"{p['forecast'].emoji} {p['forecast'].title}",
+                    callback_data="leia:product:forecast",
+                ),
+                InlineKeyboardButton(
+                    text=f"{p['question'].emoji} {p['question'].title}",
+                    callback_data="leia:product:question",
+                ),
+            ],
+        ]
+    )
+
+
 def leia_reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=BTN_MENU)]],
+        keyboard=[[KeyboardButton(text=BTN_MENU), KeyboardButton(text=BTN_PROFILE)]],
         resize_keyboard=True,
         is_persistent=True,
     )
