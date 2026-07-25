@@ -1,9 +1,15 @@
 import asyncio
+import logging
 import signal
 
 from app.bot.factory import create_bot, create_dispatcher
 from app.core.config import get_settings
 from app.services.tarot.seed import ensure_tarot_cards_seeded
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s %(name)s: %(message)s",
+)
 
 
 async def main() -> None:

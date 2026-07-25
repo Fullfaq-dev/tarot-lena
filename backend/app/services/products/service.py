@@ -133,21 +133,28 @@ class ProductService:
 
     @staticmethod
     def _tarot_fallback_text(question: str, cards: list[dict], *, level: str) -> str:
+        """Narrative fallback when AI is down — not a second card table."""
         lines = [
-            "### 🃏 Расклад Таро",
+            "### ✨ Что говорят карты",
             "",
-            f"**Вопрос:** {question}",
+            f"По вопросу «{question}» вижу такой акцент:",
             "",
         ]
         for idx, card in enumerate(cards, 1):
             name = str(card.get("name", "Карта"))
             desc = str(card.get("description", "важное послание"))
-            lines.append(f"**{idx}. {name}** — {desc}")
+            lines.append(f"**Позиция {idx} — {name}.** {desc.capitalize()}.")
+        lines.append("")
+        names = ", ".join(str(c.get("name", "карта")) for c in cards)
+        lines.append(
+            f"Вместе карты ({names}) намекают: смотри на ситуацию шире — "
+            "есть и опора, и место для осознанного шага."
+        )
         lines.append("")
         if level == "mini":
-            lines.append("💎 Хочешь полную расшифровку?")
+            lines.append("💎 Хочешь полную расшифровку с советом по каждой позиции?")
         else:
-            lines.append("✨ Это общий смысл карт — могу уточнить, если задашь вопрос.")
+            lines.append("Могу уточнить любую позицию — просто напиши вопрос.")
         return normalize_leia_rich("\n".join(lines))
 
     async def latest_full_reading(self, user_id: str) -> str:
@@ -265,8 +272,13 @@ class ProductService:
                 {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
-            text = await self._complete_leia(messages)
+            try:
+                text = await self._complete_leia(messages)
+            except Exception as exc:
+                logger.warning("Tarot AI failed, using fallback: %s", exc)
+                text = ""
             if not (text or "").strip():
+                logger.warning("Tarot AI empty — fallback interpretation for user=%s", user_id)
                 text = self._tarot_fallback_text(question, cards, level=level)
             await self.record_usage(
                 session,

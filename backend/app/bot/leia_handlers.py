@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
-from app.bot.helpers import safe_callback_answer
+from app.bot.helpers import safe_callback_answer, with_typing
 from app.bot.leia_panel import answer_leia_rich, callback_leia_scene, present_leia_scene
 from app.bot.leia_keyboards import (
     inline_after_full_reading,
@@ -207,7 +207,9 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
 
     await message.answer(PORTRAIT_LOADING, reply_markup=leia_reply_keyboard())
     try:
-        portrait = await ProductService().generate_mini_portrait(user.id)
+        portrait = await with_typing(
+            message, ProductService().generate_mini_portrait(user.id)
+        )
         await answer_leia_rich(
             message,
             portrait,
@@ -317,11 +319,14 @@ async def _run_entitled_full(
         service = ProductService()
         if product_id == "tarot_spread":
             question = extra_context or "Мой вопрос"
-            text, cards = await service.generate_tarot_spread(
-                user.id,
-                question,
-                level="full",
-                use_entitlement=True,
+            text, cards = await with_typing(
+                message,
+                service.generate_tarot_spread(
+                    user.id,
+                    question,
+                    level="full",
+                    use_entitlement=True,
+                ),
             )
             await _deliver_tarot_spread(
                 message,
@@ -333,8 +338,11 @@ async def _run_entitled_full(
                 state=state,
             )
             return
-        text = await service.generate_full(
-            user.id, product_id, extra_context=extra_context, use_entitlement=True
+        text = await with_typing(
+            message,
+            service.generate_full(
+                user.id, product_id, extra_context=extra_context, use_entitlement=True
+            ),
         )
         await _deliver_full_reading(message, text, state=state, product_id=product_id)
         if state is not None:
@@ -629,7 +637,9 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
 
     await callback.message.answer(PRODUCT_LOADING)
     try:
-        text = await ProductService().generate_mini(user.id, product_id)
+        text = await with_typing(
+            callback.message, ProductService().generate_mini(user.id, product_id)
+        )
         if not (text or "").strip():
             await callback.message.answer(
                 "Не получилось собрать мини-разбор — попробуй ещё раз чуть позже."
@@ -718,7 +728,9 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
     if not reading and user and await chat.has_open_chat(user.id):
         await message.answer(PAID_CHAT_LOADING)
         try:
-            reply = await chat.answer_freeform(user.id, name, question)
+            reply = await with_typing(
+                message, chat.answer_freeform(user.id, name, question)
+            )
             await answer_rich_message(message, reply, reply_markup=inline_after_full_reading())
         except Exception:
             logger.exception("VIP followup chat failed")
@@ -738,10 +750,13 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
 
     await message.answer("Думаю над твоим вопросом…")
     try:
-        answer = await ReadingFollowupService().answer(
-            reading_excerpt=reading,
-            question=question,
-            user_name=name,
+        answer = await with_typing(
+            message,
+            ReadingFollowupService().answer(
+                reading_excerpt=reading,
+                question=question,
+                user_name=name,
+            ),
         )
         await answer_rich_message(message, answer, reply_markup=inline_after_full_reading())
     except Exception:
@@ -796,7 +811,10 @@ async def partner_birth_date(message: Message, state: FSMContext) -> None:
 
     await state.clear()
     await message.answer(PRODUCT_LOADING)
-    text = await ProductService().generate_mini(user.id, product_id, extra_context=partner_info)
+    text = await with_typing(
+        message,
+        ProductService().generate_mini(user.id, product_id, extra_context=partner_info),
+    )
     access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
         message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
@@ -840,7 +858,10 @@ async def product_question(message: Message, state: FSMContext) -> None:
     await message.answer(PRODUCT_LOADING)
     service = ProductService()
     if product_id == "tarot_spread":
-        text, cards = await service.generate_tarot_spread(user.id, question, level="mini")
+        text, cards = await with_typing(
+            message,
+            service.generate_tarot_spread(user.id, question, level="mini"),
+        )
         await _deliver_tarot_spread(
             message,
             question=question,
@@ -848,13 +869,19 @@ async def product_question(message: Message, state: FSMContext) -> None:
             cards=cards,
             product_id=product_id,
             level="mini",
+            state=state,
         )
         return
-    text = await service.generate_mini(user.id, product_id, extra_context=question)
+    text = await with_typing(
+        message,
+        service.generate_mini(user.id, product_id, extra_context=question),
+    )
     access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
         message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
     )
+    if (text or "").strip():
+        await _store_reading_state(state, text, product_id)
 
 
 _FUNNEL_TOPICS = {
@@ -921,7 +948,9 @@ async def leia_funnel_topic(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await callback.message.answer(PRODUCT_LOADING)
     try:
-        text = await service.generate_mini(user.id, product_id)
+        text = await with_typing(
+            callback.message, service.generate_mini(user.id, product_id)
+        )
         if not (text or "").strip():
             await callback.message.answer(
                 "Не получилось собрать мини-разбор — попробуй ещё раз чуть позже."

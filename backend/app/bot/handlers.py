@@ -18,7 +18,13 @@ from app.bot.formatting import to_telegram_html
 from app.bot.rich_layouts import RICH_DIVIDER
 from app.bot.rich_messages import answer_rich_message, present_rich_panel, present_rich_text, truncate_text
 from app.core.config import get_settings
-from app.bot.helpers import clear_processing_placeholder, safe_callback_answer, safe_edit, send_processing_placeholder
+from app.bot.helpers import (
+    clear_processing_placeholder,
+    safe_callback_answer,
+    safe_edit,
+    send_processing_placeholder,
+    with_typing,
+)
 from app.bot.i18n import all_menu_texts, main_menu_text, menu_actions, normalize_language, reading_label, t
 from app.bot.i18n_extra import ONBOARDING_CHOICE_STEPS
 from app.bot.keyboards import (
@@ -1903,8 +1909,11 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                 if entitled:
                     await message.answer("✨ Секунду, смотрю карты и числа…")
                     service = ProductService()
-                    text_spread, cards = await service.generate_tarot_spread(
-                        user_id, text, level="full", use_entitlement=True
+                    text_spread, cards = await with_typing(
+                        message,
+                        service.generate_tarot_spread(
+                            user_id, text, level="full", use_entitlement=True
+                        ),
                     )
                     await _deliver_tarot_spread(
                         message,
@@ -1928,7 +1937,9 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             name = message.from_user.first_name or "дорогая"
             await message.answer(PAID_CHAT_LOADING)
             try:
-                reply = await chat.answer_freeform(user_id, name, text)
+                reply = await with_typing(
+                    message, chat.answer_freeform(user_id, name, text)
+                )
                 await answer_rich_message(
                     message,
                     reply,

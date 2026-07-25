@@ -1,17 +1,40 @@
+import asyncio
 import logging
+from collections.abc import Awaitable, TypeVar
 
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
+from app.bot.streaming import typing_loop
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 _PROCESSING_TEXT = {
     "photo": "🔍 Смотрю на фото и готовлю разбор… Обычно это занимает около минуты.",
     "voice": "🎤 Расшифровываю голосовое…",
 }
+
+
+async def with_typing(message: Message, coro: Awaitable[T]) -> T:
+    """Keep Telegram «печатает…» visible while awaiting AI / heavy work."""
+    stop = asyncio.Event()
+    task = asyncio.create_task(typing_loop(message.bot, message.chat.id, stop))
+    try:
+        try:
+            await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+        except Exception:
+            pass
+        return await coro
+    finally:
+        stop.set()
+        try:
+            await task
+        except Exception:
+            pass
 
 
 async def send_processing_placeholder(message: Message, *, kind: str) -> Message | None:

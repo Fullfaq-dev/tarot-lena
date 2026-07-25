@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     kie_input_credits_per_1m: float = 87.5
     kie_output_credits_per_1m: float = 700
     kie_chat_model: str = "gpt-5-2"
+    kie_chat_fallback_model: str = "gemini-2.5-flash"
 
     ai302_api_key: str = "replace-me"
     ai302_base_url: str = "https://api.302.ai"

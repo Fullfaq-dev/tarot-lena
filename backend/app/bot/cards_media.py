@@ -4,11 +4,14 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, InputMediaPhoto, Message
 
+from app.bot.formatting import leia_markdown_to_html
 from app.bot.media import truncate_caption
-from app.bot.rich_layouts import format_tarot_collage, format_tarot_reading_rich, tarot_collage_available
-from app.bot.formatting import leia_markdown_to_html, to_telegram_html
+from app.bot.rich_layouts import format_tarot_reading_rich, tarot_collage_available
 from app.bot.rich_messages import answer_rich_message, send_rich_message
 from app.core.config import get_settings
+
+# Keep header+interpretation together under this size to avoid duplicate "spreads".
+_SINGLE_MESSAGE_LIMIT = 3500
 
 
 def _card_image_path(card: dict) -> Path | None:
@@ -88,8 +91,34 @@ async def send_tarot_reading_rich(
     lang: str,
     reply_markup=None,
 ) -> None:
-    """Cards/collage first, full interpretation in a separate rich message (Telegram drops long tails)."""
+    """Prefer one rich message; split only for very long full readings."""
     interpretation = (interpretation or "").strip()
+    combined = format_tarot_reading_rich(
+        label=label,
+        question=question,
+        cards=cards,
+        reading_type=reading_type,
+        interpretation=interpretation,
+        lang=lang,
+        include_collage=tarot_collage_available(),
+    )
+
+    # Mini / normal answers: one bubble so it doesn't look like two spreads.
+    if interpretation and len(combined) <= _SINGLE_MESSAGE_LIMIT:
+        try:
+            await send_rich_message(
+                message.bot,
+                message.chat.id,
+                combined,
+                reply_markup=reply_markup,
+                message_thread_id=message.message_thread_id,
+            )
+            return
+        except TelegramBadRequest:
+            await send_drawn_cards(message, cards)
+            await answer_rich_message(message, interpretation, reply_markup=reply_markup)
+            return
+
     header = format_tarot_reading_rich(
         label=label,
         question=question,
@@ -99,7 +128,6 @@ async def send_tarot_reading_rich(
         lang=lang,
         include_collage=True,
     )
-
     header_sent = False
     if header.strip():
         try:
