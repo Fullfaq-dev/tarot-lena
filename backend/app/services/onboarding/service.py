@@ -5,11 +5,9 @@ from sqlalchemy import select
 
 from app.bot.leia_rich import format_welcome_onboarding_rich, normalize_leia_rich
 from app.bot.leia_texts import (
-    LEGAL_CONSENT,
     ONBOARDING_COMPLETE,
     ONBOARDING_PROMPTS,
     ONBOARDING_RESUME,
-    legal_url,
 )
 from app.database.models import (
     OnboardingSession,
@@ -38,7 +36,7 @@ class OnboardingService:
 
     def prompt_for_step(self, step_key: str, lang: str = "ru") -> str:
         if step_key == "legal_consent":
-            return LEGAL_CONSENT.format(legal_url=legal_url())
+            return format_welcome_onboarding_rich()
         return ONBOARDING_PROMPTS.get(step_key, f"Шаг: {step_key}")
 
     async def is_onboarded(self, telegram_user: TelegramUser | None) -> bool:
@@ -126,7 +124,7 @@ class OnboardingService:
                 invalidate_language_cache(telegram_user.id)
 
                 return (
-                    format_welcome_onboarding_rich(self.prompt_for_step("legal_consent")),
+                    format_welcome_onboarding_rich(),
                     user.id,
                     True,
                 )
@@ -143,7 +141,7 @@ class OnboardingService:
             )
             step = onboarding.current_step if onboarding else ONBOARDING_STEP_KEYS[0]
             if step == "legal_consent":
-                text = format_welcome_onboarding_rich(self.prompt_for_step(step))
+                text = format_welcome_onboarding_rich()
             else:
                 text = normalize_leia_rich(
                     f"{ONBOARDING_RESUME}\n\n{self.prompt_for_step(step)}"

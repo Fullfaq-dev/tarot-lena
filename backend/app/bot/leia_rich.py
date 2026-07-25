@@ -6,6 +6,7 @@ import re
 
 from app.bot.formatting import prepare_rich_markdown
 from app.bot.rich_layouts import markdown_table
+from app.bot.leia_texts import legal_url
 from app.services.products.catalog import PRODUCTS
 from app.services.products.packages import PACKAGES
 
@@ -156,24 +157,38 @@ def format_leia_profile_rich(
     return normalize_leia_rich("\n".join(parts))
 
 
-def format_welcome_onboarding_rich(legal_block: str) -> str:
-    return normalize_leia_rich(
-        "\n".join(
+def format_welcome_onboarding_rich() -> str:
+    url = legal_url()
+    parts = [
+        "### 🔮 Привет!",
+        "",
+        "Я — **Лея**, и вот что я умею:",
+        "",
+        markdown_table(
+            [" ", " "],
             [
-                "### 🔮 Привет!",
-                "",
-                "Я — **Лея**, и вот что я умею:",
-                "",
-                "💞 Рассчитать совместимость",
-                "💰 Понять денежный потенциал",
-                "🛡️ Есть ли на мне негатив?",
-                "🔮 Рассчитать **матрицу судьбы**",
-                "💡 Помогать в принятии решений",
-                "",
-                legal_block,
-            ]
-        )
-    )
+                ["💞", "Рассчитать совместимость"],
+                ["💰", "Понять денежный потенциал"],
+                ["🛡️", "Есть ли на мне негатив?"],
+                ["🔮", "Рассчитать матрицу судьбы"],
+                ["💡", "Помогать в принятии решений"],
+            ],
+        ),
+        "",
+        "Перед началом — коротко про документы:",
+        "",
+        markdown_table(
+            [" ", " "],
+            [
+                ["📄", f"[Политика конфиденциальности]({url})"],
+                ["📄", f"[Публичная оферта]({url})"],
+                ["📄", f"[Согласие на обработку данных]({url})"],
+            ],
+        ),
+        "",
+        "Нажимая «Соглашаюсь», ты принимаешь условия.",
+    ]
+    return normalize_leia_rich("\n".join(parts))
 
 
 def format_leia_menu_rich(*, plan_label: str | None = None) -> str:
