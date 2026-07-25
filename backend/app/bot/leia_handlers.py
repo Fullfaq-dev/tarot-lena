@@ -667,8 +667,13 @@ async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
         await safe_callback_answer(callback)
         return
     service = ProductService()
-    if await service.is_full_blocked(user.id, product_id):
-        await safe_callback_answer(callback, "Полная версия уже есть ✨", show_alert=True)
+    existing = await service.latest_full_for_product(user.id, product_id)
+    if existing and not await _product_entitled(user.id, product_id):
+        # Already bought once — resend instead of a dead-end alert.
+        await safe_callback_answer(callback, "Открываю твой полный разбор ✨")
+        await _deliver_full_reading(
+            callback.message, existing, state=state, product_id=product_id
+        )
         return
 
     await safe_callback_answer(callback)

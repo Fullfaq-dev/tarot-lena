@@ -43,15 +43,33 @@ class ProductService:
             return row is not None
 
     async def has_full_access(self, user_id: str, product_id: str) -> bool:
+        """True only if a successful full reading (with text) was already delivered."""
         async with AsyncSessionLocal() as session:
             row = await session.scalar(
                 select(ProductUsage.id).where(
                     ProductUsage.user_id == user_id,
                     ProductUsage.product_id == product_id,
                     ProductUsage.level == "full",
+                    ProductUsage.content_preview.isnot(None),
+                    ProductUsage.content_preview != "",
                 )
             )
             return row is not None
+
+    async def latest_full_for_product(self, user_id: str, product_id: str) -> str:
+        async with AsyncSessionLocal() as session:
+            row = await session.scalar(
+                select(ProductUsage)
+                .where(
+                    ProductUsage.user_id == user_id,
+                    ProductUsage.product_id == product_id,
+                    ProductUsage.level == "full",
+                    ProductUsage.content_preview.isnot(None),
+                    ProductUsage.content_preview != "",
+                )
+                .order_by(ProductUsage.created_at.desc())
+            )
+            return (row.content_preview or "") if row else ""
 
     async def is_full_blocked(self, user_id: str, product_id: str) -> bool:
         if await EntitlementService().can_use_full_free(user_id, product_id):
@@ -449,13 +467,18 @@ class ProductService:
                 {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
-            text = await self._complete_leia(messages)
-            await self.record_usage(
-                session, user_id, product_id, "full", payment_id=payment_id, content=text
-            )
-            if use_entitlement:
-                await EntitlementService().consume_credit(session, user_id, product_id)
-            await session.commit()
+            try:
+                text = await self._complete_leia(messages)
+            except Exception as exc:
+                logger.warning("Full AI failed for %s: %s", product_id, exc)
+                text = ""
+            if (text or "").strip():
+                await self.record_usage(
+                    session, user_id, product_id, "full", payment_id=payment_id, content=text
+                )
+                if use_entitlement:
+                    await EntitlementService().consume_credit(session, user_id, product_id)
+                await session.commit()
             return text
 
     async def fulfill_payment(self, session: AsyncSession, payment: Payment) -> str | None:
@@ -540,10 +563,15 @@ class ProductService:
             {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
             {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
         ]
-        text = await self._complete_leia(messages)
-        await self.record_usage(
-            session, user_id, product_id, "full", payment_id=payment_id, content=text
-        )
-        if use_entitlement:
-            await EntitlementService().consume_credit(session, user_id, product_id)
+        try:
+            text = await self._complete_leia(messages)
+        except Exception as exc:
+            logger.warning("Full AI failed in-session for %s: %s", product_id, exc)
+            text = ""
+        if (text or "").strip():
+            await self.record_usage(
+                session, user_id, product_id, "full", payment_id=payment_id, content=text
+            )
+            if use_entitlement:
+                await EntitlementService().consume_credit(session, user_id, product_id)
         return text
