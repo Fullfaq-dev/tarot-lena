@@ -13,8 +13,18 @@ from app.services.ai.kie_client import KieClient
 from app.services.products.entitlements import EntitlementService
 from app.services.products.prompts import leia_reading_system
 
-_SPREAD_RE = re.compile(
-    r"\b(расклад|таро|карт[аы]?|аркан)\b",
+_FOLLOWUP_RE = re.compile(
+    r"\b(что|как|почему|зачем|объясни|расскажи|значит|означает|понять|уточни)\b",
+    re.IGNORECASE,
+)
+_NEW_SPREAD_RE = re.compile(
+    r"\b("
+    r"расклад|"
+    r"сделай\s+(?:мне\s+)?(?:расклад|таро)|"
+    r"новый\s+расклад|"
+    r"погадай|"
+    r"вытяни\s+карт"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -39,7 +49,13 @@ class LeiaChatService:
             return row is not None
 
     def looks_like_spread_request(self, text: str) -> bool:
-        return bool(_SPREAD_RE.search(text.strip()))
+        t = text.strip()
+        if not t:
+            return False
+        # «Что значит эта карта?» — обсуждение, не новый расклад.
+        if _FOLLOWUP_RE.search(t):
+            return False
+        return bool(_NEW_SPREAD_RE.search(t))
 
     async def latest_reading(self, user_id: str) -> str:
         async with AsyncSessionLocal() as session:

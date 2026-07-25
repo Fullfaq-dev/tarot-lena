@@ -100,7 +100,7 @@ from app.bot.leia_handlers import (
     show_leia_menu,
 )
 from app.services.products.service import ProductService
-from app.bot.leia_keyboards import inline_product_menu
+from app.bot.leia_keyboards import inline_product_menu, leia_reply_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -816,7 +816,7 @@ async def nav_back(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
 
     if target == "main":
-        await show_leia_menu(callback.message, edit=callback.message)
+        await show_leia_menu(callback.message)
         return
 
     if target == "readings":
@@ -1930,16 +1930,20 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             await message.answer(PAID_CHAT_LOADING)
             try:
                 reply = await chat.answer_freeform(user_id, name, text)
-                await answer_rich_message(message, reply, reply_markup=inline_product_menu())
+                await answer_rich_message(
+                    message,
+                    reply,
+                    reply_markup=leia_reply_keyboard(),
+                )
             except Exception:
                 logger.exception("Paid chat failed")
                 await message.answer("Не получилось ответить сейчас — попробуй ещё раз.")
-            await _ensure_reply_keyboard(message)
             return
 
-        await answer_rich_message(message, FREE_TEXT_HINT)
+        await answer_rich_message(
+            message, FREE_TEXT_HINT, reply_markup=leia_reply_keyboard()
+        )
         await show_leia_menu(message)
-        await _ensure_reply_keyboard(message)
         return
     except Exception as exc:
         logger.exception("fallback_message failed")
@@ -1948,7 +1952,10 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             "bot.error",
             {"handler": "message", "error": str(exc), "traceback": traceback.format_exc()[-2000:]},
         )
-        await message.answer(t("error_process_message", lang))
+        try:
+            await message.answer(t("error_process_message", lang))
+        except Exception:
+            pass
 
 
 async def _handle_menu_text(message: Message, state: FSMContext, text: str) -> None:

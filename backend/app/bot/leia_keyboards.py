@@ -144,6 +144,26 @@ def inline_legal_links() -> InlineKeyboardMarkup:
     )
 
 
+def inline_funnel_day2_topics() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="❤️ Отношения", callback_data="leia:funnel:love"),
+                InlineKeyboardButton(text="💰 Деньги", callback_data="leia:funnel:wealth"),
+            ],
+            [InlineKeyboardButton(text="🔮 Просто совет", callback_data="leia:funnel:advice")],
+        ]
+    )
+
+
+def inline_evening_reading() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🌙 Вечерний расклад", callback_data="leia:evening_reading")],
+        ]
+    )
+
+
 def inline_broadcast_products() -> InlineKeyboardMarkup:
     """Кнопки продуктов — для рассылок."""
     p = PRODUCTS

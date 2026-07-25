@@ -6,12 +6,19 @@ from aiogram import Bot
 from sqlalchemy import func, select
 
 from app.bot.formatting import to_telegram_html
-from app.bot.leia_keyboards import inline_broadcast_products
+from app.bot.leia_assets import leia_asset_path
+from app.bot.leia_keyboards import (
+    inline_broadcast_products,
+    inline_evening_reading,
+    inline_funnel_day2_topics,
+    inline_packages_menu,
+)
 from app.database.models import (
     DailyPrediction,
     Message,
     MessageRole,
     Notification,
+    Payment,
     ProductUsage,
     SoulProfile,
     User,
@@ -22,9 +29,11 @@ from app.services.broadcasts.content import (
     format_evening_nudge,
     format_funnel_day2,
     format_morning_message,
+    format_no_purchase_nudge,
     format_weekly_horoscope,
 )
 from app.services.products.service import ProductService
+from app.services.referrals.discount import PROMO_NO_PURCHASE_PERCENT, grant_promo_discount
 from app.services.tarot.service import TarotService
 from app.services.telegram_notify import send_bot_html, send_bot_photo
 
@@ -36,6 +45,8 @@ WEEKLY_WEEKDAY = 0  # Monday
 BATCH = 20
 FUNNEL_DAY_MIN = 2
 FUNNEL_DAY_MAX = 3
+NO_PURCHASE_MIN_DAYS = 4
+NO_PURCHASE_MAX_DAYS = 21
 
 
 def _parse_hm(value: str, default: int) -> int:
@@ -109,6 +120,17 @@ def _morning_trial_active(settings: UserSettings, today: date) -> bool:
     return today <= ends
 
 
+async def _user_has_paid(session, user_id: str) -> bool:
+    row = await session.scalar(
+        select(Payment.id).where(
+            Payment.user_id == user_id,
+            Payment.status == "completed",
+            Payment.purpose != "topup",
+        )
+    )
+    return row is not None
+
+
 class LeiaBroadcastService:
     async def tick(self, bot: Bot) -> None:
         for fn in (
@@ -116,6 +138,7 @@ class LeiaBroadcastService:
             self._send_weekly,
             self._send_evening,
             self._send_funnel_day2,
+            self._send_no_purchase_nudge,
             self._send_pending_mini_portraits,
         ):
             try:
@@ -302,6 +325,7 @@ class LeiaBroadcastService:
 
             name = (profile.name if profile and profile.name else None) or user.first_name or "дорогая"
             text = format_evening_nudge(name=name)
+            keyboard = inline_evening_reading()
             ok = await send_bot_html(
                 bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
             )
@@ -330,7 +354,6 @@ class LeiaBroadcastService:
             candidates = rows.all()
 
         sent = 0
-        keyboard = inline_broadcast_products()
 
         for user, profile in candidates:
             if sent >= BATCH:
@@ -355,12 +378,96 @@ class LeiaBroadcastService:
 
             name = (profile.name if profile and profile.name else None) or user.first_name or "дорогая"
             text = format_funnel_day2(name=name)
-            ok = await send_bot_html(
-                bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
-            )
+            keyboard = inline_funnel_day2_topics()
+            asset = leia_asset_path("funnel_day2")
+            if asset:
+                ok = await send_bot_photo(
+                    bot,
+                    user.telegram_id,
+                    str(asset),
+                    caption_html=to_telegram_html(text),
+                    caption_plain=text,
+                    reply_markup=keyboard,
+                )
+            else:
+                ok = await send_bot_html(
+                    bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
+                )
             if ok:
                 async with AsyncSessionLocal() as session:
                     await self._record_sent(session, user.id, "leia_funnel_day2", text)
+                sent += 1
+
+    async def _send_no_purchase_nudge(self, bot: Bot) -> None:
+        """Тем, кто пробовал мини-разборы, но не оплатил — скидка + пакеты."""
+        now = datetime.now(UTC)
+        window_start = now - timedelta(days=NO_PURCHASE_MAX_DAYS)
+        window_end = now - timedelta(days=NO_PURCHASE_MIN_DAYS)
+
+        async with AsyncSessionLocal() as session:
+            rows = await session.execute(
+                select(User, SoulProfile)
+                .outerjoin(SoulProfile, SoulProfile.user_id == User.id)
+                .where(
+                    User.is_onboarded.is_(True),
+                    User.is_blocked.is_(False),
+                    User.created_at >= window_start,
+                    User.created_at <= window_end,
+                )
+                .limit(100)
+            )
+            candidates = rows.all()
+
+        sent = 0
+        keyboard = inline_packages_menu()
+
+        for user, profile in candidates:
+            if sent >= BATCH:
+                break
+
+            async with AsyncSessionLocal() as session:
+                if await _user_has_paid(session, user.id):
+                    continue
+                usage_count = await session.scalar(
+                    select(func.count()).select_from(ProductUsage).where(
+                        ProductUsage.user_id == user.id
+                    )
+                ) or 0
+                if usage_count < 1:
+                    continue
+                ever_sent = await session.scalar(
+                    select(Notification.id).where(
+                        Notification.user_id == user.id,
+                        Notification.kind == "leia_no_purchase",
+                    )
+                )
+                if ever_sent:
+                    continue
+                await grant_promo_discount(session, user.id)
+                await session.commit()
+
+            name = (profile.name if profile and profile.name else None) or user.first_name or "дорогая"
+            text = format_no_purchase_nudge(
+                name=name,
+                discount_percent=PROMO_NO_PURCHASE_PERCENT,
+            )
+            asset = leia_asset_path("no_purchase")
+            if asset:
+                ok = await send_bot_photo(
+                    bot,
+                    user.telegram_id,
+                    str(asset),
+                    caption_html=to_telegram_html(text),
+                    caption_plain=text,
+                    reply_markup=keyboard,
+                )
+            else:
+                ok = await send_bot_html(
+                    bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
+                )
+            if ok:
+                async with AsyncSessionLocal() as session:
+                    await self._record_sent(session, user.id, "leia_no_purchase", text)
                 sent += 1
 
     async def _send_pending_mini_portraits(self, bot: Bot) -> None:

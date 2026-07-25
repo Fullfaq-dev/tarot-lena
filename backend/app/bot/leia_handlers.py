@@ -5,15 +5,18 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router
-from aiogram.enums import ChatAction
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
 from app.bot.helpers import safe_callback_answer
+from app.bot.leia_assets import send_leia_photo
+from app.bot.leia_panel import callback_leia_scene, present_leia_scene
 from app.bot.leia_keyboards import (
     inline_after_full_reading,
     inline_after_mini,
+    inline_evening_reading,
+    inline_funnel_day2_topics,
     inline_legal_consent,
     inline_package_actions,
     inline_packages_menu,
@@ -31,7 +34,7 @@ from app.bot.leia_rich import (
     format_referral_friend_rich,
     normalize_leia_rich,
 )
-from app.bot.cards_media import send_tarot_reading_rich
+from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.leia_texts import (
     BTN_MENU,
     BTN_PROFILE,
@@ -42,9 +45,10 @@ from app.bot.leia_texts import (
     PAYMENT_LINK,
     PORTRAIT_LOADING,
     PRODUCT_LOADING,
+    POST_READING_CHAT_HINT,
     READING_FOLLOWUP_PROMPT,
 )
-from app.bot.rich_messages import answer_rich_message, present_rich_panel
+from app.bot.rich_messages import answer_rich_message
 from app.bot.states import BotStates
 from app.database.models import SoulProfile, User
 from app.database.session import AsyncSessionLocal
@@ -59,6 +63,7 @@ from app.services.products.chat import LeiaChatService
 from app.services.products.service import ProductService
 from app.services.profile.service import ProfileService
 from app.services.referrals.service import ReferralService
+from app.services.tarot.service import TarotService
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -70,11 +75,16 @@ async def _db_user(telegram_id: int) -> User | None:
 
 
 async def _ensure_reply_keyboard(message: Message) -> None:
-    await message.answer("‎", reply_markup=leia_reply_keyboard())
+    """Attach bottom reply keyboard; Telegram rejects empty/invisible-only text."""
+    from aiogram.exceptions import TelegramBadRequest
 
-
-async def _typing(message: Message) -> None:
-    await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    markup = leia_reply_keyboard()
+    for text in ("\u2800", "👇"):
+        try:
+            await message.answer(text, reply_markup=markup)
+            return
+        except TelegramBadRequest:
+            continue
 
 
 async def show_leia_profile(message: Message, *, telegram_id: int | None = None) -> None:
@@ -96,14 +106,15 @@ async def show_leia_menu(message: Message) -> None:
     if user:
         plan = await EntitlementService().active_plan_label(user.id)
     text = format_leia_menu_rich(plan_label=plan)
-    await present_rich_panel(message, text, reply_markup=inline_product_menu())
+    await present_leia_scene(message, text, reply_markup=inline_product_menu())
 
 
 async def show_packages_menu(message: Message) -> None:
-    await present_rich_panel(
+    await present_leia_scene(
         message,
         format_packages_menu_rich(),
         reply_markup=inline_packages_menu(),
+        image_key="packages",
     )
 
 
@@ -159,11 +170,14 @@ async def _deliver_tarot_spread(
         lang="ru",
         reply_markup=markup,
     )
+    if level == "full":
+        await message.answer(POST_READING_CHAT_HINT)
     await _store_reading_state(state, text, product_id)
 
 
 async def _deliver_full_reading(message: Message, text: str, *, state: FSMContext | None = None, product_id: str = "") -> None:
     await answer_rich_message(message, text, reply_markup=inline_after_full_reading())
+    await message.answer(POST_READING_CHAT_HINT)
     if product_id:
         await _store_reading_state(state, text, product_id)
 
@@ -173,10 +187,10 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
     if user is None:
         return
 
-    await _typing(message)
     await message.answer(PORTRAIT_LOADING, reply_markup=leia_reply_keyboard())
     try:
         portrait = await ProductService().generate_mini_portrait(user.id)
+        await send_leia_photo(message, "portrait")
         await answer_rich_message(message, portrait, reply_markup=inline_product_menu())
         async with AsyncSessionLocal() as session:
             from datetime import UTC, datetime
@@ -195,10 +209,11 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
             "Портрет временно недоступен — но меню уже готово ✨",
             reply_markup=inline_product_menu(),
         )
-    await present_rich_panel(
+    await present_leia_scene(
         message,
         normalize_leia_rich(COMBO_OFFER),
         reply_markup=inline_packages_menu(),
+        image_key="packages",
     )
 
 
@@ -277,7 +292,6 @@ async def _run_entitled_full(
     extra_context: str = "",
     state: FSMContext | None = None,
 ) -> None:
-    await _typing(message)
     await message.answer(ENTITLED_FULL)
     try:
         service = ProductService()
@@ -341,14 +355,30 @@ async def leia_skip_time(callback: CallbackQuery) -> None:
 async def leia_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await safe_callback_answer(callback)
     await state.clear()
-    await show_leia_menu(callback.message)
+    if callback.message is None:
+        return
+    telegram_id = callback.from_user.id
+    user = await _db_user(telegram_id)
+    plan = None
+    if user:
+        plan = await EntitlementService().active_plan_label(user.id)
+    await callback_leia_scene(
+        callback,
+        format_leia_menu_rich(plan_label=plan),
+        reply_markup=inline_product_menu(),
+    )
 
 
 @router.callback_query(F.data == "leia:packages")
 async def leia_packages(callback: CallbackQuery, state: FSMContext) -> None:
     await safe_callback_answer(callback)
     await state.clear()
-    await show_packages_menu(callback.message)
+    await callback_leia_scene(
+        callback,
+        format_packages_menu_rich(),
+        reply_markup=inline_packages_menu(),
+        image_key="packages",
+    )
 
 
 @router.callback_query(F.data == "leia:referral")
@@ -357,10 +387,11 @@ async def leia_referral(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     bot_user = await callback.bot.get_me()
     link = ReferralService().build_referral_link(bot_user.username, callback.from_user.id)
-    await present_rich_panel(
-        callback.message,
+    await callback_leia_scene(
+        callback,
         format_referral_friend_rich(link),
         reply_markup=inline_referral_share(link),
+        image_key="referral",
     )
 
 
@@ -387,10 +418,11 @@ async def leia_package_pitch(callback: CallbackQuery, state: FSMContext) -> None
             active = await ent.has_vip(user.id)
         elif package_id == "love_plus":
             active = await ent.has_love_plus(user.id)
-    await present_rich_panel(
-        callback.message,
+    await callback_leia_scene(
+        callback,
         format_package_pitch_rich(package_id, active=active),
         reply_markup=inline_package_actions(package_id, active=active),
+        image_key="packages",
     )
 
 
@@ -430,12 +462,13 @@ async def leia_product_pitch(callback: CallbackQuery, state: FSMContext) -> None
     if user:
         access_label = await _product_access_label(user.id, product_id)
         has_plan = await ent.has_any_plan(user.id)
-    await present_rich_panel(
-        callback.message,
+    await callback_leia_scene(
+        callback,
         format_product_pitch_rich(
             product_id, access_label=access_label, has_plan=has_plan
         ),
         reply_markup=inline_product_actions(product_id, access_label=access_label),
+        image_key=product_id,
     )
 
 
@@ -452,12 +485,13 @@ async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
         await safe_callback_answer(callback)
         access_label = await _product_access_label(user.id, product_id)
         has_plan = await EntitlementService().has_any_plan(user.id)
-        await present_rich_panel(
-            callback.message,
+        await callback_leia_scene(
+            callback,
             format_product_pitch_rich(
                 product_id, access_label=access_label, has_plan=has_plan
             ),
             reply_markup=inline_product_actions(product_id, access_label=access_label),
+            image_key=product_id,
         )
         return
 
@@ -501,7 +535,6 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(product.mini_hint)
         return
 
-    await _typing(callback.message)
     await callback.message.answer(PRODUCT_LOADING)
     try:
         text = await ProductService().generate_mini(user.id, product_id)
@@ -587,7 +620,6 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
             if profile and profile.name:
                 name = profile.name
 
-    await _typing(message)
     await message.answer("Думаю над твоим вопросом…")
     try:
         answer = await ReadingFollowupService().answer(
@@ -707,3 +739,78 @@ async def product_question(message: Message, state: FSMContext) -> None:
     await answer_rich_message(
         message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
     )
+
+
+_FUNNEL_TOPICS = {
+    "love": "love",
+    "wealth": "wealth",
+    "advice": "forecast",
+}
+
+
+@router.callback_query(F.data == "leia:evening_reading")
+async def leia_evening_reading(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await state.clear()
+    if callback.message is None:
+        return
+    cards = TarotService().draw_cards(1)
+    card = cards[0] if cards else {"name": "Звезда", "description": "надежда и покой"}
+    from app.services.broadcasts.content import format_evening_reading
+
+    insight = str(card.get("description", "Отпусти лишнее — завтра новый день."))[:280]
+    text = format_evening_reading(
+        card_name=str(card.get("name", "Карта")),
+        card_meaning=str(card.get("description", "важный урок дня")),
+        insight=insight,
+    )
+    sent = await send_card_with_caption(
+        callback.message,
+        card,
+        caption_html=str(card.get("name", "Карта")),
+        caption_plain=str(card.get("name", "Карта")),
+    )
+    if not sent:
+        await callback.message.answer(f"🃏 {card.get('name', 'Карта')}")
+    await answer_rich_message(callback.message, text, reply_markup=inline_product_menu())
+
+
+@router.callback_query(F.data.startswith("leia:funnel:"))
+async def leia_funnel_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await state.clear()
+    if callback.message is None:
+        return
+    topic = callback.data.removeprefix("leia:funnel:")
+    product_id = _FUNNEL_TOPICS.get(topic)
+    if product_id is None:
+        return
+    user = await _db_user(callback.from_user.id)
+    if user is None:
+        return
+    service = ProductService()
+    if await service.has_mini(user.id, product_id):
+        access_label = await _product_access_label(user.id, product_id)
+        has_plan = await EntitlementService().has_any_plan(user.id)
+        await callback_leia_scene(
+            callback,
+            format_product_pitch_rich(
+                product_id, access_label=access_label, has_plan=has_plan
+            ),
+            reply_markup=inline_product_actions(product_id, access_label=access_label),
+            image_key=product_id,
+        )
+        return
+    await callback.message.answer(PRODUCT_LOADING)
+    try:
+        text = await service.generate_mini(user.id, product_id)
+        access_label = await _product_access_label(user.id, product_id)
+        await send_leia_photo(callback.message, product_id)
+        await answer_rich_message(
+            callback.message,
+            text,
+            reply_markup=inline_after_mini(product_id, access_label=access_label),
+        )
+    except Exception:
+        logger.exception("Funnel mini failed for %s", product_id)
+        await callback.message.answer("Не получилось сейчас — попробуй из меню чуть позже.")
