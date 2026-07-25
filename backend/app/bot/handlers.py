@@ -105,7 +105,9 @@ from app.bot.leia_handlers import (
     complete_onboarding_flow,
     onboarding_markup_for_step,
     router as leia_router,
+    show_leia_history,
     show_leia_menu,
+    show_leia_profile,
 )
 from app.services.products.service import ProductService
 from app.bot.leia_keyboards import inline_product_menu, leia_reply_keyboard
@@ -1784,9 +1786,21 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                 await _process_onboarding_answer(message, text, edit=False)
             return
 
-        from app.bot.leia_texts import LEIA_REPLY_BUTTONS
+        from app.bot.leia_texts import BTN_HISTORY, BTN_MENU, BTN_PROFILE
 
-        if text in LEIA_REPLY_BUTTONS:
+        # Safety net if leia_router did not catch reply-keyboard buttons.
+        if text == BTN_MENU:
+            await state.clear()
+            await show_leia_menu(message)
+            return
+        if text == BTN_HISTORY:
+            await state.clear()
+            await show_leia_history(message, telegram_id=message.from_user.id)
+            return
+        if text == BTN_PROFILE:
+            await state.clear()
+            await show_leia_profile(message, telegram_id=message.from_user.id)
+            await _ensure_reply_keyboard(message)
             return
 
         # Menu buttons cancel any stale feature FSM and open the chosen section.

@@ -36,7 +36,9 @@
 - [Completed] Fix raw markdown в чате: фото отдельно, HTML-fallback; расклад с резервной расшифровкой; меньше спама после анкеты.
 - [Completed] Fix мини-кнопки (alert + повтор при пустом AI); история разборов в меню/клавиатуре; быстрее ответы AI.
 - [Completed] KIE: обработка code=500, fallback на gemini-2.5-flash; один пузырь расклада; typing «печатает…».
-- [Completed] Busy-lock: пока идёт разбор — нельзя стартовать другой; статус-сообщение + typing heartbeat (деплой pending).
+- [Completed] Busy-lock: пока идёт разбор — нельзя стартовать другой; статус-сообщение + typing heartbeat.
+- [Completed] Деплой busy-lock (`382c5f8`) на VPS `85.234.106.108` — health OK, bot polling.
+- [In Progress] Fix истории разборов: callback брал telegram_id бота → «нажми /start».
 
 **Инфра утверждена:** IP `85.234.106.108`, `@astro_leia_bot`, admins `267409502,7670490295`, polling, Platega тот же, legal docx в корне.
 

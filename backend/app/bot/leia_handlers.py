@@ -105,8 +105,19 @@ async def show_leia_profile(message: Message, *, telegram_id: int | None = None)
     )
 
 
-async def show_leia_history(message: Message, *, page: int = 0) -> None:
-    user = await _db_user(message.from_user.id if message.from_user else message.chat.id)
+async def show_leia_history(
+    message: Message,
+    *,
+    page: int = 0,
+    telegram_id: int | None = None,
+) -> None:
+    # callback.message.from_user is the bot — callers must pass telegram_id.
+    tid = telegram_id
+    if tid is None and message.from_user is not None:
+        tid = message.from_user.id
+    if tid is None:
+        tid = message.chat.id
+    user = await _db_user(tid)
     if user is None:
         await message.answer("Сначала нажми /start")
         return
@@ -255,10 +266,10 @@ async def leia_reply_buttons(message: Message, state: FSMContext) -> None:
         await show_leia_menu(message)
         return
     if message.text == BTN_HISTORY:
-        await show_leia_history(message)
+        await show_leia_history(message, telegram_id=message.from_user.id)
         return
     if message.text == BTN_PROFILE:
-        await show_leia_profile(message)
+        await show_leia_profile(message, telegram_id=message.from_user.id)
         await _ensure_reply_keyboard(message)
         return
 
@@ -568,7 +579,11 @@ async def leia_history(callback: CallbackQuery, state: FSMContext) -> None:
         page = int(callback.data.removeprefix("leia:history:"))
     except ValueError:
         page = 0
-    await show_leia_history(callback.message, page=page)
+    await show_leia_history(
+        callback.message,
+        page=page,
+        telegram_id=callback.from_user.id,
+    )
 
 
 @router.callback_query(F.data.startswith("leia:hist:"))
