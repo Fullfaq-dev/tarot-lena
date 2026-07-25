@@ -11,6 +11,33 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 
 
+async def send_bot_rich(
+    bot: Bot,
+    telegram_id: int,
+    text: str,
+    *,
+    reply_markup=None,
+) -> bool:
+    from aiogram.exceptions import TelegramBadRequest
+
+    from app.bot.formatting import to_telegram_html
+    from app.bot.rich_messages import send_rich_message
+
+    if not text.strip():
+        return False
+    try:
+        await send_rich_message(bot, telegram_id, text, reply_markup=reply_markup)
+        return True
+    except TelegramBadRequest as exc:
+        logger.warning("Rich message to telegram_id=%s failed: %s", telegram_id, exc)
+        return await send_bot_html(
+            bot,
+            telegram_id,
+            to_telegram_html(text),
+            reply_markup=reply_markup,
+        )
+
+
 async def send_bot_html(
     bot: Bot,
     telegram_id: int,

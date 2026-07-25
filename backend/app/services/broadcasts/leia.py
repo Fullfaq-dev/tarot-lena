@@ -6,7 +6,7 @@ from aiogram import Bot
 from sqlalchemy import func, select
 
 from app.bot.formatting import to_telegram_html
-from app.bot.leia_assets import leia_asset_path
+from app.bot.leia_assets import leia_asset_path, leia_image_rich_available, prepend_leia_image
 from app.bot.leia_keyboards import (
     inline_broadcast_products,
     inline_evening_reading,
@@ -35,7 +35,7 @@ from app.services.broadcasts.content import (
 from app.services.products.service import ProductService
 from app.services.referrals.discount import PROMO_NO_PURCHASE_PERCENT, grant_promo_discount
 from app.services.tarot.service import TarotService
-from app.services.telegram_notify import send_bot_html, send_bot_photo
+from app.services.telegram_notify import send_bot_html, send_bot_photo, send_bot_rich
 
 logger = logging.getLogger(__name__)
 
@@ -379,20 +379,28 @@ class LeiaBroadcastService:
             name = (profile.name if profile and profile.name else None) or user.first_name or "дорогая"
             text = format_funnel_day2(name=name)
             keyboard = inline_funnel_day2_topics()
-            asset = leia_asset_path("funnel_day2")
-            if asset:
-                ok = await send_bot_photo(
+            if leia_image_rich_available():
+                ok = await send_bot_rich(
                     bot,
                     user.telegram_id,
-                    str(asset),
-                    caption_html=to_telegram_html(text),
-                    caption_plain=text,
+                    prepend_leia_image(text, "funnel_day2"),
                     reply_markup=keyboard,
                 )
             else:
-                ok = await send_bot_html(
-                    bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
-                )
+                asset = leia_asset_path("funnel_day2")
+                if asset:
+                    ok = await send_bot_photo(
+                        bot,
+                        user.telegram_id,
+                        str(asset),
+                        caption_html=to_telegram_html(text),
+                        caption_plain=text,
+                        reply_markup=keyboard,
+                    )
+                else:
+                    ok = await send_bot_html(
+                        bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
+                    )
             if ok:
                 async with AsyncSessionLocal() as session:
                     await self._record_sent(session, user.id, "leia_funnel_day2", text)
@@ -451,20 +459,28 @@ class LeiaBroadcastService:
                 name=name,
                 discount_percent=PROMO_NO_PURCHASE_PERCENT,
             )
-            asset = leia_asset_path("no_purchase")
-            if asset:
-                ok = await send_bot_photo(
+            if leia_image_rich_available():
+                ok = await send_bot_rich(
                     bot,
                     user.telegram_id,
-                    str(asset),
-                    caption_html=to_telegram_html(text),
-                    caption_plain=text,
+                    prepend_leia_image(text, "no_purchase"),
                     reply_markup=keyboard,
                 )
             else:
-                ok = await send_bot_html(
-                    bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
-                )
+                asset = leia_asset_path("no_purchase")
+                if asset:
+                    ok = await send_bot_photo(
+                        bot,
+                        user.telegram_id,
+                        str(asset),
+                        caption_html=to_telegram_html(text),
+                        caption_plain=text,
+                        reply_markup=keyboard,
+                    )
+                else:
+                    ok = await send_bot_html(
+                        bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
+                    )
             if ok:
                 async with AsyncSessionLocal() as session:
                     await self._record_sent(session, user.id, "leia_no_purchase", text)

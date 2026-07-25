@@ -17,6 +17,7 @@ from app.api.kie_callbacks import router as kie_callbacks_router
 from app.api.payment_pages import router as payment_pages_router
 from app.api.platega_callbacks import router as platega_callbacks_router
 from app.bot.factory import create_bot, create_dispatcher
+from app.bot.leia_assets import ASSETS_DIR
 from app.core.config import get_settings
 from app.services.tarot.seed import ensure_tarot_cards_seeded
 
@@ -100,6 +101,8 @@ settings = get_settings()
 settings.media_storage_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static/tarot_cards", StaticFiles(directory=str(settings.tarot_cards_dir)), name="tarot_cards")
 app.mount("/static/generated", StaticFiles(directory=str(settings.media_storage_dir)), name="generated")
+ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static/leia", StaticFiles(directory=str(ASSETS_DIR)), name="leia_assets")
 
 
 @app.post("/telegram/webhook")

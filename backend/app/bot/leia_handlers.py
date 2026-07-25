@@ -10,8 +10,7 @@ from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
 from app.bot.helpers import safe_callback_answer
-from app.bot.leia_assets import send_leia_photo
-from app.bot.leia_panel import callback_leia_scene, present_leia_scene
+from app.bot.leia_panel import answer_leia_rich, callback_leia_scene, present_leia_scene
 from app.bot.leia_keyboards import (
     inline_after_full_reading,
     inline_after_mini,
@@ -46,7 +45,6 @@ from app.bot.leia_texts import (
     PAID_CHAT_LOADING,
     PORTRAIT_LOADING,
     PRODUCT_LOADING,
-    POST_READING_CHAT_HINT,
     READING_FOLLOWUP_PROMPT,
 )
 from app.bot.rich_messages import answer_rich_message
@@ -177,14 +175,11 @@ async def _deliver_tarot_spread(
             "⚠️ Расшифровка не сгенерировалась — нажми «Задать вопрос к разбору» "
             "или напиши в чат, и я отвечу по картам."
         )
-    elif level == "full":
-        await message.answer(POST_READING_CHAT_HINT)
     await _store_reading_state(state, text, product_id)
 
 
 async def _deliver_full_reading(message: Message, text: str, *, state: FSMContext | None = None, product_id: str = "") -> None:
     await answer_rich_message(message, text, reply_markup=inline_after_full_reading())
-    await message.answer(POST_READING_CHAT_HINT)
     if product_id:
         await _store_reading_state(state, text, product_id)
 
@@ -197,8 +192,12 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
     await message.answer(PORTRAIT_LOADING, reply_markup=leia_reply_keyboard())
     try:
         portrait = await ProductService().generate_mini_portrait(user.id)
-        await send_leia_photo(message, "portrait")
-        await answer_rich_message(message, portrait, reply_markup=inline_product_menu())
+        await answer_leia_rich(
+            message,
+            portrait,
+            reply_markup=inline_product_menu(),
+            image_key="portrait",
+        )
         async with AsyncSessionLocal() as session:
             from datetime import UTC, datetime
 
@@ -835,11 +834,11 @@ async def leia_funnel_topic(callback: CallbackQuery, state: FSMContext) -> None:
     try:
         text = await service.generate_mini(user.id, product_id)
         access_label = await _product_access_label(user.id, product_id)
-        await send_leia_photo(callback.message, product_id)
-        await answer_rich_message(
+        await answer_leia_rich(
             callback.message,
             text,
             reply_markup=inline_after_mini(product_id, access_label=access_label),
+            image_key=product_id,
         )
     except Exception:
         logger.exception("Funnel mini failed for %s", product_id)

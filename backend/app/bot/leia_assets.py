@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile, Message, ReplyMarkupUnion
+
+from app.core.config import get_settings
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "leia"
 
@@ -34,6 +37,36 @@ def leia_asset_path(key: str) -> Path | None:
         return None
     path = ASSETS_DIR / filename
     return path if path.is_file() else None
+
+
+def leia_image_rich_available() -> bool:
+    base = get_settings().public_base_url.lower()
+    return not any(host in base for host in ("localhost", "127.0.0.1", "0.0.0.0"))
+
+
+def leia_asset_public_url(key: str) -> str | None:
+    path = leia_asset_path(key)
+    if path is None or not leia_image_rich_available():
+        return None
+    base = get_settings().public_base_url.rstrip("/")
+    return f"{base}/static/leia/{quote(path.name)}"
+
+
+def format_leia_image_rich(key: str) -> str:
+    url = leia_asset_public_url(key)
+    if not url:
+        return ""
+    return f"![]({url})"
+
+
+def prepend_leia_image(text: str, key: str | None) -> str:
+    if not key:
+        return text
+    image = format_leia_image_rich(key)
+    if not image:
+        return text
+    body = text.strip()
+    return f"{image}\n\n{body}" if body else image
 
 
 async def send_leia_photo(
