@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, TypeVar
+from collections.abc import Awaitable
+from typing import TypeVar
 
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramBadRequest
