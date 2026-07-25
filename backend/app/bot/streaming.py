@@ -31,9 +31,12 @@ async def chat_action_loop(
     stop_event: asyncio.Event,
 ) -> None:
     while not stop_event.is_set():
-        await bot.send_chat_action(chat_id, action)
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=4.0)
+            await bot.send_chat_action(chat_id, action)
+        except Exception as exc:
+            logger.warning("chat_action %s failed: %s", action, exc)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=3.5)
         except TimeoutError:
             continue
 

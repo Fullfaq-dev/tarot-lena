@@ -9,7 +9,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
-from app.bot.helpers import safe_callback_answer, with_typing
+from app.bot.helpers import (
+    refuse_if_busy_callback,
+    refuse_if_busy_message,
+    run_busy_job,
+    safe_callback_answer,
+)
 from app.bot.leia_panel import answer_leia_rich, callback_leia_scene, present_leia_scene
 from app.bot.leia_keyboards import (
     inline_after_full_reading,
@@ -205,11 +210,18 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
     if user is None:
         return
 
-    await message.answer(PORTRAIT_LOADING, reply_markup=leia_reply_keyboard())
     try:
-        portrait = await with_typing(
-            message, ProductService().generate_mini_portrait(user.id)
+        await message.answer("✨ Анкета готова!", reply_markup=leia_reply_keyboard())
+        portrait = await run_busy_job(
+            message,
+            lambda: ProductService().generate_mini_portrait(user.id),
+            loading_text=PORTRAIT_LOADING,
+            progress_text="🔮 Ещё считаю матрицу… почти готово",
+            telegram_id=telegram_id,
+            label="portrait",
         )
+        if portrait is None:
+            return
         await answer_leia_rich(
             message,
             portrait,
@@ -313,21 +325,38 @@ async def _run_entitled_full(
     product_id: str,
     extra_context: str = "",
     state: FSMContext | None = None,
+    telegram_id: int | None = None,
 ) -> None:
-    await message.answer(ENTITLED_FULL)
+    service = ProductService()
+    # callback.message.from_user is the bot — always prefer explicit telegram_id.
+    tid = telegram_id
+    if tid is None and message.from_user is not None:
+        tid = message.from_user.id
+    if tid is None:
+        tid = message.chat.id
     try:
-        service = ProductService()
         if product_id == "tarot_spread":
             question = extra_context or "Мой вопрос"
-            text, cards = await with_typing(
-                message,
-                service.generate_tarot_spread(
+
+            async def _gen_tarot():
+                return await service.generate_tarot_spread(
                     user.id,
                     question,
                     level="full",
                     use_entitlement=True,
-                ),
+                )
+
+            result = await run_busy_job(
+                message,
+                _gen_tarot,
+                loading_text=ENTITLED_FULL,
+                progress_text="🃏 Карты уже выпали — собираю толкование…",
+                telegram_id=tid,
+                label=f"full:{product_id}",
             )
+            if result is None:
+                return
+            text, cards = result
             await _deliver_tarot_spread(
                 message,
                 question=question,
@@ -338,12 +367,22 @@ async def _run_entitled_full(
                 state=state,
             )
             return
-        text = await with_typing(
+
+        text = await run_busy_job(
             message,
-            service.generate_full(
+            lambda: service.generate_full(
                 user.id, product_id, extra_context=extra_context, use_entitlement=True
             ),
+            loading_text=ENTITLED_FULL,
+            progress_text="✨ Ещё собираю полный разбор… почти готово",
+            telegram_id=tid,
+            label=f"full:{product_id}",
         )
+        if text is None:
+            return
+        if not (text or "").strip():
+            await message.answer("Не получилось сейчас — попробуй чуть позже.")
+            return
         await _deliver_full_reading(message, text, state=state, product_id=product_id)
         if state is not None:
             await state.update_data(
@@ -564,6 +603,8 @@ async def leia_history_open(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("leia:launch:"))
 async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
+    if await refuse_if_busy_callback(callback):
+        return
     await safe_callback_answer(callback)
     product_id = callback.data.removeprefix("leia:launch:")
     if product_id not in PRODUCTS:
@@ -599,11 +640,19 @@ async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(PRODUCTS[product_id].mini_hint)
         return
 
-    await _run_entitled_full(callback.message, user=user, product_id=product_id, state=state)
+    await _run_entitled_full(
+        callback.message,
+        user=user,
+        product_id=product_id,
+        state=state,
+        telegram_id=callback.from_user.id,
+    )
 
 
 @router.callback_query(F.data.startswith("leia:mini:"))
 async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
+    if await refuse_if_busy_callback(callback):
+        return
     product_id = callback.data.removeprefix("leia:mini:")
     product = PRODUCTS.get(product_id)
     if product is None:
@@ -635,11 +684,17 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(product.mini_hint)
         return
 
-    await callback.message.answer(PRODUCT_LOADING)
     try:
-        text = await with_typing(
-            callback.message, ProductService().generate_mini(user.id, product_id)
+        text = await run_busy_job(
+            callback.message,
+            lambda: ProductService().generate_mini(user.id, product_id),
+            loading_text=PRODUCT_LOADING,
+            progress_text="✨ Ещё смотрю числа… почти готово",
+            telegram_id=callback.from_user.id,
+            label=f"mini:{product_id}",
         )
+        if text is None:
+            return
         if not (text or "").strip():
             await callback.message.answer(
                 "Не получилось собрать мини-разбор — попробуй ещё раз чуть позже."
@@ -656,6 +711,8 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("leia:full:"))
 async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
+    if await refuse_if_busy_callback(callback):
+        return
     product_id = callback.data.removeprefix("leia:full:")
     product = PRODUCTS.get(product_id)
     if product is None:
@@ -697,12 +754,27 @@ async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     if entitled:
-        await _run_entitled_full(callback.message, user=user, product_id=product_id, state=state)
+        await _run_entitled_full(
+            callback.message,
+            user=user,
+            product_id=product_id,
+            state=state,
+            telegram_id=callback.from_user.id,
+        )
         return
 
     try:
-        flow = await service.create_full_payment(user, product_id)
-        await _deliver_payment_flow(callback.message, flow)
+        flow = await run_busy_job(
+            callback.message,
+            lambda: service.create_full_payment(user, product_id),
+            loading_text="💳 Готовлю полный разбор…",
+            progress_text="✨ Ещё собираю расшифровку… обычно до минуты",
+            telegram_id=callback.from_user.id,
+            label=f"pay:{product_id}",
+        )
+        if flow is None:
+            return
+        await _deliver_payment_flow(callback.message, flow, state=state)
     except Exception as exc:
         logger.exception("Payment create failed")
         await callback.message.answer(f"Оплата временно недоступна. ({exc})")
@@ -729,13 +801,21 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
             if profile and profile.name:
                 name = profile.name
 
+    if await refuse_if_busy_message(message):
+        return
+
     chat = LeiaChatService()
     if not reading and user and await chat.has_open_chat(user.id):
-        await message.answer(PAID_CHAT_LOADING)
         try:
-            reply = await with_typing(
-                message, chat.answer_freeform(user.id, name, question)
+            reply = await run_busy_job(
+                message,
+                lambda: chat.answer_freeform(user.id, name, question),
+                loading_text=PAID_CHAT_LOADING,
+                progress_text="💬 Ещё думаю над ответом…",
+                label="chat",
             )
+            if reply is None:
+                return
             await answer_rich_message(message, reply, reply_markup=inline_after_full_reading())
         except Exception:
             logger.exception("VIP followup chat failed")
@@ -753,16 +833,20 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
         await state.clear()
         return
 
-    await message.answer("Думаю над твоим вопросом…")
     try:
-        answer = await with_typing(
+        answer = await run_busy_job(
             message,
-            ReadingFollowupService().answer(
+            lambda: ReadingFollowupService().answer(
                 reading_excerpt=reading,
                 question=question,
                 user_name=name,
             ),
+            loading_text="💬 Думаю над твоим вопросом…",
+            progress_text="✨ Ещё собираю ответ…",
+            label="followup",
         )
+        if answer is None:
+            return
         await answer_rich_message(message, answer, reply_markup=inline_after_full_reading())
     except Exception:
         logger.exception("Reading followup failed")
@@ -771,6 +855,8 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
 
 @router.message(BotStates.waiting_partner_birth_date)
 async def partner_birth_date(message: Message, state: FSMContext) -> None:
+    if await refuse_if_busy_message(message):
+        return
     data = await state.get_data()
     product_id = data.get("product_id", "love")
     mode = data.get("mode", "mini")
@@ -799,10 +885,18 @@ async def partner_birth_date(message: Message, state: FSMContext) -> None:
     if mode == "full_pay":
         await state.clear()
         try:
-            flow = await ProductService().create_full_payment(
-                user, product_id, extra_context=partner_info
+            flow = await run_busy_job(
+                message,
+                lambda: ProductService().create_full_payment(
+                    user, product_id, extra_context=partner_info
+                ),
+                loading_text="💳 Готовлю полный разбор…",
+                progress_text="✨ Ещё собираю расшифровку…",
+                label=f"pay:{product_id}",
             )
-            await _deliver_payment_flow(message, flow)
+            if flow is None:
+                return
+            await _deliver_payment_flow(message, flow, state=state)
         except Exception:
             await message.answer("Оплата временно недоступна.")
         return
@@ -815,11 +909,17 @@ async def partner_birth_date(message: Message, state: FSMContext) -> None:
         return
 
     await state.clear()
-    await message.answer(PRODUCT_LOADING)
-    text = await with_typing(
+    text = await run_busy_job(
         message,
-        ProductService().generate_mini(user.id, product_id, extra_context=partner_info),
+        lambda: ProductService().generate_mini(
+            user.id, product_id, extra_context=partner_info
+        ),
+        loading_text=PRODUCT_LOADING,
+        progress_text="💞 Ещё смотрю совместимость…",
+        label=f"mini:{product_id}",
     )
+    if text is None:
+        return
     access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
         message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
@@ -828,6 +928,8 @@ async def partner_birth_date(message: Message, state: FSMContext) -> None:
 
 @router.message(BotStates.waiting_product_question)
 async def product_question(message: Message, state: FSMContext) -> None:
+    if await refuse_if_busy_message(message):
+        return
     data = await state.get_data()
     product_id = data.get("product_id", "question")
     mode = data.get("mode", "mini")
@@ -844,10 +946,18 @@ async def product_question(message: Message, state: FSMContext) -> None:
     if mode == "full_pay":
         await state.clear()
         try:
-            flow = await ProductService().create_full_payment(
-                user, product_id, extra_context=question
+            flow = await run_busy_job(
+                message,
+                lambda: ProductService().create_full_payment(
+                    user, product_id, extra_context=question
+                ),
+                loading_text="💳 Готовлю полный разбор…",
+                progress_text="✨ Ещё собираю расшифровку…",
+                label=f"pay:{product_id}",
             )
-            await _deliver_payment_flow(message, flow)
+            if flow is None:
+                return
+            await _deliver_payment_flow(message, flow, state=state)
         except Exception:
             await message.answer("Оплата временно недоступна.")
         return
@@ -860,13 +970,18 @@ async def product_question(message: Message, state: FSMContext) -> None:
         return
 
     await state.clear()
-    await message.answer(PRODUCT_LOADING)
     service = ProductService()
     if product_id == "tarot_spread":
-        text, cards = await with_typing(
+        result = await run_busy_job(
             message,
-            service.generate_tarot_spread(user.id, question, level="mini"),
+            lambda: service.generate_tarot_spread(user.id, question, level="mini"),
+            loading_text=PRODUCT_LOADING,
+            progress_text="🃏 Карты выпали — пишу толкование…",
+            label="mini:tarot_spread",
         )
+        if result is None:
+            return
+        text, cards = result
         await _deliver_tarot_spread(
             message,
             question=question,
@@ -877,10 +992,15 @@ async def product_question(message: Message, state: FSMContext) -> None:
             state=state,
         )
         return
-    text = await with_typing(
+    text = await run_busy_job(
         message,
-        service.generate_mini(user.id, product_id, extra_context=question),
+        lambda: service.generate_mini(user.id, product_id, extra_context=question),
+        loading_text=PRODUCT_LOADING,
+        progress_text="✨ Ещё думаю над ответом…",
+        label=f"mini:{product_id}",
     )
+    if text is None:
+        return
     access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
         message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
@@ -925,6 +1045,8 @@ async def leia_evening_reading(callback: CallbackQuery, state: FSMContext) -> No
 
 @router.callback_query(F.data.startswith("leia:funnel:"))
 async def leia_funnel_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    if await refuse_if_busy_callback(callback):
+        return
     await safe_callback_answer(callback)
     await state.clear()
     if callback.message is None:
@@ -951,11 +1073,17 @@ async def leia_funnel_topic(callback: CallbackQuery, state: FSMContext) -> None:
             image_key=product_id,
         )
         return
-    await callback.message.answer(PRODUCT_LOADING)
     try:
-        text = await with_typing(
-            callback.message, service.generate_mini(user.id, product_id)
+        text = await run_busy_job(
+            callback.message,
+            lambda: service.generate_mini(user.id, product_id),
+            loading_text=PRODUCT_LOADING,
+            progress_text="✨ Ещё собираю мини-разбор…",
+            telegram_id=callback.from_user.id,
+            label=f"mini:{product_id}",
         )
+        if text is None:
+            return
         if not (text or "").strip():
             await callback.message.answer(
                 "Не получилось собрать мини-разбор — попробуй ещё раз чуть позже."

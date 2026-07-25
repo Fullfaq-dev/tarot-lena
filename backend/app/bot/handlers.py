@@ -20,11 +20,13 @@ from app.bot.rich_messages import answer_rich_message, present_rich_panel, prese
 from app.core.config import get_settings
 from app.bot.helpers import (
     clear_processing_placeholder,
+    refuse_if_busy_message,
+    run_busy_job,
     safe_callback_answer,
     safe_edit,
     send_processing_placeholder,
-    with_typing,
 )
+from app.bot.busy import BUSY_HINT
 from app.bot.i18n import all_menu_texts, main_menu_text, menu_actions, normalize_language, reading_label, t
 from app.bot.i18n_extra import ONBOARDING_CHOICE_STEPS
 from app.bot.keyboards import (
@@ -344,11 +346,24 @@ async def _generate_with_typing(message: Message, coro):
 
 
 async def _send_daily_card(message: Message, telegram_id: int) -> None:
+    from app.bot.busy import is_user_busy
+
+    if await is_user_busy(telegram_id):
+        await message.answer(BUSY_HINT)
+        return
+
     tarot = TarotService()
-    interpretation, card = await _generate_with_typing(
+    result = await run_busy_job(
         message,
-        tarot.daily_card_for_telegram(telegram_id),
+        lambda: tarot.daily_card_for_telegram(telegram_id),
+        loading_text="🃏 Вытягиваю карту дня…",
+        progress_text="✨ Ещё смотрю значение карты…",
+        telegram_id=telegram_id,
+        label="daily_card",
     )
+    if result is None:
+        return
+    interpretation, card = result
     if card is None:
         await message.answer(interpretation)
         return
@@ -420,10 +435,18 @@ async def _handle_reading_question(message: Message, state: FSMContext, question
     if billing_mode == "balance":
         await message.answer(t("error_free_messages_ended", lang))
 
-    interpretation = await _generate_with_typing(
+    if await refuse_if_busy_message(message):
+        return
+
+    interpretation = await run_busy_job(
         message,
-        orchestrator.generate_chat(messages or []),
+        lambda: orchestrator.generate_chat(messages or []),
+        loading_text="✨ Секунду, смотрю карты…",
+        progress_text="🃏 Ещё собираю толкование…",
+        label="reading",
     )
+    if interpretation is None:
+        return
     if not interpretation or "cannot fulfill" in interpretation.lower():
         interpretation = tarot.interpret_locally(question, cards, lang)
 
@@ -1906,15 +1929,22 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if user_id and await chat.has_open_chat(user_id):
             if chat.looks_like_spread_request(text):
                 entitled = await chat.can_free_spread(user_id, "tarot_spread")
+                if await refuse_if_busy_message(message):
+                    return
                 if entitled:
-                    await message.answer("✨ Секунду, смотрю карты и числа…")
                     service = ProductService()
-                    text_spread, cards = await with_typing(
+                    result = await run_busy_job(
                         message,
-                        service.generate_tarot_spread(
+                        lambda: service.generate_tarot_spread(
                             user_id, text, level="full", use_entitlement=True
                         ),
+                        loading_text="✨ Секунду, смотрю карты и числа…",
+                        progress_text="🃏 Карты выпали — пишу толкование…",
+                        label="full:tarot_spread",
                     )
+                    if result is None:
+                        return
+                    text_spread, cards = result
                     await _deliver_tarot_spread(
                         message,
                         question=text,
@@ -1934,12 +1964,19 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                 await _ensure_reply_keyboard(message)
                 return
 
+            if await refuse_if_busy_message(message):
+                return
             name = message.from_user.first_name or "дорогая"
-            await message.answer(PAID_CHAT_LOADING)
             try:
-                reply = await with_typing(
-                    message, chat.answer_freeform(user_id, name, text)
+                reply = await run_busy_job(
+                    message,
+                    lambda: chat.answer_freeform(user_id, name, text),
+                    loading_text=PAID_CHAT_LOADING,
+                    progress_text="💬 Ещё думаю над ответом…",
+                    label="chat",
                 )
+                if reply is None:
+                    return
                 await answer_rich_message(
                     message,
                     reply,
