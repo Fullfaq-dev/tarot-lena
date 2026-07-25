@@ -26,6 +26,9 @@ class PaymentFlowResult:
     completed: bool = False
     user_text: str | None = None
     product_text: str | None = None
+    product_id: str | None = None
+    tarot_question: str | None = None
+    tarot_cards: tuple[dict, ...] | None = None
 
 
 class PaymentProvider(Protocol):

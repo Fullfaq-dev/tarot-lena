@@ -16,7 +16,14 @@ def apply_percent_discount(amount: Decimal, percent: int) -> Decimal:
 
 
 async def discount_percent_for_user(session: AsyncSession, user_id: str) -> int:
-    referral = await session.scalar(
+    referred = await session.scalar(
         select(Referral.id).where(Referral.referred_user_id == user_id)
     )
-    return REFERRED_DISCOUNT_PERCENT if referral else 0
+    if referred:
+        return REFERRED_DISCOUNT_PERCENT
+    referrer = await session.scalar(
+        select(Referral.id).where(Referral.referrer_user_id == user_id)
+    )
+    if referrer:
+        return REFERRED_DISCOUNT_PERCENT
+    return 0

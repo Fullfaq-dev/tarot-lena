@@ -10,6 +10,7 @@ from app.bot.leia_keyboards import inline_broadcast_products
 from app.database.models import (
     DailyPrediction,
     Message,
+    MessageRole,
     Notification,
     ProductUsage,
     SoulProfile,
@@ -66,6 +67,39 @@ def _local_day_bounds(now_local: datetime) -> tuple[datetime, datetime]:
     start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
     end = start + timedelta(days=1)
     return start, end
+
+
+def _activity_since(now_local: datetime, hour: int = MORNING_HOUR) -> datetime:
+    """Local datetime from which we count user engagement (spec: since 09:00)."""
+    return now_local.replace(hour=hour, minute=0, second=0, microsecond=0)
+
+
+async def _user_active_since(
+    session,
+    user_id: str,
+    since_local: datetime,
+) -> bool:
+    """True if the user engaged with the bot since *since_local* (user timezone)."""
+    since_utc = since_local.astimezone(UTC)
+
+    if await session.scalar(
+        select(Message.id).where(
+            Message.user_id == user_id,
+            Message.role == MessageRole.USER.value,
+            Message.created_at >= since_utc,
+        )
+    ):
+        return True
+
+    if await session.scalar(
+        select(ProductUsage.id).where(
+            ProductUsage.user_id == user_id,
+            ProductUsage.created_at >= since_utc,
+        )
+    ):
+        return True
+
+    return False
 
 
 def _morning_trial_active(settings: UserSettings, today: date) -> bool:
@@ -148,7 +182,10 @@ class LeiaBroadcastService:
             if not _morning_trial_active(user_settings, today):
                 continue
 
+            day_start, _ = _local_day_bounds(now_local)
             async with AsyncSessionLocal() as session:
+                if await self._already_sent_kind(session, user.id, "leia_morning", day_start):
+                    continue
                 already = await session.scalar(
                     select(DailyPrediction.id).where(
                         DailyPrediction.user_id == user.id,
@@ -249,19 +286,16 @@ class LeiaBroadcastService:
             if _is_quiet(now_local, user_settings.quiet_hours_start, user_settings.quiet_hours_end):
                 continue
 
-            day_start, day_end = _local_day_bounds(now_local)
-            day_start_utc = day_start.astimezone(UTC)
-            day_end_utc = day_end.astimezone(UTC)
+            day_start, _ = _local_day_bounds(now_local)
+            active_since = _activity_since(now_local)
 
             async with AsyncSessionLocal() as session:
                 if await self._already_sent_kind(session, user.id, "leia_evening", day_start):
                     continue
-                active_today = await session.scalar(
-                    select(Message.id).where(
-                        Message.user_id == user.id,
-                        Message.created_at >= day_start_utc,
-                        Message.created_at < day_end_utc,
-                    )
+                active_today = await _user_active_since(
+                    session,
+                    user.id,
+                    active_since,
                 )
             if active_today:
                 continue

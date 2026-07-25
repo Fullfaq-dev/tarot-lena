@@ -31,6 +31,7 @@ from app.bot.leia_rich import (
     format_referral_friend_rich,
     normalize_leia_rich,
 )
+from app.bot.cards_media import send_tarot_reading_rich
 from app.bot.leia_texts import (
     BTN_MENU,
     BTN_PROFILE,
@@ -54,6 +55,7 @@ from app.services.products.entitlements import EntitlementService
 from app.services.products.followup import ReadingFollowupService
 from app.services.products.packages import PACKAGES
 from app.services.products.profile_view import build_leia_profile_text
+from app.services.products.chat import LeiaChatService
 from app.services.products.service import ProductService
 from app.services.profile.service import ProfileService
 from app.services.referrals.service import ReferralService
@@ -105,8 +107,65 @@ async def show_packages_menu(message: Message) -> None:
     )
 
 
-async def _deliver_full_reading(message: Message, text: str) -> None:
+async def _store_reading_state(state: FSMContext | None, text: str, product_id: str) -> None:
+    if state is None:
+        return
+    await state.update_data(
+        last_reading_text=text[:4000],
+        last_product_id=product_id,
+    )
+
+
+async def _deliver_tarot_spread(
+    message: Message,
+    *,
+    question: str,
+    text: str,
+    cards: list[dict],
+    product_id: str,
+    level: str,
+    state: FSMContext | None = None,
+) -> None:
+    if not cards:
+        if level == "full":
+            await _deliver_full_reading(message, text, state=state, product_id=product_id)
+        else:
+            access_label = None
+            user = await _db_user(message.from_user.id if message.from_user else message.chat.id)
+            if user:
+                access_label = await _product_access_label(user.id, product_id)
+            await answer_rich_message(
+                message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
+            )
+        await _store_reading_state(state, text, product_id)
+        return
+
+    label = "Расклад Таро"
+    markup = inline_after_full_reading() if level == "full" else None
+    if level == "mini":
+        user = await _db_user(message.from_user.id if message.from_user else message.chat.id)
+        access_label = None
+        if user:
+            access_label = await _product_access_label(user.id, product_id)
+        markup = inline_after_mini(product_id, access_label=access_label)
+
+    await send_tarot_reading_rich(
+        message,
+        label=label,
+        question=question,
+        reading_type="spread",
+        cards=cards,
+        interpretation=text,
+        lang="ru",
+        reply_markup=markup,
+    )
+    await _store_reading_state(state, text, product_id)
+
+
+async def _deliver_full_reading(message: Message, text: str, *, state: FSMContext | None = None, product_id: str = "") -> None:
     await answer_rich_message(message, text, reply_markup=inline_after_full_reading())
+    if product_id:
+        await _store_reading_state(state, text, product_id)
 
 
 async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
@@ -182,8 +241,21 @@ async def _deliver_payment_flow(
     message: Message, flow: PaymentFlowResult, *, state: FSMContext | None = None
 ) -> None:
     if flow.completed:
-        if flow.product_text:
-            await _deliver_full_reading(message, flow.product_text)
+        if flow.product_text and flow.product_id == "tarot_spread" and flow.tarot_cards:
+            await _deliver_tarot_spread(
+                message,
+                question=flow.tarot_question or "",
+                text=flow.product_text,
+                cards=list(flow.tarot_cards),
+                product_id="tarot_spread",
+                level="full",
+                state=state,
+            )
+        elif flow.product_text:
+            pid = flow.product_id or "question"
+            await _deliver_full_reading(
+                message, flow.product_text, state=state, product_id=pid
+            )
             if state is not None:
                 await state.update_data(last_reading_text=flow.product_text[:4000])
         elif flow.user_text:
@@ -208,10 +280,29 @@ async def _run_entitled_full(
     await _typing(message)
     await message.answer(ENTITLED_FULL)
     try:
-        text = await ProductService().generate_full(
+        service = ProductService()
+        if product_id == "tarot_spread":
+            question = extra_context or "Мой вопрос"
+            text, cards = await service.generate_tarot_spread(
+                user.id,
+                question,
+                level="full",
+                use_entitlement=True,
+            )
+            await _deliver_tarot_spread(
+                message,
+                question=question,
+                text=text,
+                cards=cards,
+                product_id=product_id,
+                level="full",
+                state=state,
+            )
+            return
+        text = await service.generate_full(
             user.id, product_id, extra_context=extra_context, use_entitlement=True
         )
-        await _deliver_full_reading(message, text)
+        await _deliver_full_reading(message, text, state=state, product_id=product_id)
         if state is not None:
             await state.update_data(
                 last_reading_text=text[:4000],
@@ -358,7 +449,16 @@ async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
     if user is None:
         return
     if not await _product_entitled(user.id, product_id):
-        await callback.answer("Сначала оформи пакет или оплати разбор", show_alert=True)
+        await safe_callback_answer(callback)
+        access_label = await _product_access_label(user.id, product_id)
+        has_plan = await EntitlementService().has_any_plan(user.id)
+        await present_rich_panel(
+            callback.message,
+            format_product_pitch_rich(
+                product_id, access_label=access_label, has_plan=has_plan
+            ),
+            reply_markup=inline_product_actions(product_id, access_label=access_label),
+        )
         return
 
     if product_id == "love":
@@ -366,10 +466,10 @@ async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
         await state.update_data(product_id=product_id, mode="full_entitled")
         await callback.message.answer(PRODUCTS["love"].mini_hint)
         return
-    if product_id == "question":
+    if product_id in ("question", "tarot_spread"):
         await state.set_state(BotStates.waiting_product_question)
         await state.update_data(product_id=product_id, mode="full_entitled")
-        await callback.message.answer(PRODUCTS["question"].mini_hint)
+        await callback.message.answer(PRODUCTS[product_id].mini_hint)
         return
 
     await _run_entitled_full(callback.message, user=user, product_id=product_id, state=state)
@@ -395,7 +495,7 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
         await state.update_data(product_id=product_id, mode="mini")
         await callback.message.answer(product.mini_hint)
         return
-    if product_id == "question":
+    if product_id in ("question", "tarot_spread"):
         await state.set_state(BotStates.waiting_product_question)
         await state.update_data(product_id=product_id, mode="mini")
         await callback.message.answer(product.mini_hint)
@@ -440,7 +540,7 @@ async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
         )
         await callback.message.answer(product.mini_hint)
         return
-    if product_id == "question":
+    if product_id in ("question", "tarot_spread"):
         await state.set_state(BotStates.waiting_product_question)
         await state.update_data(
             product_id=product_id,
@@ -469,6 +569,9 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
         return
     data = await state.get_data()
     reading = str(data.get("last_reading_text", "")).strip()
+    user = await _db_user(message.from_user.id)
+    if not reading and user:
+        reading = await ProductService().latest_full_reading(user.id)
     if not reading:
         await message.answer(
             "Сначала получи разбор — потом смогу ответить на вопросы к нему 💫",
@@ -477,7 +580,6 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
         await state.clear()
         return
 
-    user = await _db_user(message.from_user.id)
     name = "дорогая"
     if user:
         async with AsyncSessionLocal() as session:
@@ -588,7 +690,19 @@ async def product_question(message: Message, state: FSMContext) -> None:
 
     await state.clear()
     await message.answer(PRODUCT_LOADING)
-    text = await ProductService().generate_mini(user.id, product_id, extra_context=question)
+    service = ProductService()
+    if product_id == "tarot_spread":
+        text, cards = await service.generate_tarot_spread(user.id, question, level="mini")
+        await _deliver_tarot_spread(
+            message,
+            question=question,
+            text=text,
+            cards=cards,
+            product_id=product_id,
+            level="mini",
+        )
+        return
+    text = await service.generate_mini(user.id, product_id, extra_context=question)
     access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
         message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)

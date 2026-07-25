@@ -873,14 +873,33 @@ class BillingService:
         user_text = notify.get("text") if isinstance(notify, dict) else None
         purpose = str(result.get("purpose") or "")
         product_text = None
+        product_id = None
+        tarot_question = None
+        tarot_cards = None
         if purpose.startswith("product_") and purpose.endswith("_full") and user_text:
             product_text = user_text
             user_text = None
+            product_id = purpose.removeprefix("product_").removesuffix("_full")
+        if result.get("tarot_card_slugs"):
+            from app.services.tarot.cards import FULL_DECK
+            from app.services.tarot.service import TarotService
+
+            tarot = TarotService()
+            slug_set = {str(s) for s in result["tarot_card_slugs"]}
+            cards = []
+            for card in FULL_DECK:
+                if str(card.get("slug")) in slug_set:
+                    cards.append(tarot._attach_image_path(dict(card)))
+            tarot_cards = tuple(cards)
+            tarot_question = str(result.get("tarot_question") or "")
         return PaymentFlowResult(
             amount_rub=amount,
             completed=True,
             user_text=user_text,
             product_text=product_text,
+            product_id=product_id,
+            tarot_question=tarot_question,
+            tarot_cards=tarot_cards,
         )
 
     async def _initiate_platega_payment(
@@ -1128,6 +1147,10 @@ class BillingService:
         )
         if notify:
             result["telegram_notify"] = notify
+        payload = payment.payload or {}
+        if payload.get("tarot_card_slugs"):
+            result["tarot_card_slugs"] = payload["tarot_card_slugs"]
+            result["tarot_question"] = payload.get("tarot_question") or payload.get("extra_context")
         return result
 
     async def reject_payment(

@@ -16,6 +16,7 @@ from app.services.products.entitlements import EntitlementService
 from app.services.numerology.service import NumerologyService
 from app.services.products.prompts import leia_reading_system
 from app.services.billing.providers import PaymentFlowResult
+from app.services.tarot.service import TarotService
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ class ProductService:
                 product_id=product_id,
                 level=level,
                 payment_id=payment_id,
-                content_preview=content[:500] if content else None,
+                content_preview=content[:4000] if content else None,
             )
         )
 
@@ -117,6 +118,73 @@ class ProductService:
         text = await self.kie.chat_completion(messages)
         return normalize_leia_rich(text)
 
+    async def latest_full_reading(self, user_id: str) -> str:
+        async with AsyncSessionLocal() as session:
+            row = await session.scalar(
+                select(ProductUsage)
+                .where(
+                    ProductUsage.user_id == user_id,
+                    ProductUsage.level == "full",
+                )
+                .order_by(ProductUsage.created_at.desc())
+            )
+            return (row.content_preview or "") if row else ""
+
+    async def generate_tarot_spread(
+        self,
+        user_id: str,
+        question: str,
+        *,
+        level: str = "mini",
+        payment_id: str | None = None,
+        use_entitlement: bool = False,
+    ) -> tuple[str, list[dict]]:
+        async with AsyncSessionLocal() as session:
+            profile = await self._profile(session, user_id)
+            if profile is None:
+                return "Сначала пройди анкету — /start", []
+
+            name = profile.name or "ты"
+            bd = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "—"
+            cards = TarotService().draw_cards(4)
+            card_block = "\n".join(
+                f"{idx + 1}. {card['name']} — {card.get('description', '')}"
+                for idx, card in enumerate(cards)
+            )
+            depth = "полный" if level == "full" else "мини"
+            user_prompt = enrich_ai_prompt(
+                f"{depth.capitalize()} расклад Таро (4 карты) для {name}, ДР {bd}.\n"
+                f"Вопрос: {question}\n\n"
+                f"Выпавшие карты:\n{card_block}\n\n"
+                "Дай толкование по каждой позиции (1–4), общий вывод и совет от Леи. "
+                "Заголовок ### 🃏 Расклад Таро."
+            )
+            if level == "mini":
+                user_prompt = enrich_ai_prompt(
+                    f"Мини-расклад Таро (4 карты) для {name}.\n"
+                    f"Вопрос: {question}\n\n"
+                    f"Карты:\n{card_block}\n\n"
+                    "Кратко: 1–2 предложения на карту + итог. "
+                    "В конце: «💎 Хочешь полную расшифровку?»"
+                )
+            messages = [
+                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
+                {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+            ]
+            text = await self._complete_leia(messages)
+            await self.record_usage(
+                session,
+                user_id,
+                "tarot_spread",
+                level,
+                payment_id=payment_id,
+                content=text,
+            )
+            if use_entitlement and level == "full":
+                await EntitlementService().consume_credit(session, user_id, "tarot_spread")
+            await session.commit()
+            return text, cards
+
     async def generate_mini_portrait(self, user_id: str) -> str:
         async with AsyncSessionLocal() as session:
             profile = await self._profile(session, user_id)
@@ -130,8 +198,8 @@ class ProductService:
                 birth_city=profile.birth_city,
             )
             user_prompt = enrich_ai_prompt(
-                f"Составь МИНИ нумерологический портрет для {name}.\n\n{ctx}\n\n"
-                "Формат: ### 🔮 Твой мини-портрет, таблица ключевых чисел матрицы, "
+                f"Составь МИНИ **Матрицу судьбы** (метод Хшановской) для {name}.\n\n{ctx}\n\n"
+                "Формат: ### 🔮 Твоя матрица судьбы, таблица ключевых чисел матрицы, "
                 "архетип, одна сила, одна точка роста, аркан-покровитель, совет от Леи. "
                 "Кратко — не больше 8–10 предложений."
             )
@@ -159,9 +227,10 @@ class ProductService:
             year = date.today().year
 
             user_prompt = enrich_ai_prompt(
-                f"Составь полный нумерологический портрет для {name}.\n\n{ctx}\n\n"
-                "Структура: заголовок ###, таблица матрицы и ключевых чисел, сила, точка роста, "
-                f"задача на {year}, аркан-покровитель, совет от Леи. "
+                f"Составь полную **Матрицу судьбы** (метод Хшановской) для {name}.\n\n{ctx}\n\n"
+                "Структура: заголовок ###, таблица матрицы и ключевых чисел, "
+                "сильные стороны, зоны роста, кармические задачи, "
+                f"фокус на {year}, аркан-покровитель, совет от Леи. "
                 "В конце: «💎 Хочешь узнать больше о какой-то из сфер жизни?»"
             )
             messages = [
@@ -203,8 +272,9 @@ class ProductService:
                     "Индекс чистоты 0–10 + одна сфера внимания. Кратко."
                 ),
                 "forecast": enrich_ai_prompt(
-                    f"Мини-прогноз на неделю для {name}, знак {sign} {emoji}, ДР {bd}. "
-                    "Любовь, деньги, здоровье — по 1 предложению."
+                    f"Мини-матрица судьбы (Хшановская) для {name}, ДР {bd}.\n"
+                    f"{NumerologyService().profile_context(name=name, birth=profile.birth_date, birth_city=profile.birth_city) if profile.birth_date else ''}\n"
+                    "Ключевые энергии матрицы + 1 сила + 1 точка роста. Кратко."
                 ),
                 "question": enrich_ai_prompt(
                     f"Мини-ответ Леи для {name} (ДР {bd}, {sign}):\n"
@@ -255,8 +325,10 @@ class ProductService:
                     "5 сфер, блоки, индекс чистоты, ритуал/практика, аркан-защитник."
                 ),
                 "forecast": enrich_ai_prompt(
-                    f"Полный прогноз на месяц для {name}, {sign} {emoji}, ДР {bd}. "
-                    "4 недели, даты, аркан месяца, астросоветы."
+                    f"Полная **Матрица судьбы** (Хшановская) для {name}, ДР {bd}.\n"
+                    f"{NumerologyService().profile_context(name=name, birth=profile.birth_date, birth_city=profile.birth_city) if profile.birth_date else ''}\n"
+                    "Разбор ключевых энергий матрицы, кармические задачи, "
+                    "сильные стороны, зоны роста, персональные рекомендации."
                 ),
                 "question": enrich_ai_prompt(
                     f"Полный ответ для {name} (ДР {bd}): {extra_context}. "
@@ -285,12 +357,24 @@ class ProductService:
         if product_id not in PRODUCTS:
             return None
         prefs = (payment.payload or {}).get("extra_context", "")
-        if product_id in ("love", "question") and not prefs:
+        if product_id in ("love", "question", "tarot_spread") and not prefs:
             payload = dict(payment.payload or {})
             payload["awaiting_context"] = True
             payment.payload = payload
             await session.flush()
             return None
+        if product_id == "tarot_spread":
+            text, cards = await self.generate_tarot_spread(
+                payment.user_id,
+                prefs,
+                level="full",
+                payment_id=payment.id,
+            )
+            payload = dict(payment.payload or {})
+            payload["tarot_card_slugs"] = [str(c.get("slug", "")) for c in cards]
+            payload["tarot_question"] = prefs
+            payment.payload = payload
+            return text
         return await self._generate_full_in_session(
             session,
             payment.user_id,
@@ -332,8 +416,10 @@ class ProductService:
                 "5 сфер, блоки, индекс чистоты, ритуал/практика, аркан-защитник."
             ),
             "forecast": enrich_ai_prompt(
-                f"Полный прогноз на месяц для {name}, {sign} {emoji}, ДР {bd}. "
-                "4 недели, даты, аркан месяца, астросоветы."
+                f"Полная **Матрица судьбы** (Хшановская) для {name}, ДР {bd}.\n"
+                f"{NumerologyService().profile_context(name=name, birth=profile.birth_date, birth_city=profile.birth_city) if profile.birth_date else ''}\n"
+                "Разбор ключевых энергий матрицы, кармические задачи, "
+                "сильные стороны, зоны роста, персональные рекомендации."
             ),
             "question": enrich_ai_prompt(
                 f"Полный ответ для {name} (ДР {bd}): {extra_context}. "

@@ -131,6 +131,11 @@ class ReferralService:
                     referred.telegram_id,
                     "🎁 Тебя пригласила подруга — **скидка 20%** на все разборы и пакеты при оплате!",
                 )
+                notify_telegram_message(
+                    referrer.telegram_id,
+                    "🎁 Когда подруга зарегистрируется по твоей ссылке — "
+                    "у тебя тоже будет **скидка 20%** на все продукты!",
+                )
             except Exception:
                 pass
             return referrer.first_name or referrer.username or t("referral_friend", lang)

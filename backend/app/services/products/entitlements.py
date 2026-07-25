@@ -79,7 +79,7 @@ class EntitlementService:
         labels = {
             "love": "💞",
             "wealth": "💰",
-            "forecast": "📆",
+            "forecast": "🔮",
         }
         parts = []
         for pid in COMBO_PRODUCTS:

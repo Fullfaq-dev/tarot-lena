@@ -1,10 +1,11 @@
 import random
 from datetime import UTC, date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
-from app.database.models import DailyPrediction, Message, MessageRole, TarotCard, TarotReading, User
+from app.database.models import DailyPrediction, Message, MessageRole, TarotCard, TarotReading, User, UserSettings
 from app.database.session import AsyncSessionLocal
 from app.core.config import get_settings
 from app.services.billing.limits import FREE_READINGS_PER_MONTH, HISTORY_PAGE_SIZE
@@ -56,6 +57,14 @@ class TarotService:
     async def _lang(self, telegram_id: int) -> str:
         return await SettingsService().get_ui_language(telegram_id)
 
+    async def _prediction_date(self, session, user: User) -> date:
+        settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
+        timezone_name = settings.timezone if settings else "Europe/Moscow"
+        try:
+            return datetime.now(ZoneInfo(timezone_name)).date()
+        except Exception:
+            return datetime.now(UTC).date()
+
     async def daily_card_for_telegram(self, telegram_id: int) -> tuple[str, dict | None]:
         lang = await self._lang(telegram_id)
         async with AsyncSessionLocal() as session:
@@ -63,10 +72,11 @@ class TarotService:
             if user is None:
                 return t("error_need_start", lang), None
 
+            prediction_date = await self._prediction_date(session, user)
             existing = await session.scalar(
                 select(DailyPrediction).where(
                     DailyPrediction.user_id == user.id,
-                    DailyPrediction.prediction_date == date.today(),
+                    DailyPrediction.prediction_date == prediction_date,
                 )
             )
             if existing:
@@ -101,7 +111,7 @@ class TarotService:
             session.add(
                 DailyPrediction(
                     user_id=user.id,
-                    prediction_date=date.today(),
+                    prediction_date=prediction_date,
                     tarot_card_id=db_card.id if db_card else None,
                     text=text,
                 )
@@ -124,7 +134,8 @@ class TarotService:
                 .order_by(Message.created_at.desc())
                 .limit(4)
             )
-            today = date.today().isoformat()
+            prediction_date = await self._prediction_date(session, user)
+            today = prediction_date.isoformat()
             for msg in recent:
                 if isinstance(msg.meta, dict) and msg.meta.get("feature") == "daily_card":
                     if msg.meta.get("prediction_date") == today:

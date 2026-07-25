@@ -145,11 +145,15 @@ def inline_legal_links() -> InlineKeyboardMarkup:
 
 
 def inline_broadcast_products() -> InlineKeyboardMarkup:
-    """Кнопки только 5 продуктов — для рассылок."""
+    """Кнопки продуктов — для рассылок."""
     p = PRODUCTS
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                InlineKeyboardButton(
+                    text=f"{p['tarot_spread'].emoji} {p['tarot_spread'].title}",
+                    callback_data="leia:product:tarot_spread",
+                ),
                 InlineKeyboardButton(
                     text=f"{p['love'].emoji} {p['love'].title}",
                     callback_data="leia:product:love",
@@ -158,12 +162,12 @@ def inline_broadcast_products() -> InlineKeyboardMarkup:
                     text=f"{p['wealth'].emoji} {p['wealth'].title}",
                     callback_data="leia:product:wealth",
                 ),
+            ],
+            [
                 InlineKeyboardButton(
                     text=f"{p['negative'].emoji} {p['negative'].title}",
                     callback_data="leia:product:negative",
                 ),
-            ],
-            [
                 InlineKeyboardButton(
                     text=f"{p['forecast'].emoji} {p['forecast'].title}",
                     callback_data="leia:product:forecast",

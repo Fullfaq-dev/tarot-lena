@@ -92,12 +92,14 @@ from app.bot.feature_handlers import (
     router as feature_router,
 )
 from app.bot.leia_handlers import (
+    _deliver_tarot_spread,
     _ensure_reply_keyboard,
     complete_onboarding_flow,
     onboarding_markup_for_step,
     router as leia_router,
     show_leia_menu,
 )
+from app.services.products.service import ProductService
 from app.bot.leia_keyboards import inline_product_menu
 
 router = Router()
@@ -1892,7 +1894,48 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if not text:
             return
 
-        from app.bot.leia_texts import FREE_TEXT_HINT
+        from app.bot.leia_texts import FREE_TEXT_HINT, PAID_CHAT_LOADING, SPREAD_PAYWALL
+        from app.services.products.chat import LeiaChatService
+
+        user_id = await _get_user_id(message.from_user.id)
+        chat = LeiaChatService()
+        if user_id and await chat.has_open_chat(user_id):
+            if chat.looks_like_spread_request(text):
+                entitled = await chat.can_free_spread(user_id, "tarot_spread")
+                if entitled:
+                    await message.answer("✨ Секунду, смотрю карты и числа…")
+                    service = ProductService()
+                    text_spread, cards = await service.generate_tarot_spread(
+                        user_id, text, level="full", use_entitlement=True
+                    )
+                    await _deliver_tarot_spread(
+                        message,
+                        question=text,
+                        text=text_spread,
+                        cards=cards,
+                        product_id="tarot_spread",
+                        level="full",
+                    )
+                    await _ensure_reply_keyboard(message)
+                    return
+                await answer_rich_message(
+                    message,
+                    SPREAD_PAYWALL,
+                    reply_markup=inline_product_menu(),
+                )
+                await _ensure_reply_keyboard(message)
+                return
+
+            name = message.from_user.first_name or "дорогая"
+            await message.answer(PAID_CHAT_LOADING)
+            try:
+                reply = await chat.answer_freeform(user_id, name, text)
+                await answer_rich_message(message, reply, reply_markup=inline_product_menu())
+            except Exception:
+                logger.exception("Paid chat failed")
+                await message.answer("Не получилось ответить сейчас — попробуй ещё раз.")
+            await _ensure_reply_keyboard(message)
+            return
 
         await answer_rich_message(message, FREE_TEXT_HINT)
         await show_leia_menu(message)
