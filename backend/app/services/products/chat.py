@@ -12,9 +12,10 @@ from app.database.session import AsyncSessionLocal
 from app.services.ai.kie_client import KieClient
 from app.services.products.entitlements import EntitlementService
 from app.services.products.prompts import leia_reading_system
+from app.services.products.service import ProductService
 
 _FOLLOWUP_RE = re.compile(
-    r"\b(что|как|почему|зачем|объясни|расскажи|значит|означает|понять|уточни)\b",
+    r"\b(что|как|почему|зачем|объясни|расскажи|расшифруй|значит|означает|понять|уточни)\b",
     re.IGNORECASE,
 )
 _NEW_SPREAD_RE = re.compile(
@@ -58,24 +59,13 @@ class LeiaChatService:
         return bool(_NEW_SPREAD_RE.search(t))
 
     async def latest_reading(self, user_id: str) -> str:
-        async with AsyncSessionLocal() as session:
-            row = await session.scalar(
-                select(ProductUsage)
-                .where(
-                    ProductUsage.user_id == user_id,
-                    ProductUsage.level == "full",
-                )
-                .order_by(ProductUsage.created_at.desc())
-            )
-            if row and row.content_preview:
-                return row.content_preview
-            return ""
+        return await ProductService().latest_reading_context(user_id)
 
     async def can_free_spread(self, user_id: str, product_id: str = "tarot_spread") -> bool:
         return await EntitlementService().can_use_full_free(user_id, product_id)
 
     async def answer_freeform(self, user_id: str, user_name: str, text: str) -> str:
-        reading = await self.latest_reading(user_id)
+        reading = await ProductService().latest_reading_context(user_id)
         ctx_block = ""
         if reading:
             ctx_block = f"\n\nКонтекст последнего разбора:\n{reading[:3500]}"

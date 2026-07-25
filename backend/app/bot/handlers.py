@@ -1915,6 +1915,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                         cards=cards,
                         product_id="tarot_spread",
                         level="full",
+                        state=state,
                     )
                     await _ensure_reply_keyboard(message)
                     return

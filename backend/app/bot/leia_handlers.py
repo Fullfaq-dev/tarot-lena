@@ -43,6 +43,7 @@ from app.bot.leia_texts import (
     LEIA_REPLY_BUTTONS,
     PACKAGE_PAYMENT,
     PAYMENT_LINK,
+    PAID_CHAT_LOADING,
     PORTRAIT_LOADING,
     PRODUCT_LOADING,
     POST_READING_CHAT_HINT,
@@ -119,10 +120,11 @@ async def show_packages_menu(message: Message) -> None:
 
 
 async def _store_reading_state(state: FSMContext | None, text: str, product_id: str) -> None:
-    if state is None:
+    excerpt = (text or "").strip()[:4000]
+    if not excerpt or state is None:
         return
     await state.update_data(
-        last_reading_text=text[:4000],
+        last_reading_text=excerpt,
         last_product_id=product_id,
     )
 
@@ -170,7 +172,12 @@ async def _deliver_tarot_spread(
         lang="ru",
         reply_markup=markup,
     )
-    if level == "full":
+    if level == "full" and not (text or "").strip():
+        await message.answer(
+            "⚠️ Расшифровка не сгенерировалась — нажми «Задать вопрос к разбору» "
+            "или напиши в чат, и я отвечу по картам."
+        )
+    elif level == "full":
         await message.answer(POST_READING_CHAT_HINT)
     await _store_reading_state(state, text, product_id)
 
@@ -398,7 +405,13 @@ async def leia_referral(callback: CallbackQuery, state: FSMContext) -> None:
 @router.callback_query(F.data == "leia:followup")
 async def leia_followup_start(callback: CallbackQuery, state: FSMContext) -> None:
     await safe_callback_answer(callback)
+    reading = ""
+    user = await _db_user(callback.from_user.id)
+    if user:
+        reading = await ProductService().latest_reading_context(user.id)
     await state.set_state(BotStates.waiting_reading_followup)
+    if reading:
+        await state.update_data(last_reading_text=reading[:4000])
     await callback.message.answer(READING_FOLLOWUP_PROMPT)
 
 
@@ -604,14 +617,9 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
     reading = str(data.get("last_reading_text", "")).strip()
     user = await _db_user(message.from_user.id)
     if not reading and user:
-        reading = await ProductService().latest_full_reading(user.id)
-    if not reading:
-        await message.answer(
-            "Сначала получи разбор — потом смогу ответить на вопросы к нему 💫",
-            reply_markup=inline_product_menu(),
-        )
-        await state.clear()
-        return
+        reading = await ProductService().latest_reading_context(user.id)
+        if reading:
+            await state.update_data(last_reading_text=reading[:4000])
 
     name = "дорогая"
     if user:
@@ -619,6 +627,28 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
             profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
             if profile and profile.name:
                 name = profile.name
+
+    chat = LeiaChatService()
+    if not reading and user and await chat.has_open_chat(user.id):
+        await message.answer(PAID_CHAT_LOADING)
+        try:
+            reply = await chat.answer_freeform(user.id, name, question)
+            await answer_rich_message(message, reply, reply_markup=inline_after_full_reading())
+        except Exception:
+            logger.exception("VIP followup chat failed")
+            await message.answer(
+                "Не получилось ответить сейчас — попробуй переформулировать вопрос.",
+                reply_markup=inline_after_full_reading(),
+            )
+        return
+
+    if not reading:
+        await message.answer(
+            "Не вижу текст последнего разбора — выбери продукт в меню или сделай новый расклад.",
+            reply_markup=inline_after_full_reading(),
+        )
+        await state.clear()
+        return
 
     await message.answer("Думаю над твоим вопросом…")
     try:

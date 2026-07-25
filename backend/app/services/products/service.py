@@ -130,6 +130,22 @@ class ProductService:
             )
             return (row.content_preview or "") if row else ""
 
+    async def latest_reading_context(self, user_id: str) -> str:
+        """Last non-empty reading text for follow-up chat (full preferred)."""
+        async with AsyncSessionLocal() as session:
+            row = await session.scalar(
+                select(ProductUsage)
+                .where(
+                    ProductUsage.user_id == user_id,
+                    ProductUsage.content_preview.isnot(None),
+                    ProductUsage.content_preview != "",
+                )
+                .order_by(ProductUsage.created_at.desc())
+            )
+            if row and row.content_preview:
+                return row.content_preview
+            return ""
+
     async def generate_tarot_spread(
         self,
         user_id: str,

@@ -161,7 +161,10 @@ def format_tarot_reading_rich(
             ),
         ]
     )
-    return "\n".join(parts) + RICH_DIVIDER + interpretation.strip()
+    body = "\n".join(parts)
+    if interpretation.strip():
+        return body + RICH_DIVIDER + interpretation.strip()
+    return body
 
 
 def format_runes_table_rich(

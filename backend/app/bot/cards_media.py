@@ -87,36 +87,42 @@ async def send_tarot_reading_rich(
     lang: str,
     reply_markup=None,
 ) -> None:
-    if tarot_collage_available() and format_tarot_collage(cards):
-        rich_with_collage = format_tarot_reading_rich(
-            label=label,
-            question=question,
-            cards=cards,
-            reading_type=reading_type,
-            interpretation=interpretation,
-            lang=lang,
-            include_collage=True,
-        )
-        try:
-            await send_rich_message(
-                message.bot,
-                message.chat.id,
-                rich_with_collage,
-                reply_markup=reply_markup,
-                message_thread_id=message.message_thread_id,
-            )
-            return
-        except TelegramBadRequest:
-            pass
-
-    rich_text = format_tarot_reading_rich(
+    """Cards/collage first, full interpretation in a separate rich message (Telegram drops long tails)."""
+    interpretation = (interpretation or "").strip()
+    header = format_tarot_reading_rich(
         label=label,
         question=question,
         cards=cards,
         reading_type=reading_type,
-        interpretation=interpretation,
+        interpretation="",
         lang=lang,
-        include_collage=False,
+        include_collage=True,
     )
-    await send_drawn_cards(message, cards)
-    await answer_rich_message(message, rich_text, reply_markup=reply_markup)
+
+    header_sent = False
+    if header.strip():
+        try:
+            await send_rich_message(
+                message.bot,
+                message.chat.id,
+                header,
+                reply_markup=None,
+                message_thread_id=message.message_thread_id,
+            )
+            header_sent = True
+        except TelegramBadRequest:
+            header_sent = False
+
+    if not header_sent:
+        await send_drawn_cards(message, cards)
+        if question:
+            await message.answer(f"**{label}**\n\nВопрос: {question}")
+
+    if interpretation:
+        await answer_rich_message(message, interpretation, reply_markup=reply_markup)
+    elif reply_markup is not None:
+        await message.answer(
+            "Карты на месте — полная расшифровка не пришла. "
+            "Напиши «Расшифруй» или задай вопрос к раскладу.",
+            reply_markup=reply_markup,
+        )
