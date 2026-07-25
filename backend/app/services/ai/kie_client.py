@@ -94,7 +94,7 @@ class KieClient:
         }
         client = get_async_client()
         response = await client.post(
-            self._chat_url(), headers=self.headers, json=payload, timeout=120
+            self._chat_url(), headers=self.headers, json=payload, timeout=75
         )
         response.raise_for_status()
         data = response.json()

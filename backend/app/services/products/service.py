@@ -29,12 +29,15 @@ class ProductService:
         return await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user_id))
 
     async def has_mini(self, user_id: str, product_id: str) -> bool:
+        """True only if a successful mini (with text) was already delivered."""
         async with AsyncSessionLocal() as session:
             row = await session.scalar(
                 select(ProductUsage.id).where(
                     ProductUsage.user_id == user_id,
                     ProductUsage.product_id == product_id,
                     ProductUsage.level == "mini",
+                    ProductUsage.content_preview.isnot(None),
+                    ProductUsage.content_preview != "",
                 )
             )
             return row is not None
@@ -115,12 +118,12 @@ class ProductService:
             )
 
     async def _complete_leia(self, messages: list) -> str:
+        """One retry only on transport errors — empty answers fail fast to fallbacks."""
         last_error: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 text = normalize_leia_rich(await self.kie.chat_completion(messages))
-                if text.strip():
-                    return text
+                return text.strip() and text or ""
             except Exception as exc:
                 last_error = exc
                 logger.warning("Leia AI attempt %s failed: %s", attempt + 1, exc)
@@ -174,6 +177,52 @@ class ProductService:
             if row and row.content_preview:
                 return row.content_preview
             return ""
+
+    async def history_page(
+        self, user_id: str, page: int = 0, *, page_size: int = 5
+    ) -> tuple[list[ProductUsage], int, int]:
+        from sqlalchemy import func
+
+        page = max(0, page)
+        async with AsyncSessionLocal() as session:
+            total = await session.scalar(
+                select(func.count())
+                .select_from(ProductUsage)
+                .where(
+                    ProductUsage.user_id == user_id,
+                    ProductUsage.content_preview.isnot(None),
+                    ProductUsage.content_preview != "",
+                )
+            ) or 0
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            if page >= total_pages:
+                page = total_pages - 1
+            rows = await session.scalars(
+                select(ProductUsage)
+                .where(
+                    ProductUsage.user_id == user_id,
+                    ProductUsage.content_preview.isnot(None),
+                    ProductUsage.content_preview != "",
+                )
+                .order_by(ProductUsage.created_at.desc())
+                .offset(page * page_size)
+                .limit(page_size)
+            )
+            return list(rows.all()), page, total_pages
+
+    async def get_usage(self, user_id: str, usage_id: str) -> ProductUsage | None:
+        async with AsyncSessionLocal() as session:
+            row = await session.scalar(
+                select(ProductUsage).where(
+                    ProductUsage.id == usage_id,
+                    ProductUsage.user_id == user_id,
+                )
+            )
+            if row is None:
+                return None
+            # Detach fields we need outside the session.
+            session.expunge(row)
+            return row
 
     async def generate_tarot_spread(
         self,
@@ -335,8 +384,9 @@ class ProductService:
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
             text = await self._complete_leia(messages)
-            await self.record_usage(session, user_id, product_id, "mini", content=text)
-            await session.commit()
+            if (text or "").strip():
+                await self.record_usage(session, user_id, product_id, "mini", content=text)
+                await session.commit()
             return text
 
     async def generate_full(

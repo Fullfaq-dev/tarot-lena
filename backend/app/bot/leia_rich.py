@@ -191,6 +191,20 @@ def format_welcome_onboarding_rich() -> str:
     return normalize_leia_rich("\n".join(parts))
 
 
+def format_history_list_rich(*, page: int, total_pages: int, count: int) -> str:
+    parts = [
+        "### 📜 История разборов",
+        "",
+    ]
+    if count == 0:
+        parts.append("Пока пусто — сделай первый разбор в меню, и он появится здесь.")
+    else:
+        parts.append("Нажми на разбор ниже, чтобы открыть его снова.")
+        if total_pages > 1:
+            parts.extend(["", f"_Страница {page + 1} из {total_pages}_"])
+    return normalize_leia_rich("\n".join(parts))
+
+
 def format_leia_menu_rich(*, plan_label: str | None = None) -> str:
     parts = [
         "### 💫 Главное меню",

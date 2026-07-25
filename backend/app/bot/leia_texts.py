@@ -30,8 +30,9 @@ WELCOME_BACK = "С возвращением! Выбери тему — я ряд
 MENU_TEXT = "Выбери, что хочешь узнать:"
 
 BTN_MENU = "🏠 Меню"
+BTN_HISTORY = "📜 История"
 BTN_PROFILE = "👤 Профиль"
-LEIA_REPLY_BUTTONS = frozenset({BTN_MENU, BTN_PROFILE})
+LEIA_REPLY_BUTTONS = frozenset({BTN_MENU, BTN_HISTORY, BTN_PROFILE})
 
 FREE_TEXT_HINT = (
     "Я отвечаю через расклады — выбери тему в меню или нажми **🏠 Меню** внизу 👇"

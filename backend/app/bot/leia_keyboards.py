@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from app.bot.leia_texts import BTN_MENU, BTN_PROFILE, legal_url
+from app.bot.leia_texts import BTN_HISTORY, BTN_MENU, BTN_PROFILE, legal_url
 from app.services.products.catalog import PRODUCTS
 from app.services.products.packages import PACKAGES
 
@@ -32,12 +32,58 @@ def inline_product_menu() -> InlineKeyboardMarkup:
                 )
             ]
         )
+    rows.append([InlineKeyboardButton(text="📜 История разборов", callback_data="leia:history:0")])
     rows.append([InlineKeyboardButton(text="📦 Пакеты и подписки", callback_data="leia:packages")])
     rows.append([InlineKeyboardButton(text="👭 Приведи подругу", callback_data="leia:referral")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def inline_product_actions(product_id: str, *, access_label: str | None = None) -> InlineKeyboardMarkup:
+def inline_history_menu(
+    items: list,
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    rows = []
+    for item in items:
+        product = PRODUCTS.get(item.product_id)
+        title = f"{product.emoji} {product.title}" if product else item.product_id
+        level = "мини" if item.level == "mini" else "полная"
+        when = item.created_at.strftime("%d.%m %H:%M") if item.created_at else ""
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{title} · {level} · {when}",
+                    callback_data=f"leia:hist:{item.id}",
+                )
+            ]
+        )
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"leia:history:{page - 1}"))
+    if page + 1 < total_pages:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"leia:history:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🏠 Меню", callback_data="leia:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def inline_history_item() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📜 К истории", callback_data="leia:history:0")],
+            [InlineKeyboardButton(text="💬 Вопрос к разбору", callback_data="leia:followup")],
+            [InlineKeyboardButton(text="🏠 Меню", callback_data="leia:menu")],
+        ]
+    )
+
+
+def inline_product_actions(
+    product_id: str,
+    *,
+    access_label: str | None = None,
+    mini_used: bool = False,
+) -> InlineKeyboardMarkup:
     product = PRODUCTS[product_id]
     price = int(product.price_rub)
     rows = []
@@ -46,9 +92,19 @@ def inline_product_actions(product_id: str, *, access_label: str | None = None) 
             [InlineKeyboardButton(text="▶️ Запустить", callback_data=f"leia:launch:{product_id}")]
         )
     else:
-        rows.append(
-            [InlineKeyboardButton(text="🆓 Мини-версия", callback_data=f"leia:mini:{product_id}")]
-        )
+        if mini_used:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="🆓 Мини уже была",
+                        callback_data=f"leia:mini_used:{product_id}",
+                    )
+                ]
+            )
+        else:
+            rows.append(
+                [InlineKeyboardButton(text="🆓 Мини-версия", callback_data=f"leia:mini:{product_id}")]
+            )
         rows.append(
             [
                 InlineKeyboardButton(
@@ -203,7 +259,10 @@ def inline_broadcast_products() -> InlineKeyboardMarkup:
 
 def leia_reply_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=BTN_MENU), KeyboardButton(text=BTN_PROFILE)]],
+        keyboard=[
+            [KeyboardButton(text=BTN_MENU), KeyboardButton(text=BTN_HISTORY)],
+            [KeyboardButton(text=BTN_PROFILE)],
+        ],
         resize_keyboard=True,
         is_persistent=True,
     )

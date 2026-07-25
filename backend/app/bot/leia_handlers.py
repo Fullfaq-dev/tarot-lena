@@ -16,6 +16,8 @@ from app.bot.leia_keyboards import (
     inline_after_mini,
     inline_evening_reading,
     inline_funnel_day2_topics,
+    inline_history_item,
+    inline_history_menu,
     inline_legal_consent,
     inline_package_actions,
     inline_packages_menu,
@@ -26,6 +28,7 @@ from app.bot.leia_keyboards import (
     leia_reply_keyboard,
 )
 from app.bot.leia_rich import (
+    format_history_list_rich,
     format_leia_menu_rich,
     format_package_pitch_rich,
     format_packages_menu_rich,
@@ -34,6 +37,7 @@ from app.bot.leia_rich import (
 )
 from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.leia_texts import (
+    BTN_HISTORY,
     BTN_MENU,
     BTN_PROFILE,
     ENTITLED_FULL,
@@ -93,6 +97,20 @@ async def show_leia_profile(message: Message, *, telegram_id: int | None = None)
         message,
         text,
         reply_markup=inline_product_menu(),
+    )
+
+
+async def show_leia_history(message: Message, *, page: int = 0) -> None:
+    user = await _db_user(message.from_user.id if message.from_user else message.chat.id)
+    if user is None:
+        await message.answer("Сначала нажми /start")
+        return
+    items, page, total_pages = await ProductService().history_page(user.id, page)
+    text = format_history_list_rich(page=page, total_pages=total_pages, count=len(items))
+    await answer_rich_message(
+        message,
+        text,
+        reply_markup=inline_history_menu(items, page, total_pages),
     )
 
 
@@ -221,6 +239,9 @@ async def leia_reply_buttons(message: Message, state: FSMContext) -> None:
     await state.clear()
     if message.text == BTN_MENU:
         await show_leia_menu(message)
+        return
+    if message.text == BTN_HISTORY:
+        await show_leia_history(message)
         return
     if message.text == BTN_PROFILE:
         await show_leia_profile(message)
@@ -464,16 +485,72 @@ async def leia_product_pitch(callback: CallbackQuery, state: FSMContext) -> None
     ent = EntitlementService()
     access_label = None
     has_plan = False
+    mini_used = False
     if user:
         access_label = await _product_access_label(user.id, product_id)
         has_plan = await ent.has_any_plan(user.id)
+        mini_used = await ProductService().has_mini(user.id, product_id)
     await callback_leia_scene(
         callback,
         format_product_pitch_rich(
             product_id, access_label=access_label, has_plan=has_plan
         ),
-        reply_markup=inline_product_actions(product_id, access_label=access_label),
+        reply_markup=inline_product_actions(
+            product_id, access_label=access_label, mini_used=mini_used
+        ),
         image_key=product_id,
+    )
+
+
+@router.callback_query(F.data.startswith("leia:mini_used:"))
+async def leia_mini_used(callback: CallbackQuery) -> None:
+    await safe_callback_answer(
+        callback,
+        "Мини-версия уже была — открой полную расшифровку 🔓",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data.startswith("leia:history:"))
+async def leia_history(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await state.clear()
+    if callback.message is None:
+        return
+    try:
+        page = int(callback.data.removeprefix("leia:history:"))
+    except ValueError:
+        page = 0
+    await show_leia_history(callback.message, page=page)
+
+
+@router.callback_query(F.data.startswith("leia:hist:"))
+async def leia_history_open(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    if callback.message is None:
+        return
+    usage_id = callback.data.removeprefix("leia:hist:")
+    user = await _db_user(callback.from_user.id)
+    if user is None:
+        return
+    row = await ProductService().get_usage(user.id, usage_id)
+    if row is None or not (row.content_preview or "").strip():
+        await callback.message.answer("Этот разбор уже недоступен.")
+        return
+    product = PRODUCTS.get(row.product_id)
+    title = f"{product.emoji} {product.title}" if product else "Разбор"
+    level = "мини" if row.level == "mini" else "полная"
+    when = row.created_at.strftime("%d.%m.%Y %H:%M") if row.created_at else ""
+    header = f"### 📜 {title}\n\n_{level} · {when}_\n\n"
+    body = f"{header}{row.content_preview}"
+    await state.update_data(
+        last_reading_text=row.content_preview[:4000],
+        last_product_id=row.product_id,
+    )
+    await answer_rich_message(
+        callback.message,
+        body,
+        reply_markup=inline_history_item(),
     )
 
 
@@ -490,12 +567,15 @@ async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
         await safe_callback_answer(callback)
         access_label = await _product_access_label(user.id, product_id)
         has_plan = await EntitlementService().has_any_plan(user.id)
+        mini_used = await ProductService().has_mini(user.id, product_id)
         await callback_leia_scene(
             callback,
             format_product_pitch_rich(
                 product_id, access_label=access_label, has_plan=has_plan
             ),
-            reply_markup=inline_product_actions(product_id, access_label=access_label),
+            reply_markup=inline_product_actions(
+                product_id, access_label=access_label, mini_used=mini_used
+            ),
             image_key=product_id,
         )
         return
@@ -516,18 +596,25 @@ async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("leia:mini:"))
 async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
-    await safe_callback_answer(callback)
     product_id = callback.data.removeprefix("leia:mini:")
     product = PRODUCTS.get(product_id)
     if product is None:
+        await safe_callback_answer(callback)
         return
 
     user = await _db_user(callback.from_user.id)
     if user is None:
+        await safe_callback_answer(callback)
         return
     if await ProductService().has_mini(user.id, product_id):
-        await callback.answer("Мини-версия уже была — попробуй полную 🔓", show_alert=True)
+        await safe_callback_answer(
+            callback,
+            "Мини-версия уже была — открой полную расшифровку 🔓",
+            show_alert=True,
+        )
         return
+
+    await safe_callback_answer(callback)
 
     if product_id == "love":
         await state.set_state(BotStates.waiting_partner_birth_date)
@@ -543,6 +630,11 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.message.answer(PRODUCT_LOADING)
     try:
         text = await ProductService().generate_mini(user.id, product_id)
+        if not (text or "").strip():
+            await callback.message.answer(
+                "Не получилось собрать мини-разбор — попробуй ещё раз чуть позже."
+            )
+            return
         access_label = await _product_access_label(user.id, product_id)
         await answer_rich_message(
             callback.message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
@@ -554,20 +646,22 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("leia:full:"))
 async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
-    await safe_callback_answer(callback)
     product_id = callback.data.removeprefix("leia:full:")
     product = PRODUCTS.get(product_id)
     if product is None:
+        await safe_callback_answer(callback)
         return
 
     user = await _db_user(callback.from_user.id)
     if user is None:
+        await safe_callback_answer(callback)
         return
     service = ProductService()
     if await service.is_full_blocked(user.id, product_id):
-        await callback.answer("Полная версия уже есть ✨", show_alert=True)
+        await safe_callback_answer(callback, "Полная версия уже есть ✨", show_alert=True)
         return
 
+    await safe_callback_answer(callback)
     entitled = await _product_entitled(user.id, product_id)
 
     if product_id == "love":
@@ -819,13 +913,20 @@ async def leia_funnel_topic(callback: CallbackQuery, state: FSMContext) -> None:
             format_product_pitch_rich(
                 product_id, access_label=access_label, has_plan=has_plan
             ),
-            reply_markup=inline_product_actions(product_id, access_label=access_label),
+            reply_markup=inline_product_actions(
+                product_id, access_label=access_label, mini_used=True
+            ),
             image_key=product_id,
         )
         return
     await callback.message.answer(PRODUCT_LOADING)
     try:
         text = await service.generate_mini(user.id, product_id)
+        if not (text or "").strip():
+            await callback.message.answer(
+                "Не получилось собрать мини-разбор — попробуй ещё раз чуть позже."
+            )
+            return
         access_label = await _product_access_label(user.id, product_id)
         await answer_leia_rich(
             callback.message,
