@@ -18,6 +18,10 @@ _STRIKE = re.compile(r"<\s*(?:s|strike|del)\s*>(.*?)<\s*/\s*(?:s|strike|del)\s*>
 _BLOCKQUOTE = re.compile(r"<blockquote>(.*?)</blockquote>", re.IGNORECASE | re.DOTALL)
 _REMAINING_TAG = re.compile(r"</?[a-zA-Z][^>]*>")
 _HEADING_LINE = re.compile(r"^\s*\*\*(.+?)\*\*\s*$")
+_MD_HEADING = re.compile(r"^#{1,6}\s+(.+)$")
+_MD_IMAGE = re.compile(r"^!\[\]\([^)]+\)\s*$")
+_MD_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_TABLE_SEP = re.compile(r"^\|[\s\-:|]+\|$")
 
 
 def _blockquote_to_markdown(inner: str) -> str:
@@ -76,7 +80,73 @@ def prepare_rich_markdown(text: str) -> str:
     if not text:
         return text
     cleaned = _RICH_STRIP_HTML.sub("", text)
-    return cleaned.replace("\r\n", "\n").strip()
+    cleaned = cleaned.replace("\r\n", "\n")
+    lines = [
+        line
+        for line in cleaned.split("\n")
+        if not _MD_IMAGE.match(line.strip())
+        and line.strip() not in {"<tg-collage>", "</tg-collage>"}
+    ]
+    return "\n".join(lines).strip()
+
+
+def _inline_markdown_to_html(line: str) -> str:
+    """Bold/italic/code/links within a single line."""
+    s = _MD_LINK.sub(
+        lambda m: f'<a href="{escape(m.group(2), quote=True)}">{escape(m.group(1))}</a>',
+        line,
+    )
+    return to_telegram_html(s)
+
+
+def leia_markdown_to_html(text: str) -> str:
+    """Convert Leia rich markdown panels to Telegram HTML (legacy fallback)."""
+    if not text:
+        return text
+
+    lines = text.replace("\r\n", "\n").split("\n")
+    blocks: list[str] = []
+    paragraph: list[str] = []
+
+    def flush_paragraph() -> None:
+        if not paragraph:
+            return
+        blocks.append(_inline_markdown_to_html("\n".join(paragraph)))
+        paragraph.clear()
+
+    for raw in lines:
+        line = raw.rstrip()
+        stripped = line.strip()
+
+        if not stripped:
+            flush_paragraph()
+            continue
+
+        if _MD_IMAGE.match(stripped) or stripped in {"<tg-collage>", "</tg-collage>"}:
+            continue
+
+        heading = _MD_HEADING.match(stripped)
+        if heading:
+            flush_paragraph()
+            blocks.append(f"<b>{escape(heading.group(1).strip())}</b>")
+            continue
+
+        if _TABLE_SEP.match(stripped):
+            continue
+
+        if stripped.startswith("|") and stripped.endswith("|"):
+            flush_paragraph()
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            if len(cells) >= 2 and cells[0] not in {"", "-"}:
+                blocks.append(
+                    f"{_inline_markdown_to_html(cells[0])}: {_inline_markdown_to_html(cells[1])}"
+                )
+            continue
+
+        paragraph.append(line)
+
+    flush_paragraph()
+    return "\n\n".join(blocks)
 
 
 def to_telegram_html(text: str) -> str:

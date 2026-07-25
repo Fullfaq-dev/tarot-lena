@@ -10,7 +10,12 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import ChatIdUnion, Message, ReplyMarkupUnion, ReplyParameters
 
-from app.bot.formatting import html_to_rich_markdown, prepare_rich_markdown, to_telegram_html
+from app.bot.formatting import (
+    html_to_rich_markdown,
+    leia_markdown_to_html,
+    prepare_rich_markdown,
+    to_telegram_html,
+)
 from app.bot.telegram_rich import (
     EditRichMessage,
     InputRichMessage,
@@ -262,7 +267,11 @@ async def present_rich_text(
     except TelegramBadRequest as exc:
         if not is_rich_message_unsupported(exc) and not is_parse_entities_error(exc):
             logger.warning("Rich text panel send failed: %s", exc)
-        return await message.answer(truncate_text(text), reply_markup=reply_markup, parse_mode=None)
+        html = truncate_text(leia_markdown_to_html(text))
+        try:
+            return await message.answer(html, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        except TelegramBadRequest:
+            return await message.answer(truncate_text(text), reply_markup=reply_markup, parse_mode=None)
 
 
 async def present_rich_panel(
@@ -351,7 +360,7 @@ async def _answer_legacy_html(
     reply_markup: ReplyMarkupUnion | None = None,
 ) -> Message:
     body = truncate_text(text)
-    html = truncate_text(to_telegram_html(body))
+    html = truncate_text(leia_markdown_to_html(body))
     try:
         return await message.answer(html, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
     except TelegramBadRequest as exc:

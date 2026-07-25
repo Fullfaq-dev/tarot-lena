@@ -1560,7 +1560,6 @@ async def _process_onboarding_answer(
 
     if isinstance(source, CallbackQuery):
         if completed:
-            await source.message.answer(onboarding_reply)
             await complete_onboarding_flow(source.message, telegram_user.id)
         elif edit:
             await safe_edit(source.message, reply_text, markup)
@@ -1568,7 +1567,6 @@ async def _process_onboarding_answer(
             await source.message.answer(reply_text, reply_markup=markup)
     else:
         if completed:
-            await source.answer(onboarding_reply)
             await complete_onboarding_flow(source, telegram_user.id)
         else:
             await source.answer(reply_text, reply_markup=markup)

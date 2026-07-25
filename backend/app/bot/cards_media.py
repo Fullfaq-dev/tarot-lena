@@ -6,6 +6,7 @@ from aiogram.types import FSInputFile, InputMediaPhoto, Message
 
 from app.bot.media import truncate_caption
 from app.bot.rich_layouts import format_tarot_collage, format_tarot_reading_rich, tarot_collage_available
+from app.bot.formatting import leia_markdown_to_html, to_telegram_html
 from app.bot.rich_messages import answer_rich_message, send_rich_message
 from app.core.config import get_settings
 
@@ -116,7 +117,8 @@ async def send_tarot_reading_rich(
     if not header_sent:
         await send_drawn_cards(message, cards)
         if question:
-            await message.answer(f"**{label}**\n\nВопрос: {question}")
+            caption = leia_markdown_to_html(f"**{label}**\n\n**Вопрос:** {question}")
+            await message.answer(caption, parse_mode="HTML")
 
     if interpretation:
         await answer_rich_message(message, interpretation, reply_markup=reply_markup)

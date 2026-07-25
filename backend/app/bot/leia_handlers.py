@@ -31,13 +31,11 @@ from app.bot.leia_rich import (
     format_packages_menu_rich,
     format_product_pitch_rich,
     format_referral_friend_rich,
-    normalize_leia_rich,
 )
 from app.bot.cards_media import send_card_with_caption, send_tarot_reading_rich
 from app.bot.leia_texts import (
     BTN_MENU,
     BTN_PROFILE,
-    COMBO_OFFER,
     ENTITLED_FULL,
     LEIA_REPLY_BUTTONS,
     PACKAGE_PAYMENT,
@@ -215,12 +213,7 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
             "Портрет временно недоступен — но меню уже готово ✨",
             reply_markup=inline_product_menu(),
         )
-    await present_leia_scene(
-        message,
-        normalize_leia_rich(COMBO_OFFER),
-        reply_markup=inline_packages_menu(),
-        image_key="packages",
-    )
+    await _ensure_reply_keyboard(message)
 
 
 @router.message(F.text.in_(LEIA_REPLY_BUTTONS))

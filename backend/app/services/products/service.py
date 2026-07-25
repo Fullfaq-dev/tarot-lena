@@ -115,8 +115,37 @@ class ProductService:
             )
 
     async def _complete_leia(self, messages: list) -> str:
-        text = await self.kie.chat_completion(messages)
-        return normalize_leia_rich(text)
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                text = normalize_leia_rich(await self.kie.chat_completion(messages))
+                if text.strip():
+                    return text
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Leia AI attempt %s failed: %s", attempt + 1, exc)
+        if last_error:
+            logger.error("Leia AI failed after retries: %s", last_error)
+        return ""
+
+    @staticmethod
+    def _tarot_fallback_text(question: str, cards: list[dict], *, level: str) -> str:
+        lines = [
+            "### 🃏 Расклад Таро",
+            "",
+            f"**Вопрос:** {question}",
+            "",
+        ]
+        for idx, card in enumerate(cards, 1):
+            name = str(card.get("name", "Карта"))
+            desc = str(card.get("description", "важное послание"))
+            lines.append(f"**{idx}. {name}** — {desc}")
+        lines.append("")
+        if level == "mini":
+            lines.append("💎 Хочешь полную расшифровку?")
+        else:
+            lines.append("✨ Это общий смысл карт — могу уточнить, если задашь вопрос.")
+        return normalize_leia_rich("\n".join(lines))
 
     async def latest_full_reading(self, user_id: str) -> str:
         async with AsyncSessionLocal() as session:
@@ -188,6 +217,8 @@ class ProductService:
                 {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
             ]
             text = await self._complete_leia(messages)
+            if not (text or "").strip():
+                text = self._tarot_fallback_text(question, cards, level=level)
             await self.record_usage(
                 session,
                 user_id,

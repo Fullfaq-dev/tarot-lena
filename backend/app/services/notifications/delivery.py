@@ -5,10 +5,10 @@ from __future__ import annotations
 from aiogram import Bot
 
 from app.bot.formatting import to_telegram_html
-from app.bot.leia_assets import leia_image_rich_available, leia_asset_path, prepend_leia_image
+from app.bot.leia_assets import leia_asset_path
 from app.bot.leia_keyboards import inline_packages_menu, inline_referral_share
 from app.database.models import Notification, User
-from app.services.telegram_notify import send_bot_html, send_bot_photo, send_bot_rich
+from app.services.telegram_notify import send_bot_html, send_bot_photo
 
 
 def _reply_markup(payload: dict):
@@ -31,17 +31,8 @@ async def deliver_notification(bot: Bot, user: User, notification: Notification)
         return False
 
     reply_markup = _reply_markup(payload)
-    image_key = payload.get("image_key")
-    if image_key and leia_image_rich_available():
-        body = prepend_leia_image(text, str(image_key))
-        return await send_bot_rich(
-            bot,
-            user.telegram_id,
-            body,
-            reply_markup=reply_markup,
-        )
-
     html = to_telegram_html(text)
+    image_key = payload.get("image_key")
     if image_key:
         asset = leia_asset_path(str(image_key))
         if asset:
