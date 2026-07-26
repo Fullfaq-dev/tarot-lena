@@ -37,7 +37,14 @@ ensure_env PLATEGA_PAYMENT_METHOD "0"
 ensure_env TELEGRAM_ADMIN_IDS "267409502,7670490295"
 ensure_env OWNER_TELEGRAM_ID "7670490295"
 ensure_env TELEGRAM_USE_POLLING "1"
-ensure_env PAYMENTS_DEMO_MODE "1"
+ensure_env ROBOKASSA_HASH "md5"
+# Keep existing ROBOKASSA_* / PAYMENTS_DEMO_MODE if already set on the server.
+if ! grep -q "^PAYMENTS_DEMO_MODE=" .env 2>/dev/null; then
+  ensure_env PAYMENTS_DEMO_MODE "1"
+fi
+if ! grep -q "^ROBOKASSA_IS_TEST=" .env 2>/dev/null; then
+  ensure_env ROBOKASSA_IS_TEST "1"
+fi
 if ! grep -q "^JWT_SECRET=" .env 2>/dev/null || grep -q "^JWT_SECRET=replace-me" .env 2>/dev/null; then
   ensure_env JWT_SECRET "$(openssl rand -hex 32)"
 fi

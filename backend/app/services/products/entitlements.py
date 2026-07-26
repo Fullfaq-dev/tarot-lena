@@ -131,7 +131,7 @@ class EntitlementService:
         subscription.status = "active"
         subscription.started_at = datetime.now(timezone.utc)
         subscription.expires_at = expires
-        subscription.provider = "platega"
+        subscription.provider = "robokassa"
         subscription.provider_subscription_id = payment_id
 
     async def consume_credit(

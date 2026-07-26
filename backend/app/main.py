@@ -16,6 +16,7 @@ from app.api.landing_analytics import router as landing_analytics_router
 from app.api.kie_callbacks import router as kie_callbacks_router
 from app.api.payment_pages import router as payment_pages_router
 from app.api.platega_callbacks import router as platega_callbacks_router
+from app.api.robokassa_callbacks import router as robokassa_callbacks_router
 from app.bot.factory import create_bot, create_dispatcher
 from app.bot.leia_assets import ASSETS_DIR
 from app.core.config import get_settings
@@ -93,6 +94,7 @@ app.include_router(health_router)
 app.include_router(landing_analytics_router, prefix="/api/landing")
 app.include_router(payment_pages_router)
 app.include_router(kie_callbacks_router)
+app.include_router(robokassa_callbacks_router)
 app.include_router(platega_callbacks_router)
 app.include_router(admin_auth_router, prefix="/admin-api/auth")
 app.include_router(admin_router, prefix="/admin-api")

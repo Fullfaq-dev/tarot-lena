@@ -45,12 +45,16 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           PLATEGA_MERCHANT_ID: ${{ secrets.PLATEGA_MERCHANT_ID }}
           PLATEGA_API_KEY: ${{ secrets.PLATEGA_API_KEY }}
+          ROBOKASSA_MERCHANT_LOGIN: ${{ secrets.ROBOKASSA_MERCHANT_LOGIN }}
+          ROBOKASSA_PASSWORD1: ${{ secrets.ROBOKASSA_PASSWORD1 }}
+          ROBOKASSA_PASSWORD2: ${{ secrets.ROBOKASSA_PASSWORD2 }}
+          ROBOKASSA_IS_TEST: ${{ secrets.ROBOKASSA_IS_TEST }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: TELEGRAM_BOT_TOKEN,KIE_API_KEY,AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY,VPS_HOST
+          envs: TELEGRAM_BOT_TOKEN,KIE_API_KEY,AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY,ROBOKASSA_MERCHANT_LOGIN,ROBOKASSA_PASSWORD1,ROBOKASSA_PASSWORD2,ROBOKASSA_IS_TEST,VPS_HOST
           script: |
             set -euo pipefail
             cd /opt/tarot-lena
@@ -68,13 +72,13 @@ jobs:
               fi
             }
 
-            set_env PAYMENTS_DEMO_MODE "1"
             set_env PUBLIC_BASE_URL "${PUBLIC_URL}"
             set_env PLATEGA_RETURN_URL "${PUBLIC_URL}/payment/success"
             set_env PLATEGA_FAILED_URL "${PUBLIC_URL}/payment/failed"
             set_env LEGAL_PAGE_URL "${PUBLIC_URL}/legal"
             set_env TELEGRAM_USE_POLLING "1"
             set_env HTTP_PORT "80"
+            set_env ROBOKASSA_HASH "md5"
 
             if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
               set_env TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN}"
@@ -96,11 +100,18 @@ jobs:
               set_env AI302_STT_MODEL "whisper-1"
             fi
 
-            if [ -n "${PLATEGA_MERCHANT_ID:-}" ] && [ -n "${PLATEGA_API_KEY:-}" ]; then
+            if [ -n "${ROBOKASSA_MERCHANT_LOGIN:-}" ] && [ -n "${ROBOKASSA_PASSWORD1:-}" ] && [ -n "${ROBOKASSA_PASSWORD2:-}" ]; then
+              set_env ROBOKASSA_MERCHANT_LOGIN "${ROBOKASSA_MERCHANT_LOGIN}"
+              set_env ROBOKASSA_PASSWORD1 "${ROBOKASSA_PASSWORD1}"
+              set_env ROBOKASSA_PASSWORD2 "${ROBOKASSA_PASSWORD2}"
+              set_env ROBOKASSA_IS_TEST "${ROBOKASSA_IS_TEST:-1}"
+              set_env PAYMENTS_DEMO_MODE "0"
+            elif [ -n "${PLATEGA_MERCHANT_ID:-}" ] && [ -n "${PLATEGA_API_KEY:-}" ]; then
               set_env PLATEGA_MERCHANT_ID "${PLATEGA_MERCHANT_ID}"
               set_env PLATEGA_API_KEY "${PLATEGA_API_KEY}"
               set_env PLATEGA_PAYMENT_METHOD "0"
-              set_env PAYMENTS_DEMO_MODE "0"
+            else
+              set_env PAYMENTS_DEMO_MODE "1"
             fi
 
             git fetch origin main

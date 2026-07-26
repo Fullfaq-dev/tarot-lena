@@ -1935,44 +1935,17 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if not text:
             return
 
-        from app.bot.leia_texts import FREE_TEXT_HINT, PAID_CHAT_LOADING, SPREAD_PAYWALL
+        from app.bot.leia_texts import CHAT_NEW_READING_HINT, FREE_TEXT_HINT, PAID_CHAT_LOADING
         from app.services.products.chat import LeiaChatService
 
         user_id = await _get_user_id(message.from_user.id)
         chat = LeiaChatService()
         if user_id and await chat.has_open_chat(user_id):
+            # New readings only via menu buttons — never from freeform chat.
             if chat.looks_like_spread_request(text):
-                entitled = await chat.can_free_spread(user_id, "tarot_spread")
-                if await refuse_if_busy_message(message):
-                    return
-                if entitled:
-                    service = ProductService()
-                    result = await run_busy_job(
-                        message,
-                        lambda: service.generate_tarot_spread(
-                            user_id, text, level="full", use_entitlement=True
-                        ),
-                        loading_text="✨ Секунду, смотрю карты и числа…",
-                        progress_text="🃏 Карты выпали — пишу толкование…",
-                        label="full:tarot_spread",
-                    )
-                    if result is None:
-                        return
-                    text_spread, cards = result
-                    await _deliver_tarot_spread(
-                        message,
-                        question=text,
-                        text=text_spread,
-                        cards=cards,
-                        product_id="tarot_spread",
-                        level="full",
-                        state=state,
-                    )
-                    await _ensure_reply_keyboard(message)
-                    return
                 await answer_rich_message(
                     message,
-                    SPREAD_PAYWALL,
+                    CHAT_NEW_READING_HINT,
                     reply_markup=inline_product_menu(),
                 )
                 await _ensure_reply_keyboard(message)

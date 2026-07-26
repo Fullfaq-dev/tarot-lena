@@ -114,7 +114,7 @@ HTTP_PORT=8080
 
 ## Демо-оплата
 
-`PAYMENTS_DEMO_MODE=1` — кнопка «Купить» сразу проводит платёж без Platega.
+`PAYMENTS_DEMO_MODE=1` — кнопка «Купить» сразу проводит платёж без Robokassa (пока нет ключей).
 
 ## URLs
 
@@ -124,9 +124,32 @@ HTTP_PORT=8080
 - Health: `http://<IP>/health`
 - Bot: https://t.me/astro_leia_bot
 
-## Platega (когда подключите)
+## Robokassa
 
-Callback: `http://<IP>/callbacks/platega`
+В личном кабинете Robokassa → технические настройки:
+
+| Поле | Значение |
+|------|----------|
+| Алгоритм | MD5 |
+| Result URL | `http://<IP>/callbacks/robokassa` |
+| Метод Result | POST |
+| Success URL | `http://<IP>/payment/success` |
+| Метод Success | GET |
+| Fail URL | `http://<IP>/payment/failed` |
+| Метод Fail | GET |
+
+В `.env` на сервере:
+
+```
+ROBOKASSA_MERCHANT_LOGIN=...
+ROBOKASSA_PASSWORD1=...
+ROBOKASSA_PASSWORD2=...
+ROBOKASSA_IS_TEST=1
+PAYMENTS_DEMO_MODE=0
+```
+
+После боевых паролей поставь `ROBOKASSA_IS_TEST=0`.  
+Whitelist IP Robokassa при фильтрации: `185.59.216.65`, `185.59.217.65`.
 
 ## Domain (later)
 

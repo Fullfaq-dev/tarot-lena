@@ -38,10 +38,12 @@
 - [Completed] KIE: обработка code=500, fallback на gemini-2.5-flash; один пузырь расклада; typing «печатает…».
 - [Completed] Busy-lock: пока идёт разбор — нельзя стартовать другой; статус-сообщение + typing heartbeat.
 - [Completed] Деплой busy-lock (`382c5f8`) на VPS `85.234.106.108` — health OK, bot polling.
-- [In Progress] Fix истории разборов: callback брал telegram_id бота → «нажми /start».
+- [Completed] Fix истории разборов: callback брал telegram_id бота → «нажми /start» (`188c5f7`).
+- [Completed] Чат: меню в промпте, обсуждение только оплаченных разборов, новые разборы только из меню.
+- [Completed] Robokassa: клиент MD5, ResultURL `/callbacks/robokassa`, demo пока нет ключей.
 
-**Инфра утверждена:** IP `85.234.106.108`, `@astro_leia_bot`, admins `267409502,7670490295`, polling, Platega тот же, legal docx в корне.
+**Инфра утверждена:** IP `85.234.106.108`, `@astro_leia_bot`, admins `267409502,7670490295`, polling, Robokassa, legal docx в корне.
 
-**Деплой:** push в `Fullfaq-dev/tarot-lena` → GitHub Actions → `git pull` на VPS + `deploy/deploy.sh`.
+**Деплой:** push в `Fullfaq-dev/tarot-lena` → rsync/`deploy/deploy.sh` на VPS.
 
-**Оплата:** `PAYMENTS_DEMO_MODE=1` — кнопка «Купить» сразу проводит платёж (без Platega).
+**Оплата:** `PAYMENTS_DEMO_MODE=1` пока нет `ROBOKASSA_*`. В кабинете Result/Success/Fail — на IP API (не t.me).

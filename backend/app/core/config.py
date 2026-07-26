@@ -64,13 +64,39 @@ class Settings(BaseSettings):
     platega_failed_url: str = Field(default="", alias="PLATEGA_FAILED_URL")
     payments_demo_mode: bool = Field(default=True, alias="PAYMENTS_DEMO_MODE")
 
+    robokassa_merchant_login: str = Field(default="", alias="ROBOKASSA_MERCHANT_LOGIN")
+    robokassa_password1: str = Field(default="", alias="ROBOKASSA_PASSWORD1")
+    robokassa_password2: str = Field(default="", alias="ROBOKASSA_PASSWORD2")
+    robokassa_is_test: bool = Field(default=True, alias="ROBOKASSA_IS_TEST")
+    robokassa_hash: str = Field(default="md5", alias="ROBOKASSA_HASH")
+
     @property
     def platega_configured(self) -> bool:
         return bool(self.platega_merchant_id and self.platega_api_key)
 
     @property
+    def robokassa_configured(self) -> bool:
+        return bool(
+            self.robokassa_merchant_login
+            and self.robokassa_password1
+            and self.robokassa_password2
+        )
+
+    @property
     def platega_callback_url(self) -> str:
         return f"{self.public_base_url.rstrip('/')}/callbacks/platega"
+
+    @property
+    def robokassa_result_url(self) -> str:
+        return f"{self.public_base_url.rstrip('/')}/callbacks/robokassa"
+
+    @property
+    def payment_success_url(self) -> str:
+        return self.platega_return_url or f"{self.public_base_url.rstrip('/')}/payment/success"
+
+    @property
+    def payment_failed_url(self) -> str:
+        return self.platega_failed_url or f"{self.public_base_url.rstrip('/')}/payment/failed"
 
     media_storage_dir: Path = Path("backend/static/generated")
     tarot_cards_dir: Path = Path("Cards-jpg")

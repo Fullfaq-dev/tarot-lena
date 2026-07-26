@@ -30,7 +30,7 @@ from app.services.billing.limits import (
     includes_free_infographics,
     is_unlimited_chat,
 )
-from app.services.billing.providers import PaymentFlowResult, PaymentIntent, PlategaProvider
+from app.services.billing.providers import PaymentFlowResult, RobokassaProvider
 from app.services.billing.tokens import (
     charge_rub,
     estimate_messages_tokens,
@@ -63,7 +63,7 @@ _PAYMENT_DESCRIPTIONS = {
 
 class BillingService:
     def __init__(self) -> None:
-        self.provider = PlategaProvider()
+        self.provider = RobokassaProvider()
 
     async def _user_lang(self, session: AsyncSession, user_id: str) -> str:
         settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user_id))
@@ -866,7 +866,7 @@ class BillingService:
 
     def _demo_mode_enabled(self) -> bool:
         settings = get_settings()
-        return settings.payments_demo_mode or not settings.platega_configured
+        return settings.payments_demo_mode or not settings.robokassa_configured
 
     def _flow_result_from_complete(self, result: dict, amount: str) -> PaymentFlowResult:
         notify = result.get("telegram_notify")
@@ -924,7 +924,7 @@ class BillingService:
 
         payment = Payment(
             user_id=user.id,
-            provider="platega",
+            provider="robokassa",
             purpose=purpose,
             amount_rub=amount,
             status="pending",
@@ -959,12 +959,52 @@ class BillingService:
             await session.rollback()
             raise
         payment.provider_payment_id = intent.provider_payment_id
-        payload = {"payment_url": intent.payment_url}
+        payload = {"payment_url": intent.payment_url, "inv_id": intent.provider_payment_id}
         if payload_extra:
             payload.update(payload_extra)
         payment.payload = payload
         await session.commit()
         return PaymentFlowResult(amount_rub=amount_label, payment_url=intent.payment_url)
+
+    async def process_robokassa_callback(
+        self,
+        session: AsyncSession,
+        *,
+        inv_id: str,
+        payment_id: str | None,
+        out_sum: str,
+    ) -> dict | None:
+        payment = None
+        if payment_id:
+            payment = await session.scalar(select(Payment).where(Payment.id == payment_id))
+        if payment is None and inv_id:
+            payment = await session.scalar(
+                select(Payment).where(
+                    Payment.provider == "robokassa",
+                    Payment.provider_payment_id == str(inv_id),
+                )
+            )
+        if payment is None:
+            logger.warning(
+                "Robokassa callback for unknown payment: inv=%s payment_id=%s",
+                inv_id,
+                payment_id,
+            )
+            return None
+
+        if payment.status != "pending":
+            logger.info(
+                "Robokassa callback ignored for payment %s with status %s",
+                payment.id,
+                payment.status,
+            )
+            return None
+
+        payload = dict(payment.payload or {})
+        payload["robokassa_inv_id"] = inv_id
+        payload["robokassa_out_sum"] = out_sum
+        payment.payload = payload
+        return await self.complete_payment(session, payment)
 
     async def process_platega_callback(
         self,
