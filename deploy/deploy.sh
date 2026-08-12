@@ -105,7 +105,15 @@ if [ -f frontend-admin/dist/index.html ]; then
 fi
 
 docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic upgrade head
-docker compose -f "$COMPOSE_FILE" restart api worker bot admin nginx
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps api worker bot
+# Wait until API accepts connections before refreshing nginx DNS/upstreams.
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin nginx
 
 docker image prune -f
 

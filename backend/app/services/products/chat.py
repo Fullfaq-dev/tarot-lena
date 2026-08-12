@@ -156,4 +156,23 @@ class LeiaChatService:
             {"role": "user", "content": [{"type": "text", "text": prompt}]},
         ]
         text_out = await self.kie.chat_completion(messages)
-        return normalize_leia_rich(text_out)
+        answer = normalize_leia_rich(text_out)
+        from app.services.billing.usage_log import record_kie_usage
+        from app.services.dialog_log import log_dialog_exchange
+
+        await record_kie_usage(
+            user_id,
+            feature="leia_chat",
+            question=text,
+            answer=answer,
+            api_usage=self.kie.last_usage,
+            extra_meta={"product_id": product_id} if product_id else None,
+        )
+        await log_dialog_exchange(
+            user_id,
+            text,
+            answer,
+            source="leia_chat",
+            extra_meta={"product_id": product_id} if product_id else None,
+        )
+        return answer

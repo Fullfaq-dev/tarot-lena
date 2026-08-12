@@ -41,9 +41,16 @@
 - [Completed] Fix истории разборов: callback брал telegram_id бота → «нажми /start» (`188c5f7`).
 - [Completed] Чат: меню в промпте, обсуждение только оплаченных разборов, новые разборы только из меню.
 - [Completed] Robokassa: клиент MD5, ResultURL `/callbacks/robokassa`, demo пока нет ключей.
+- [Completed] Оплата: кнопка «Оплатить N ₽» вместо URL-простыни; пост-оплата через rich/HTML (не сырой markdown); богатство 390 ₽.
+- [Completed] Админ: история из ProductUsage; рефералка −20% + приглашённый; drill-down платежа `/billing/{id}`.
+- [Completed] Админ «Переписка»: полная лента Message + разборы ProductUsage; лог чата Леи/followup/разборов в `messages`.
+- [Completed] Токены: usage_records для Леи + оценка старых разборов; касса Robokassa на дашборде (оборот по платежам).
+- [Completed] Онбординг: выбор пола; профиль → «Изменить» (имя/пол/дата/время/город).
+- [Completed] Промпты v2 по ТЗ заказчицы: основной + блоки продуктов/мини/рассылок;
+  переменные считает бэкенд; утро без карты дня (знак + личное число).
 
 **Инфра утверждена:** IP `85.234.106.108`, `@astro_leia_bot`, admins `267409502,7670490295`, polling, Robokassa, legal docx в корне.
 
-**Деплой:** push в `Fullfaq-dev/tarot-lena` → rsync/`deploy/deploy.sh` на VPS.
+**Деплой:** push в `Fullfaq-dev/tarot-lena` → rsync/`deploy/deploy.sh` на VPS (`SKIP_GIT_PULL=1` при rsync).
 
-**Оплата:** `PAYMENTS_DEMO_MODE=1` пока нет `ROBOKASSA_*`. В кабинете Result/Success/Fail — на IP API (не t.me).
+**Оплата:** Robokassa live (`PAYMENTS_DEMO_MODE=0`, `ROBOKASSA_IS_TEST=0`). ResultURL — `http://85.234.106.108/callbacks/robokassa`.

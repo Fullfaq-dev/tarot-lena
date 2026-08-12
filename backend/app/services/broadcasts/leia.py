@@ -28,13 +28,11 @@ from app.database.session import AsyncSessionLocal
 from app.services.broadcasts.content import (
     format_evening_nudge,
     format_funnel_day2,
-    format_morning_message,
     format_no_purchase_nudge,
     format_weekly_horoscope,
 )
 from app.services.products.service import ProductService
 from app.services.referrals.discount import PROMO_NO_PURCHASE_PERCENT, grant_promo_discount
-from app.services.tarot.service import TarotService
 from app.services.telegram_notify import send_bot_html, send_bot_photo
 
 logger = logging.getLogger(__name__)
@@ -187,8 +185,8 @@ class LeiaBroadcastService:
             candidates = await self._onboarded_users(session)
 
         sent = 0
-        tarot = TarotService()
         keyboard = inline_broadcast_products()
+        from app.services.broadcasts.ai_copy import build_morning_text
 
         for user, user_settings, profile in candidates:
             if sent >= BATCH:
@@ -222,32 +220,29 @@ class LeiaBroadcastService:
             birth = profile.birth_date if profile else None
 
             try:
-                _interpretation, card = await tarot.daily_card_for_telegram(user.telegram_id)
-                card_name = str(card.get("name", "Карта дня")) if card else "Карта дня"
-                card_meaning = str(card.get("description", "")) if card else "послание на сегодня"
-                text = format_morning_message(
+                text = await build_morning_text(
+                    user_id=user.id,
                     name=name,
-                    for_day=today,
                     birth=birth,
-                    card_name=card_name,
-                    card_meaning=card_meaning,
+                    for_day=today,
                 )
-                if card is None:
-                    ok = await send_bot_html(
-                        bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
-                    )
-                else:
-                    ok = await send_bot_photo(
-                        bot,
-                        user.telegram_id,
-                        str(card.get("image_path", "")),
-                        caption_html=to_telegram_html(text),
-                        caption_plain=text,
-                        reply_markup=keyboard,
-                    )
+                ok = await send_bot_html(
+                    bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
+                )
                 if ok:
                     async with AsyncSessionLocal() as session:
                         await self._record_sent(session, user.id, "leia_morning", text)
+                        try:
+                            session.add(
+                                DailyPrediction(
+                                    user_id=user.id,
+                                    prediction_date=today,
+                                    text=text[:4000],
+                                )
+                            )
+                            await session.commit()
+                        except Exception:
+                            await session.rollback()
                     sent += 1
             except Exception as exc:
                 logger.warning("Morning broadcast failed for %s: %s", user.telegram_id, exc)
@@ -258,6 +253,7 @@ class LeiaBroadcastService:
 
         sent = 0
         keyboard = inline_broadcast_products()
+        from app.services.broadcasts.ai_copy import build_weekly_text
 
         for user, user_settings, profile in candidates:
             if sent >= BATCH:
@@ -280,7 +276,16 @@ class LeiaBroadcastService:
 
             name = (profile.name if profile and profile.name else None) or user.first_name or "дорогая"
             birth = profile.birth_date if profile else None
-            text = format_weekly_horoscope(name=name, birth=birth, for_day=now_local.date())
+            try:
+                text = await build_weekly_text(
+                    user_id=user.id,
+                    name=name,
+                    birth=birth,
+                    for_day=now_local.date(),
+                )
+            except Exception as exc:
+                logger.warning("Weekly AI failed for %s: %s", user.telegram_id, exc)
+                text = format_weekly_horoscope(name=name, birth=birth, for_day=now_local.date())
 
             ok = await send_bot_html(
                 bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard

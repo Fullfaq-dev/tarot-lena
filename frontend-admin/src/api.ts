@@ -75,6 +75,19 @@ export type PlategaBalance = {
   frozen_balance: number;
 };
 
+export type RobokassaCashbox = {
+  configured: boolean;
+  merchant_login: string;
+  is_test: boolean;
+  completed_count: number;
+  completed_rub: string;
+  pending_count: number;
+  pending_rub: string;
+  available_rub: string | null;
+  source: string;
+  note?: string;
+};
+
 export type DashboardStats = {
   users: number;
   onboarded_users: number;
@@ -94,6 +107,8 @@ export type DashboardStats = {
   referred_users: number;
   product_usages: number;
   pending_withdrawals: number;
+  robokassa_cashbox?: RobokassaCashbox;
+  robokassa_cashbox_error?: string;
   platega_balances?: PlategaBalance[];
   platega_balances_error?: string;
 };
@@ -128,6 +143,7 @@ export const api = {
   botLogs: () => get<LogRow[]>("/logs/bot"),
   requestLogs: () => get<RequestLogRow[]>("/logs/requests"),
   payments: () => get<PaymentRow[]>("/billing/payments"),
+  payment: (id: string) => get<PaymentDetail>(`/billing/payments/${id}`),
   approvePayment: (id: string, comment?: string) =>
     patch(`/billing/payments/${id}`, { status: "completed", ...(comment ? { admin_comment: comment } : {}) }),
   rejectPayment: (id: string, comment?: string) =>
@@ -175,7 +191,16 @@ export type UserDetail = UserRow & {
   subscription_status: string | null;
   subscription_expires_at: string | null;
   entitlements: { kind: string; kind_label: string; expires_at: string | null; uses_remaining: number | null }[];
-  product_usages: { product_id: string; level: string; created_at: string }[];
+  product_usages: {
+    id?: string;
+    product_id: string;
+    product_title?: string;
+    level: string;
+    level_label?: string;
+    payment_id?: string | null;
+    content_preview?: string;
+    created_at: string;
+  }[];
 };
 
 export type MessageRow = {
@@ -213,6 +238,12 @@ export type ReadingRow = {
   reading_type: string;
   question: string;
   interpretation: string;
+  product_id?: string;
+  product_title?: string;
+  level?: string;
+  level_label?: string;
+  payment_id?: string | null;
+  content_preview?: string;
   created_at: string;
 };
 
@@ -337,6 +368,24 @@ export type PaymentRow = {
   created_at: string;
 };
 
+export type PaymentDetail = PaymentRow & {
+  payload: Record<string, unknown>;
+  product_usages: {
+    id: string;
+    product_id: string;
+    product_title: string;
+    level: string;
+    level_label: string;
+    content_preview: string;
+    created_at: string;
+  }[];
+  referral_discount_percent?: number | null;
+  original_amount_rub?: string | null;
+  payment_url?: string | null;
+  inv_id?: string | null;
+  robokassa_out_sum?: string | null;
+};
+
 export type WithdrawalRow = {
   id: string;
   user_name: string | null;
@@ -355,8 +404,11 @@ export type ReferralRow = {
   referrer_telegram_id: number;
   partner_reward_percent: number;
   referred_user_id: string;
+  referred_name?: string | null;
+  referred_telegram_id?: number | null;
   accrued_rub: string;
   reward_percent: number;
+  buyer_discount_percent?: number;
 };
 
 export type TarotCardRow = {

@@ -37,6 +37,7 @@ async def build_leia_profile_text(telegram_id: int) -> str:
         settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
 
         name = _fmt(profile.name if profile else None)
+        gender = _fmt(profile.gender if profile else None)
         birth_date = "—"
         zodiac = "—"
         life_path = "—"
@@ -76,6 +77,7 @@ async def build_leia_profile_text(telegram_id: int) -> str:
 
         return format_leia_profile_rich(
             name=name,
+            gender=gender,
             birth_date=birth_date,
             zodiac=zodiac,
             life_path=life_path,

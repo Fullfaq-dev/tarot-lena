@@ -21,6 +21,44 @@ def inline_skip_birth_time() -> InlineKeyboardMarkup:
     )
 
 
+def inline_gender_choice() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👩 Женский", callback_data="leia:gender:female"),
+                InlineKeyboardButton(text="👨 Мужской", callback_data="leia:gender:male"),
+            ],
+            [InlineKeyboardButton(text="⏭ Не указывать", callback_data="leia:gender:skip")],
+        ]
+    )
+
+
+def inline_profile_actions() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Изменить", callback_data="leia:edit_profile")],
+            [InlineKeyboardButton(text="🏠 Меню", callback_data="leia:menu")],
+            [InlineKeyboardButton(text="📦 Пакеты", callback_data="leia:packages")],
+        ]
+    )
+
+
+def inline_leia_edit_menu() -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="Имя", callback_data="leia:edit:name"),
+            InlineKeyboardButton(text="Пол", callback_data="leia:edit:gender"),
+        ],
+        [
+            InlineKeyboardButton(text="Дата рождения", callback_data="leia:edit:birth_date"),
+            InlineKeyboardButton(text="Время рождения", callback_data="leia:edit:birth_time"),
+        ],
+        [InlineKeyboardButton(text="Город рождения", callback_data="leia:edit:birth_city")],
+        [InlineKeyboardButton(text="◀️ К профилю", callback_data="leia:profile")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def inline_product_menu() -> InlineKeyboardMarkup:
     rows = []
     for product in PRODUCTS.values():
@@ -73,6 +111,26 @@ def inline_history_item() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="📜 К истории", callback_data="leia:history:0")],
             [InlineKeyboardButton(text="💬 Вопрос к разбору", callback_data="leia:followup")],
+            [InlineKeyboardButton(text="🏠 Меню", callback_data="leia:menu")],
+        ]
+    )
+
+
+def inline_payment_button(
+    url: str,
+    *,
+    amount_rub: str | int | None = None,
+    package: bool = False,
+) -> InlineKeyboardMarkup:
+    if amount_rub is not None:
+        label = f"💳 Оплатить {amount_rub} ₽"
+    elif package:
+        label = "💳 Оплатить пакет"
+    else:
+        label = "💳 Оплатить"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=label, url=url)],
             [InlineKeyboardButton(text="🏠 Меню", callback_data="leia:menu")],
         ]
     )

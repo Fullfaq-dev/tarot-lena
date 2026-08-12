@@ -55,7 +55,14 @@ async def dashboard_stats(session: AsyncSession) -> dict[str, Any]:
     onboarded = await session.scalar(
         select(func.count()).select_from(User).where(User.is_onboarded.is_(True))
     ) or 0
-    readings = await session.scalar(select(func.count()).select_from(TarotReading)) or 0
+    readings = await session.scalar(
+        select(func.count())
+        .select_from(ProductUsage)
+        .where(
+            ProductUsage.content_preview.isnot(None),
+            ProductUsage.content_preview != "",
+        )
+    ) or 0
     payments_sum = await session.scalar(select(func.coalesce(func.sum(Payment.amount_rub), 0))) or 0
     payments_count = await session.scalar(select(func.count()).select_from(Payment)) or 0
 
@@ -207,6 +214,61 @@ async def token_stats(
         row["provider_cost_usd"] = _dec_usd(display_provider_cost_usd(raw))
         row["provider_cost_rub"] = _dec(display_provider_cost_rub(raw))
 
+    # Historical Leia readings were not written to usage_records — estimate from ProductUsage.
+    if total_requests == 0:
+        from app.services.billing.tokens import estimate_tokens, provider_cost_usd as raw_cost_usd
+
+        usage_rows = await session.scalars(
+            select(ProductUsage).where(
+                ProductUsage.created_at >= since,
+                ProductUsage.created_at <= until,
+                ProductUsage.content_preview.isnot(None),
+                ProductUsage.content_preview != "",
+            )
+        )
+        by_day: dict[str, dict[str, Any]] = {}
+        for row in usage_rows:
+            out_tok = estimate_tokens(row.content_preview or "")
+            in_tok = max(120, out_tok // 2)
+            day_key = row.created_at.astimezone(UTC).date().isoformat() if row.created_at else since.date().isoformat()
+            bucket = by_day.setdefault(
+                day_key,
+                {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "provider_cost_usd": Decimal("0"),
+                    "charged_rub": Decimal("0"),
+                    "requests": 0,
+                },
+            )
+            bucket["input_tokens"] += in_tok
+            bucket["output_tokens"] += out_tok
+            bucket["provider_cost_usd"] += raw_cost_usd(in_tok, out_tok)
+            bucket["requests"] += 1
+            total_input += in_tok
+            total_output += out_tok
+            total_cost_usd += raw_cost_usd(in_tok, out_tok)
+            total_requests += 1
+        daily = []
+        for day_key in sorted(by_day):
+            b = by_day[day_key]
+            daily.append(
+                {
+                    "date": day_key,
+                    "input_tokens": b["input_tokens"],
+                    "output_tokens": b["output_tokens"],
+                    "total_tokens": b["input_tokens"] + b["output_tokens"],
+                    "provider_cost_usd": _dec_usd(display_provider_cost_usd(b["provider_cost_usd"])),
+                    "provider_cost_rub": _dec(display_provider_cost_rub(b["provider_cost_usd"])),
+                    "charged_rub": "0",
+                    "requests": b["requests"],
+                }
+            )
+        total_credits = provider_cost_credits(total_input, total_output)
+        display_cost_usd = display_provider_cost_usd(total_cost_usd)
+        display_cost_rub = display_provider_cost_rub(total_cost_usd)
+        margin_rub = total_charged_rub - display_cost_rub
+
     return {
         "summary": {
             "input_tokens": total_input,
@@ -220,7 +282,7 @@ async def token_stats(
             "requests": total_requests,
             "pricing_note": (
                 "Себестоимость в дашборде = расчёт × 2 (коррекция к KIE). "
-                "Списание: (credits × $0.007) × 50 → ₽."
+                "Новые запросы Леи пишутся в usage_records; старые разборы — оценка по тексту."
             ),
         },
         "daily": daily,
@@ -333,13 +395,30 @@ async def user_detail(session: AsyncSession, user_id: str) -> dict[str, Any] | N
             for row in entitlements_rows
         ],
         "product_usages": [
-            {
-                "product_id": row.product_id,
-                "level": row.level,
-                "created_at": _dt(row.created_at),
-            }
-            for row in usage_rows
+            _product_usage_dict(row) for row in usage_rows
         ],
+    }
+
+
+def _product_title(product_id: str) -> str:
+    from app.services.products.catalog import PRODUCTS
+
+    product = PRODUCTS.get(product_id)
+    if product:
+        return f"{product.emoji} {product.title}"
+    return product_id
+
+
+def _product_usage_dict(row: ProductUsage) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "product_id": row.product_id,
+        "product_title": _product_title(row.product_id),
+        "level": row.level,
+        "level_label": "мини" if row.level == "mini" else "полная",
+        "payment_id": row.payment_id,
+        "content_preview": row.content_preview or "",
+        "created_at": _dt(row.created_at),
     }
 
 
@@ -364,14 +443,33 @@ def _soul_profile_dict(profile: SoulProfile) -> dict[str, Any]:
     }
 
 
-async def user_messages(session: AsyncSession, user_id: str, limit: int = 100) -> list[dict[str, Any]]:
+async def user_messages(session: AsyncSession, user_id: str, limit: int = 2000) -> list[dict[str, Any]]:
+    """Full chat timeline: Message rows + historical ProductUsage readings."""
     result = await session.scalars(
         select(Message)
         .where(Message.user_id == user_id)
-        .order_by(Message.created_at.desc())
+        .order_by(Message.created_at.asc())
         .limit(limit)
     )
-    return [
+    messages = list(result)
+    usage_ids_logged = {
+        str((m.meta or {}).get("product_usage_id"))
+        for m in messages
+        if (m.meta or {}).get("product_usage_id")
+    }
+
+    usages = await session.scalars(
+        select(ProductUsage)
+        .where(
+            ProductUsage.user_id == user_id,
+            ProductUsage.content_preview.isnot(None),
+            ProductUsage.content_preview != "",
+        )
+        .order_by(ProductUsage.created_at.asc())
+        .limit(limit)
+    )
+
+    items: list[dict[str, Any]] = [
         {
             "id": m.id,
             "role": m.role,
@@ -380,11 +478,42 @@ async def user_messages(session: AsyncSession, user_id: str, limit: int = 100) -
             "tokens_output": m.tokens_output,
             "cost_rub": _dec(m.cost_rub),
             "provider_cost_usd": m.meta.get("provider_cost_usd") if m.meta else None,
-            "meta": m.meta,
+            "meta": m.meta or {},
             "created_at": _dt(m.created_at),
         }
-        for m in result
+        for m in messages
     ]
+    for row in usages:
+        if row.id in usage_ids_logged:
+            continue
+        product = _product_title(row.product_id)
+        level_label = "мини" if row.level == "mini" else "полная"
+        items.append(
+            {
+                "id": f"usage:{row.id}",
+                "role": "assistant",
+                "content": row.content_preview or "",
+                "tokens_input": 0,
+                "tokens_output": 0,
+                "cost_rub": "0",
+                "provider_cost_usd": None,
+                "meta": {
+                    "source": "product_usage",
+                    "product_id": row.product_id,
+                    "product_title": product,
+                    "level": row.level,
+                    "level_label": level_label,
+                    "product_usage_id": row.id,
+                    "payment_id": row.payment_id,
+                },
+                "created_at": _dt(row.created_at),
+            }
+        )
+
+    items.sort(key=lambda x: x["created_at"] or "")
+    if len(items) > limit:
+        items = items[-limit:]
+    return items
 
 
 async def user_memories(session: AsyncSession, user_id: str) -> list[dict[str, Any]]:
@@ -426,23 +555,26 @@ async def user_people(session: AsyncSession, user_id: str) -> list[dict[str, Any
 
 
 async def user_readings(session: AsyncSession, user_id: str) -> list[dict[str, Any]]:
+    """Leia product readings from ProductUsage (not legacy TarotReading)."""
     result = await session.scalars(
-        select(TarotReading)
-        .where(TarotReading.user_id == user_id)
-        .order_by(TarotReading.created_at.desc())
+        select(ProductUsage)
+        .where(
+            ProductUsage.user_id == user_id,
+            ProductUsage.content_preview.isnot(None),
+            ProductUsage.content_preview != "",
+        )
+        .order_by(ProductUsage.created_at.desc())
         .limit(50)
     )
-    return [
-        {
-            "id": r.id,
-            "reading_type": r.reading_type,
-            "question": r.question,
-            "cards": r.cards,
-            "interpretation": r.interpretation,
-            "created_at": _dt(r.created_at),
-        }
-        for r in result
-    ]
+    out: list[dict[str, Any]] = []
+    for row in result:
+        item = _product_usage_dict(row)
+        item["reading_type"] = item["product_title"]
+        item["question"] = item["level_label"]
+        item["interpretation"] = item["content_preview"]
+        item["cards"] = []
+        out.append(item)
+    return out
 
 
 _FEATURE_LABELS = {
@@ -622,10 +754,11 @@ _PAYMENT_PURPOSE_LABELS = {
     "subscription_love_plus": "ЛЮБОВЬ+ — подписка на месяц",
     "subscription_vip": "VIP-пакет — подписка на месяц",
     "combo_happy_woman": "Комбо «Счастливая женщина»",
+    "product_tarot_spread_full": "Расклад Таро — полная расшифровка",
     "product_love_full": "Любовь — полная расшифровка",
     "product_wealth_full": "Денежный код — полная расшифровка",
     "product_negative_full": "Диагностика негатива — полная",
-    "product_forecast_full": "Личный прогноз — полная",
+    "product_forecast_full": "Матрица судьбы — полная",
     "product_question_full": "Ответ на вопрос — полная",
 }
 
@@ -644,6 +777,26 @@ _PAYMENT_STATUS_LABELS = {
 }
 
 
+def _payment_row(payment: Payment, user: User) -> dict[str, Any]:
+    payload = dict(payment.payload or {})
+    return {
+        "id": payment.id,
+        "user_id": payment.user_id,
+        "user_name": user.first_name or user.username,
+        "telegram_id": user.telegram_id,
+        "provider": payment.provider,
+        "provider_payment_id": payment.provider_payment_id,
+        "purpose": payment.purpose,
+        "purpose_label": _PAYMENT_PURPOSE_LABELS.get(payment.purpose, payment.purpose),
+        "status": payment.status,
+        "status_label": _PAYMENT_STATUS_LABELS.get(payment.status, payment.status),
+        "amount_rub": _dec(payment.amount_rub),
+        "admin_comment": payload.get("admin_comment"),
+        "created_at": _dt(payment.created_at),
+        "updated_at": _dt(payment.updated_at) if hasattr(payment, "updated_at") else None,
+    }
+
+
 async def list_payments(session: AsyncSession, limit: int = 100) -> list[dict[str, Any]]:
     result = await session.execute(
         select(Payment, User)
@@ -651,24 +804,47 @@ async def list_payments(session: AsyncSession, limit: int = 100) -> list[dict[st
         .order_by(Payment.created_at.desc())
         .limit(limit)
     )
-    return [
-        {
-            "id": payment.id,
-            "user_id": payment.user_id,
-            "user_name": user.first_name or user.username,
-            "telegram_id": user.telegram_id,
-            "provider": payment.provider,
-            "provider_payment_id": payment.provider_payment_id,
-            "purpose": payment.purpose,
-            "purpose_label": _PAYMENT_PURPOSE_LABELS.get(payment.purpose, payment.purpose),
-            "status": payment.status,
-            "status_label": _PAYMENT_STATUS_LABELS.get(payment.status, payment.status),
-            "amount_rub": _dec(payment.amount_rub),
-            "admin_comment": (payment.payload or {}).get("admin_comment"),
-            "created_at": _dt(payment.created_at),
-        }
-        for payment, user in result.all()
-    ]
+    return [_payment_row(payment, user) for payment, user in result.all()]
+
+
+async def payment_detail(session: AsyncSession, payment_id: str) -> dict[str, Any] | None:
+    row = await session.execute(
+        select(Payment, User)
+        .join(User, User.id == Payment.user_id)
+        .where(Payment.id == payment_id)
+    )
+    pair = row.first()
+    if pair is None:
+        return None
+    payment, user = pair
+    base = _payment_row(payment, user)
+    payload = dict(payment.payload or {})
+    # Do not dump huge generated reading text twice; show short preview.
+    generated = str(payload.get("generated_text") or "")
+    safe_payload = {
+        k: v
+        for k, v in payload.items()
+        if k not in {"generated_text"}
+    }
+    if generated:
+        safe_payload["generated_text_preview"] = generated[:800]
+        safe_payload["generated_text_len"] = len(generated)
+
+    usages = await session.scalars(
+        select(ProductUsage)
+        .where(ProductUsage.payment_id == payment.id)
+        .order_by(ProductUsage.created_at.desc())
+    )
+    return {
+        **base,
+        "payload": safe_payload,
+        "product_usages": [_product_usage_dict(u) for u in usages],
+        "referral_discount_percent": payload.get("referral_discount_percent"),
+        "original_amount_rub": payload.get("original_amount_rub"),
+        "payment_url": payload.get("payment_url"),
+        "inv_id": payload.get("inv_id") or payload.get("robokassa_inv_id"),
+        "robokassa_out_sum": payload.get("robokassa_out_sum"),
+    }
 
 
 async def list_withdrawals(session: AsyncSession) -> list[dict[str, Any]]:
@@ -694,24 +870,48 @@ async def list_withdrawals(session: AsyncSession) -> list[dict[str, Any]]:
 
 
 async def list_referrals(session: AsyncSession) -> list[dict[str, Any]]:
-    result = await session.execute(
-        select(Referral, User.first_name, User.username, User.telegram_id, User.referral_reward_percent)
+    from app.services.referrals.discount import REFERRED_DISCOUNT_PERCENT
+
+    referrer = (
+        select(
+            Referral,
+            User.first_name,
+            User.username,
+            User.telegram_id,
+            User.referral_reward_percent,
+        )
         .join(User, User.id == Referral.referrer_user_id)
     )
-    return [
-        {
-            "id": ref.id,
-            "referrer_user_id": ref.referrer_user_id,
-            "referrer_name": name or username,
-            "referrer_telegram_id": telegram_id,
-            "partner_reward_percent": partner_percent,
-            "referred_user_id": ref.referred_user_id,
-            "reward_percent": ref.reward_percent,
-            "accrued_rub": _dec(ref.accrued_rub),
-            "created_at": _dt(ref.created_at),
-        }
-        for ref, name, username, telegram_id, partner_percent in result.all()
-    ]
+    result = await session.execute(referrer)
+    rows = result.all()
+    referred_ids = [ref.referred_user_id for ref, *_ in rows if ref.referred_user_id]
+    referred_map: dict[str, User] = {}
+    if referred_ids:
+        referred_users = await session.scalars(select(User).where(User.id.in_(referred_ids)))
+        referred_map = {u.id: u for u in referred_users}
+
+    out: list[dict[str, Any]] = []
+    for ref, name, username, telegram_id, partner_percent in rows:
+        referred = referred_map.get(ref.referred_user_id or "")
+        out.append(
+            {
+                "id": ref.id,
+                "referrer_user_id": ref.referrer_user_id,
+                "referrer_name": name or username,
+                "referrer_telegram_id": telegram_id,
+                "partner_reward_percent": partner_percent,
+                "referred_user_id": ref.referred_user_id,
+                "referred_name": (
+                    (referred.first_name or referred.username) if referred else None
+                ),
+                "referred_telegram_id": referred.telegram_id if referred else None,
+                "reward_percent": ref.reward_percent,
+                "buyer_discount_percent": REFERRED_DISCOUNT_PERCENT,
+                "accrued_rub": _dec(ref.accrued_rub),
+                "created_at": _dt(ref.created_at),
+            }
+        )
+    return out
 
 
 async def list_tarot_cards(session: AsyncSession) -> list[dict[str, Any]]:

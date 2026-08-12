@@ -23,7 +23,8 @@
 - Products: `backend/app/services/products/` — каталог, entitlements, мини/полная логика.
 - Numerology / Astrology: новые сервисы расчёта + AI-интерпретация.
 - Funnels / Broadcasts: воронки день 1–2, scheduler утро/вечер/понедельник.
-- Prompts: `prompts/system_ru.md`, `numerology_ru.md`, `astro_ru.md`.
+- Prompts: `prompts/system_ru.md` + `prompts/leia/{full,mini,daily,weekly}_*.md`.
+  Формула: `ОСНОВНОЙ + БЛОК`, переменные с бэкенда.
 - Spec: `openspec/proposals/tarot-lena-migration.md`.
 
 ## Naming And Change Rules

@@ -1826,6 +1826,7 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if current_state == BotStates.waiting_profile_field.state:
             data = await state.get_data()
             field_key = data.get("profile_field")
+            edit_source = data.get("profile_edit_source")
             await state.clear()
             if not field_key:
                 await message.answer(t("error_field_unknown", lang))
@@ -1836,7 +1837,10 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                 await message.answer(t("error_update_field", lang))
                 return
             await message.answer(result)
-            await _show_profile_edit(message, message.from_user.id)
+            if edit_source == "leia":
+                await show_leia_profile(message, telegram_id=message.from_user.id)
+            else:
+                await _show_profile_edit(message, message.from_user.id)
             await _track(None, "bot.profile_edit", {"field": field_key})
             return
 
@@ -1943,6 +1947,11 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
         if user_id and await chat.has_open_chat(user_id):
             # New readings only via menu buttons — never from freeform chat.
             if chat.looks_like_spread_request(text):
+                from app.services.dialog_log import log_dialog_exchange
+
+                await log_dialog_exchange(
+                    user_id, text, CHAT_NEW_READING_HINT, source="chat_redirect_menu"
+                )
                 await answer_rich_message(
                     message,
                     CHAT_NEW_READING_HINT,
@@ -1974,6 +1983,12 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
                 await message.answer("Не получилось ответить сейчас — попробуй ещё раз.")
             return
 
+        if user_id:
+            from app.services.dialog_log import log_dialog_exchange
+
+            await log_dialog_exchange(
+                user_id, text, FREE_TEXT_HINT, source="free_text_hint"
+            )
         await answer_rich_message(
             message, FREE_TEXT_HINT, reply_markup=leia_reply_keyboard()
         )

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api, getToken, login, setToken, BillingData, BillingUsageRow, DashboardStats, LandingStats, LogRow, MemoryRow, MessageRow, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
+import { api, getToken, login, setToken, BillingData, BillingUsageRow, DashboardStats, LandingStats, LogRow, MemoryRow, MessageRow, PaymentDetail, PaymentRow, PersonRow, ReadingRow, ReferralRow, RequestLogRow, TarotCardRow, UserDetail, UserRow, WithdrawalRow } from "./api";
 
 type Route =
   | { page: "dashboard" }
@@ -9,6 +9,7 @@ type Route =
   | { page: "user"; id: string }
   | { page: "logs" }
   | { page: "billing" }
+  | { page: "payment"; id: string }
   | { page: "referrals" }
   | { page: "tarot" };
 
@@ -20,6 +21,7 @@ function parseRoute(): Route {
   if (parts[0] === "tokens") return { page: "tokens" };
   if (parts[0] === "landing") return { page: "landing" };
   if (parts[0] === "logs") return { page: "logs" };
+  if (parts[0] === "billing" && parts[1]) return { page: "payment", id: parts[1] };
   if (parts[0] === "billing") return { page: "billing" };
   if (parts[0] === "referrals") return { page: "referrals" };
   if (parts[0] === "tarot") return { page: "tarot" };
@@ -70,6 +72,7 @@ function LoginPage({ onSuccess }: { onSuccess: () => void }) {
 function navigate(route: Route) {
   if (route.page === "dashboard") window.location.hash = "/";
   else if (route.page === "user") window.location.hash = `/users/${route.id}`;
+  else if (route.page === "payment") window.location.hash = `/billing/${route.id}`;
   else if (route.page === "tokens") window.location.hash = "/tokens";
   else window.location.hash = `/${route.page}`;
 }
@@ -98,7 +101,7 @@ export function App() {
           <NavItem active={route.page === "tokens"} onClick={() => navigate({ page: "tokens" })}>Токены</NavItem>
           <NavItem active={route.page === "users" || route.page === "user"} onClick={() => navigate({ page: "users" })}>Пользователи</NavItem>
           <NavItem active={route.page === "logs"} onClick={() => navigate({ page: "logs" })}>Логи</NavItem>
-          <NavItem active={route.page === "billing"} onClick={() => navigate({ page: "billing" })}>Биллинг</NavItem>
+          <NavItem active={route.page === "billing" || route.page === "payment"} onClick={() => navigate({ page: "billing" })}>Биллинг</NavItem>
           <NavItem active={route.page === "referrals"} onClick={() => navigate({ page: "referrals" })}>Рефералка</NavItem>
           <NavItem active={route.page === "tarot"} onClick={() => navigate({ page: "tarot" })}>Карты Таро</NavItem>
         </nav>
@@ -114,6 +117,7 @@ export function App() {
         {route.page === "user" && <UserDetailPage id={route.id} />}
         {route.page === "logs" && <LogsPage />}
         {route.page === "billing" && <BillingPage />}
+        {route.page === "payment" && <PaymentDetailPage id={route.id} />}
         {route.page === "referrals" && <ReferralsPage />}
         {route.page === "tarot" && <TarotPage />}
       </main>
@@ -135,6 +139,7 @@ function DashboardPage() {
   }, []);
 
   const maxSignup = Math.max(...signups.map((s) => s.count), 1);
+  const cashbox = stats?.robokassa_cashbox;
   const plategaBalances = stats?.platega_balances ?? [];
 
   const formatPlategaAmount = (value: number, currency: string) => {
@@ -164,11 +169,34 @@ function DashboardPage() {
       </div>
 
       <section className="panel">
-        <h2>Балансы Platega</h2>
-        {stats?.platega_balances_error && (
-          <p className="error">{stats.platega_balances_error}</p>
+        <h2>Касса Robokassa</h2>
+        {stats?.robokassa_cashbox_error && (
+          <p className="error">{stats.robokassa_cashbox_error}</p>
         )}
-        {plategaBalances.length > 0 ? (
+        {cashbox ? (
+          <>
+            <div className="cards grid-4">
+              <Metric title="Проведено" value={`${cashbox.completed_rub} ₽`} hint={`${cashbox.completed_count} платежей`} />
+              <Metric title="Ожидает" value={`${cashbox.pending_rub} ₽`} hint={`${cashbox.pending_count} счетов`} />
+              {cashbox.available_rub != null && (
+                <Metric title="Остаток в ЛК" value={`${cashbox.available_rub} ₽`} />
+              )}
+              <Metric
+                title="Магазин"
+                value={cashbox.merchant_login || "—"}
+                hint={cashbox.is_test ? "тестовый режим" : "боевой режим"}
+              />
+            </div>
+            {cashbox.note && <p className="muted">{cashbox.note}</p>}
+          </>
+        ) : (
+          !stats?.robokassa_cashbox_error && <p className="muted">Нет данных по кассе</p>
+        )}
+      </section>
+
+      {plategaBalances.length > 0 && (
+        <section className="panel">
+          <h2>Балансы Platega (legacy)</h2>
           <div className="cards grid-4">
             {plategaBalances.map((balance) => (
               <Metric
@@ -183,10 +211,8 @@ function DashboardPage() {
               />
             ))}
           </div>
-        ) : (
-          !stats?.platega_balances_error && <p className="muted">Нет данных по балансам</p>
-        )}
-      </section>
+        </section>
+      )}
 
       <section className="panel">
         <h2>Новые пользователи за 30 дней</h2>
@@ -386,9 +412,16 @@ function TokensPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [stats, setStats] = useState<Awaited<ReturnType<typeof api.tokenStats>> | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const load = () => {
-    api.tokenStats(days, dateFrom || undefined, dateTo || undefined).then(setStats);
+    setLoading(true);
+    setError("");
+    api.tokenStats(days, dateFrom || undefined, dateTo || undefined)
+      .then(setStats)
+      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить статистику"))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [days]);
@@ -408,6 +441,9 @@ function TokensPage() {
         <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
         <button onClick={load}>Применить</button>
       </div>
+
+      {loading && <p className="muted">Загрузка…</p>}
+      {error && <p className="error">{error}</p>}
 
       {stats && (
         <>
@@ -436,7 +472,7 @@ function TokensPage() {
                   <span className="chart-label">{d.date.slice(5)}</span>
                 </div>
               ))}
-              {stats.daily.length === 0 && <p className="muted">Пока нет данных</p>}
+              {stats.daily.length === 0 && <p className="muted">Пока нет данных за период</p>}
             </div>
             <table>
               <thead>
@@ -615,7 +651,7 @@ function UserDetailPage({ id }: { id: string }) {
             {t === "chat" && "Переписка"}
             {t === "memories" && "Память"}
             {t === "people" && "Люди"}
-            {t === "readings" && "Расклады"}
+            {t === "readings" && "Разборы"}
             {t === "billing" && "Биллинг"}
           </button>
         ))}
@@ -645,18 +681,21 @@ function UserDetailPage({ id }: { id: string }) {
             ) : <p className="muted">Нет активных пакетов</p>}
             {user.product_usages && user.product_usages.length > 0 && (
               <>
-                <h3>Разборы</h3>
+                <h3>Разборы (кратко)</h3>
                 <ul className="kv-list">
                   {user.product_usages.map((u, i) => (
                     <li key={`${u.product_id}-${u.level}-${i}`}>
-                      {u.product_id} ({u.level}) — {new Date(u.created_at).toLocaleDateString("ru")}
+                      {u.product_title ?? u.product_id} · {u.level_label ?? u.level} —{" "}
+                      {new Date(u.created_at).toLocaleDateString("ru")}
                     </li>
                   ))}
                 </ul>
+                <p className="muted">Полные тексты — во вкладке «Разборы»</p>
               </>
             )}
             <h3>Реферальная программа</h3>
-            <p>Текущий партнёрский процент: <strong>{user.referral_reward_percent ?? 40}%</strong></p>
+            <p className="muted">Скидка по рефералке для покупок: −20%. Ниже — % вознаграждения партнёра с покупок приглашённых.</p>
+            <p>Партнёрский процент: <strong>{user.referral_reward_percent ?? 40}%</strong></p>
             <div className="toolbar">
               <input
                 type="number"
@@ -698,51 +737,68 @@ function UserDetailPage({ id }: { id: string }) {
 
       {tab === "chat" && (
         <section className="panel chat-log">
-          {messages.map((m) => (
-            <div key={m.id} className={`chat-bubble ${m.role}`}>
-              <div className="chat-meta">
-                {m.role} · {new Date(m.created_at).toLocaleString("ru")}
-                {m.role === "user" && m.tokens_input > 0 && (
-                  <span> · вопрос: {m.tokens_input} ток.</span>
+          <div className="chat-toolbar">
+            <span className="muted">{messages.length} сообщ.</span>
+            <button className="btn-sm" type="button" onClick={() => api.userMessages(id).then(setMessages)}>
+              Обновить
+            </button>
+          </div>
+          {messages.length === 0 && (
+            <p className="muted">Пока нет сохранённой переписки. Новые сообщения и разборы появляются здесь автоматически.</p>
+          )}
+          {messages.map((m) => {
+            const source = String(m.meta?.source || "");
+            const productTitle = m.meta?.product_title ? String(m.meta.product_title) : "";
+            const levelLabel = m.meta?.level_label ? String(m.meta.level_label) : "";
+            const roleLabel = m.role === "user" ? "Пользователь" : "Лея";
+            return (
+              <div key={m.id} className={`chat-bubble ${m.role}`}>
+                <div className="chat-meta">
+                  {roleLabel} · {new Date(m.created_at).toLocaleString("ru")}
+                  {source && <span> · {source}</span>}
+                  {productTitle && <span> · {productTitle}{levelLabel ? ` (${levelLabel})` : ""}</span>}
+                  {m.role === "user" && m.tokens_input > 0 && (
+                    <span> · вопрос: {m.tokens_input} ток.</span>
+                  )}
+                  {m.role === "assistant" && (m.tokens_input > 0 || m.tokens_output > 0) && (
+                    <span>
+                      {" "}· вх: {m.tokens_input} исх: {m.tokens_output} ток.
+                      {m.cost_rub !== "0" && ` · списано ${m.cost_rub} ₽`}
+                      {m.meta?.provider_cost_usd && Number(m.meta.provider_cost_usd) > 0 && (
+                        <span>
+                          {` · себест. $${m.meta.provider_cost_usd}`}
+                          {m.meta?.provider_cost_rub ? ` (${m.meta.provider_cost_rub} ₽)` : ""}
+                        </span>
+                      )}
+                      {m.meta?.model && ` · ${String(m.meta.model)}`}
+                    </span>
+                  )}
+                </div>
+                <div className="chat-content">{m.content}</div>
+                {m.meta?.source_image_url && (
+                  <div className="vision-links">
+                    <a href={String(m.meta.source_image_url)} target="_blank" rel="noreferrer">
+                      <img
+                        src={String(m.meta.source_image_url)}
+                        alt="Фото пользователя"
+                        style={{ maxWidth: 140, borderRadius: 8, display: "block", marginBottom: 6 }}
+                      />
+                      📷 Открыть фото
+                    </a>
+                  </div>
                 )}
-                {m.role === "assistant" && (m.tokens_input > 0 || m.tokens_output > 0) && (
-                  <span>
-                    {" "}· вх: {m.tokens_input} исх: {m.tokens_output} ток.
-                    {m.cost_rub !== "0" && ` · списано ${m.cost_rub} ₽`}
-                    {m.meta?.provider_cost_usd && Number(m.meta.provider_cost_usd) > 0 && (
-                      <span>
-                        {` · себест. $${m.meta.provider_cost_usd}`}
-                        {m.meta?.provider_cost_rub ? ` (${m.meta.provider_cost_rub} ₽)` : ""}
-                      </span>
-                    )}
-                    {m.meta?.model && ` · ${String(m.meta.model)}`}
-                  </span>
+                {Array.isArray(m.meta?.infographic_urls) && m.meta.infographic_urls.length > 0 && (
+                  <div className="vision-links">
+                    {(m.meta.infographic_urls as string[]).map((url, idx) => (
+                      <a key={url} href={url} target="_blank" rel="noreferrer">
+                        🖼 Инфографика {idx + 1}
+                      </a>
+                    ))}
+                  </div>
                 )}
               </div>
-              <div>{m.content}</div>
-              {m.meta?.source_image_url && (
-                <div className="vision-links">
-                  <a href={String(m.meta.source_image_url)} target="_blank" rel="noreferrer">
-                    <img
-                      src={String(m.meta.source_image_url)}
-                      alt="Фото пользователя"
-                      style={{ maxWidth: 140, borderRadius: 8, display: "block", marginBottom: 6 }}
-                    />
-                    📷 Открыть фото
-                  </a>
-                </div>
-              )}
-              {Array.isArray(m.meta?.infographic_urls) && m.meta.infographic_urls.length > 0 && (
-                <div className="vision-links">
-                  {(m.meta.infographic_urls as string[]).map((url, idx) => (
-                    <a key={url} href={url} target="_blank" rel="noreferrer">
-                      🖼 Инфографика {idx + 1}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
 
@@ -777,12 +833,29 @@ function UserDetailPage({ id }: { id: string }) {
         <section className="panel">
           {readings.map((r) => (
             <article key={r.id} className="reading-card">
-              <h4>{r.reading_type}</h4>
-              <p><strong>Вопрос:</strong> {r.question}</p>
-              <p>{r.interpretation}</p>
+              <h4>{r.product_title || r.reading_type}</h4>
+              <p>
+                <span className="badge">{r.level_label || r.question || r.level}</span>
+                {r.payment_id && (
+                  <>
+                    {" "}
+                    <button
+                      className="btn-sm"
+                      type="button"
+                      onClick={() => navigate({ page: "payment", id: r.payment_id! })}
+                    >
+                      Платёж
+                    </button>
+                  </>
+                )}
+              </p>
+              <pre className="reading-text">{r.content_preview || r.interpretation}</pre>
               <small>{new Date(r.created_at).toLocaleString("ru")}</small>
             </article>
           ))}
+          {readings.length === 0 && (
+            <p className="muted">Пока нет разборов продуктов (мини/полная). История берётся из product_usages.</p>
+          )}
         </section>
       )}
 
@@ -944,10 +1017,16 @@ function BillingPage() {
           </thead>
           <tbody>
             {payments.map((p) => (
-              <tr key={p.id}>
+              <tr
+                key={p.id}
+                className="clickable"
+                onClick={() => navigate({ page: "payment", id: p.id })}
+              >
                 <td
-                  className="clickable"
-                  onClick={() => navigate({ page: "user", id: p.user_id })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate({ page: "user", id: p.user_id });
+                  }}
                 >
                   {p.user_name ?? p.telegram_id}
                 </td>
@@ -963,7 +1042,10 @@ function BillingPage() {
                 </td>
                 <td>{p.amount_rub} ₽</td>
                 <td>{new Date(p.created_at).toLocaleString("ru")}</td>
-                <td className="actions-cell">
+                <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
+                  <button className="btn-sm" onClick={() => navigate({ page: "payment", id: p.id })}>
+                    Открыть
+                  </button>
                   {p.status === "pending" && (
                     <>
                       <button className="btn-sm" onClick={() => approve(p.id)}>Провести</button>
@@ -979,6 +1061,80 @@ function BillingPage() {
           </tbody>
         </table>
         {payments.length === 0 && <p className="muted">Пока нет инвойсов</p>}
+      </section>
+    </>
+  );
+}
+
+function PaymentDetailPage({ id }: { id: string }) {
+  const [payment, setPayment] = useState<PaymentDetail | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.payment(id)
+      .then(setPayment)
+      .catch((e) => setError(e instanceof Error ? e.message : "Не удалось загрузить платёж"));
+  }, [id]);
+
+  if (error) {
+    return (
+      <>
+        <button className="back" onClick={() => navigate({ page: "billing" })}>← К биллингу</button>
+        <p className="error">{error}</p>
+      </>
+    );
+  }
+  if (!payment) return <p>Загрузка…</p>;
+
+  return (
+    <>
+      <button className="back" onClick={() => navigate({ page: "billing" })}>← К биллингу</button>
+      <h1>Платёж {payment.purpose_label}</h1>
+      <section className="panel">
+        <ul className="kv-list">
+          <li><strong>ID:</strong> <code>{payment.id}</code></li>
+          <li>
+            <strong>Пользователь:</strong>{" "}
+            <button className="btn-sm" type="button" onClick={() => navigate({ page: "user", id: payment.user_id })}>
+              {payment.user_name ?? payment.telegram_id}
+            </button>
+            {" "}· tg {payment.telegram_id}
+          </li>
+          <li><strong>Статус:</strong> {payment.status_label} ({payment.status})</li>
+          <li><strong>Провайдер:</strong> {payment.provider}</li>
+          <li><strong>Сумма:</strong> {payment.amount_rub} ₽</li>
+          {payment.original_amount_rub && (
+            <li><strong>Сумма до скидки:</strong> {payment.original_amount_rub} ₽</li>
+          )}
+          {payment.referral_discount_percent != null && (
+            <li><strong>Скидка рефералки:</strong> −{payment.referral_discount_percent}%</li>
+          )}
+          <li><strong>InvId / provider id:</strong> {payment.inv_id ?? payment.provider_payment_id ?? "—"}</li>
+          {payment.robokassa_out_sum && <li><strong>Robokassa OutSum:</strong> {payment.robokassa_out_sum}</li>}
+          <li><strong>Создан:</strong> {new Date(payment.created_at).toLocaleString("ru")}</li>
+          {payment.admin_comment && <li><strong>Комментарий:</strong> {payment.admin_comment}</li>}
+          {payment.payment_url && (
+            <li>
+              <strong>Ссылка оплаты:</strong>{" "}
+              <a href={payment.payment_url} target="_blank" rel="noreferrer">открыть</a>
+            </li>
+          )}
+        </ul>
+      </section>
+      <section className="panel">
+        <h2>Payload</h2>
+        <pre className="reading-text">{JSON.stringify(payment.payload ?? {}, null, 2)}</pre>
+      </section>
+      <section className="panel">
+        <h2>Связанные разборы</h2>
+        {payment.product_usages.length === 0 && <p className="muted">Нет связанных ProductUsage</p>}
+        {payment.product_usages.map((u) => (
+          <article key={u.id} className="reading-card">
+            <h4>{u.product_title} · {u.level_label}</h4>
+            <pre className="reading-text">{u.content_preview || "—"}</pre>
+            <small>{new Date(u.created_at).toLocaleString("ru")}</small>
+          </article>
+        ))}
       </section>
     </>
   );
@@ -1009,14 +1165,22 @@ function ReferralsPage() {
     <>
       <h1>Реферальная система</h1>
       <section className="panel">
+        <p>
+          <strong>Как у Леи:</strong> приглашённый и/или пригласивший получают скидку{" "}
+          <strong>−20%</strong> на продукты. Партнёрский % — доля от оплаты приглашённого,
+          которая копится рефереру (по умолчанию 40%, настраивается в карточке пользователя).
+        </p>
+      </section>
+      <section className="panel">
         <h2>Рефералы</h2>
         <table>
           <thead>
             <tr>
-              <th>Реферер</th>
-              <th>Telegram ID</th>
+              <th>Кто пригласил</th>
+              <th>Telegram</th>
+              <th>Кого пригласил</th>
+              <th>Скидка −%</th>
               <th>Партнёр %</th>
-              <th>% связи</th>
               <th>Начислено</th>
             </tr>
           </thead>
@@ -1025,13 +1189,24 @@ function ReferralsPage() {
               <tr key={r.id} className="clickable" onClick={() => navigate({ page: "user", id: r.referrer_user_id })}>
                 <td>{r.referrer_name}</td>
                 <td>{r.referrer_telegram_id}</td>
+                <td
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (r.referred_user_id) navigate({ page: "user", id: r.referred_user_id });
+                  }}
+                >
+                  {r.referred_name ?? r.referred_telegram_id ?? r.referred_user_id ?? "—"}
+                </td>
+                <td>−{r.buyer_discount_percent ?? 20}%</td>
                 <td>{r.partner_reward_percent}%</td>
-                <td>{r.reward_percent}%</td>
                 <td>{r.accrued_rub} ₽</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {refs.length === 0 && (
+          <p className="muted">Пока нет реферальных связей. Они появляются, когда пользователь заходит по ссылке «Приведи подругу».</p>
+        )}
       </section>
       <section className="panel">
         <h2>Заявки на вывод</h2>

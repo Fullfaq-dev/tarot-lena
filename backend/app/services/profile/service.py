@@ -6,7 +6,8 @@ from app.bot.i18n import normalize_language, onboarding_step_prompt, t
 from app.bot.i18n_services import PROFILE_FIELD_I18N
 from app.database.models import OnboardingSession, SoulProfile, User, UserSettings
 from app.database.session import AsyncSessionLocal
-from app.services.onboarding.service import ONBOARDING_STEPS
+from app.bot.leia_texts import ONBOARDING_PROMPTS
+from app.services.onboarding.service import ONBOARDING_STEPS, PROFILE_EDIT_FIELDS
 
 
 class ProfileService:
@@ -24,6 +25,8 @@ class ProfileService:
 
     def prompt_for_field(self, field_key: str, lang: str = "ru") -> str:
         lang = normalize_language(lang)
+        if lang == "ru" and field_key in ONBOARDING_PROMPTS:
+            return ONBOARDING_PROMPTS[field_key]
         if field_key in {k for k, _ in ONBOARDING_STEPS}:
             return onboarding_step_prompt(field_key, lang)
         return t("profile_prompt_default", lang)
@@ -39,7 +42,7 @@ class ProfileService:
                 return t("profile_not_collected_short", lang), []
 
             rows: list[tuple[str, str, str]] = []
-            for field_key, _ in ONBOARDING_STEPS:
+            for field_key in PROFILE_EDIT_FIELDS:
                 label = self.field_label(field_key, lang)
                 rows.append((field_key, label, self._display_value(profile, field_key)))
             return None, rows

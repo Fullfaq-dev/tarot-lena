@@ -6,7 +6,7 @@ import logging
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 
 from app.bot.helpers import (
@@ -21,13 +21,17 @@ from app.bot.leia_keyboards import (
     inline_after_mini,
     inline_evening_reading,
     inline_funnel_day2_topics,
+    inline_gender_choice,
     inline_history_item,
     inline_history_menu,
     inline_legal_consent,
+    inline_leia_edit_menu,
     inline_package_actions,
     inline_packages_menu,
+    inline_payment_button,
     inline_product_actions,
     inline_product_menu,
+    inline_profile_actions,
     inline_referral_share,
     inline_skip_birth_time,
     leia_reply_keyboard,
@@ -47,6 +51,7 @@ from app.bot.leia_texts import (
     BTN_PROFILE,
     ENTITLED_FULL,
     LEIA_REPLY_BUTTONS,
+    ONBOARDING_PROMPTS,
     PACKAGE_PAYMENT,
     PAYMENT_LINK,
     PAID_CHAT_LOADING,
@@ -59,7 +64,7 @@ from app.bot.states import BotStates
 from app.database.models import SoulProfile, User
 from app.database.session import AsyncSessionLocal
 from app.services.billing.providers import PaymentFlowResult
-from app.services.onboarding.service import OnboardingService
+from app.services.onboarding.service import PROFILE_EDIT_FIELDS, OnboardingService
 from app.services.products.catalog import PRODUCTS
 from app.services.products.entitlements import EntitlementService
 from app.services.products.followup import ReadingFollowupService
@@ -67,6 +72,13 @@ from app.services.products.packages import PACKAGES
 from app.services.products.profile_view import build_leia_profile_text
 from app.services.products.chat import LeiaChatService
 from app.services.products.service import ProductService
+from app.services.profile.service import ProfileService
+
+_GENDER_VALUES = {
+    "female": "женский",
+    "male": "мужской",
+    "skip": "не указывать",
+}
 from app.services.profile.service import ProfileService
 from app.services.referrals.service import ReferralService
 from app.services.tarot.service import TarotService
@@ -101,7 +113,7 @@ async def show_leia_profile(message: Message, *, telegram_id: int | None = None)
     await answer_rich_message(
         message,
         text,
-        reply_markup=inline_product_menu(),
+        reply_markup=inline_profile_actions(),
     )
 
 
@@ -130,12 +142,32 @@ async def show_leia_history(
     )
 
 
+async def _ensure_onboarded_or_restart(message: Message, telegram_id: int) -> User | None:
+    """If user missing / not onboarded — send onboarding, not the product menu."""
+    user = await _db_user(telegram_id)
+    if user and user.is_onboarded:
+        return user
+    service = OnboardingService()
+    tg_user = message.from_user
+    if tg_user is None:
+        await message.answer("Нажми /start")
+        return None
+    text, _, _ = await service.start_or_resume(tg_user)
+    step_key = await service.get_current_step_key(tg_user) or "legal_consent"
+    await answer_rich_message(
+        message,
+        text,
+        reply_markup=onboarding_markup_for_step(step_key),
+    )
+    return None
+
+
 async def show_leia_menu(message: Message) -> None:
     telegram_id = message.from_user.id if message.from_user else message.chat.id
-    user = await _db_user(telegram_id)
-    plan = None
-    if user:
-        plan = await EntitlementService().active_plan_label(user.id)
+    user = await _ensure_onboarded_or_restart(message, telegram_id)
+    if user is None:
+        return
+    plan = await EntitlementService().active_plan_label(user.id)
     text = format_leia_menu_rich(plan_label=plan)
     await present_leia_scene(message, text, reply_markup=inline_product_menu())
 
@@ -262,14 +294,19 @@ async def complete_onboarding_flow(message: Message, telegram_id: int) -> None:
 @router.message(F.text.in_(LEIA_REPLY_BUTTONS))
 async def leia_reply_buttons(message: Message, state: FSMContext) -> None:
     await state.clear()
+    tid = message.from_user.id if message.from_user else message.chat.id
+    user = await _db_user(tid)
+    if user is None or not user.is_onboarded:
+        await _ensure_onboarded_or_restart(message, tid)
+        return
     if message.text == BTN_MENU:
         await show_leia_menu(message)
         return
     if message.text == BTN_HISTORY:
-        await show_leia_history(message, telegram_id=message.from_user.id)
+        await show_leia_history(message, telegram_id=tid)
         return
     if message.text == BTN_PROFILE:
-        await show_leia_profile(message, telegram_id=message.from_user.id)
+        await show_leia_profile(message, telegram_id=tid)
         await _ensure_reply_keyboard(message)
         return
 
@@ -284,9 +321,102 @@ async def leia_profile_callback(callback: CallbackQuery, state: FSMContext) -> N
 def onboarding_markup_for_step(step_key: str):
     if step_key == "legal_consent":
         return inline_legal_consent()
+    if step_key == "gender":
+        return inline_gender_choice()
     if step_key == "birth_time":
         return inline_skip_birth_time()
     return None
+
+
+@router.callback_query(F.data.startswith("leia:gender:"))
+async def leia_gender_pick(callback: CallbackQuery) -> None:
+    await safe_callback_answer(callback)
+    key = callback.data.removeprefix("leia:gender:")
+    value = _GENDER_VALUES.get(key)
+    if not value or callback.from_user is None:
+        return
+    service = OnboardingService()
+    step = await service.get_current_step_key(callback.from_user)
+    if step != "gender":
+        await callback.message.answer(
+            "Этот шаг уже пройден. Если нужно поменять пол — открой 👤 Профиль → ✏️ Изменить."
+        )
+        return
+    reply, _, completed = await service.handle_answer(callback.from_user, value)
+    if not reply:
+        return
+    if completed:
+        await callback.message.answer(reply)
+        await complete_onboarding_flow(callback.message, callback.from_user.id)
+        return
+    next_step = await service.get_current_step_key(callback.from_user)
+    await callback.message.answer(reply, reply_markup=onboarding_markup_for_step(next_step or ""))
+
+
+@router.callback_query(F.data == "leia:edit_profile")
+async def leia_edit_profile(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await state.clear()
+    await callback.message.answer(
+        "✏️ Что изменить в профиле?",
+        reply_markup=inline_leia_edit_menu(),
+    )
+
+
+@router.callback_query(F.data.startswith("leia:edit:"))
+async def leia_edit_field_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    field_key = callback.data.removeprefix("leia:edit:")
+    if field_key not in PROFILE_EDIT_FIELDS:
+        return
+    if field_key == "gender":
+        await state.clear()
+        await callback.message.answer(
+            ONBOARDING_PROMPTS["gender"],
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="👩 Женский", callback_data="leia:set_gender:female"
+                        ),
+                        InlineKeyboardButton(
+                            text="👨 Мужской", callback_data="leia:set_gender:male"
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="⏭ Не указывать", callback_data="leia:set_gender:skip"
+                        )
+                    ],
+                    [InlineKeyboardButton(text="◀️ Назад", callback_data="leia:edit_profile")],
+                ]
+            ),
+        )
+        return
+    await state.set_state(BotStates.waiting_profile_field)
+    await state.update_data(profile_field=field_key, profile_edit_source="leia")
+    prompt = ONBOARDING_PROMPTS.get(field_key) or ProfileService().prompt_for_field(field_key, "ru")
+    await callback.message.answer(
+        prompt,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад", callback_data="leia:edit_profile")],
+            ]
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith("leia:set_gender:"))
+async def leia_set_gender(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    key = callback.data.removeprefix("leia:set_gender:")
+    value = _GENDER_VALUES.get(key)
+    if not value or callback.from_user is None:
+        return
+    result = await ProfileService().update_field(callback.from_user.id, "gender", value)
+    await state.clear()
+    await callback.message.answer(result or "✅ Пол обновлён")
+    await show_leia_profile(callback.message, telegram_id=callback.from_user.id)
 
 
 async def _product_entitled(user_id: str, product_id: str) -> bool:
@@ -326,7 +456,12 @@ async def _deliver_payment_flow(
             await show_leia_menu(message)
         return
     if flow.payment_url:
-        await message.answer(PAYMENT_LINK.format(url=flow.payment_url))
+        await message.answer(
+            PAYMENT_LINK,
+            reply_markup=inline_payment_button(
+                flow.payment_url, amount_rub=flow.amount_rub
+            ),
+        )
 
 
 async def _run_entitled_full(
@@ -408,10 +543,17 @@ async def _run_entitled_full(
 @router.callback_query(F.data == "leia:consent")
 async def leia_consent(callback: CallbackQuery) -> None:
     await safe_callback_answer(callback)
+    if callback.from_user is None or callback.message is None:
+        return
     service = OnboardingService()
+    # Old «Соглашаюсь» after reset: recreate user first.
+    await service.start_or_resume(callback.from_user)
     prompt, _ = await service.advance_from_consent(callback.from_user)
-    if prompt:
-        await callback.message.answer(prompt)
+    if not prompt:
+        step = await service.get_current_step_key(callback.from_user) or "legal_consent"
+        prompt = service.prompt_for_step(step)
+    next_step = await service.get_current_step_key(callback.from_user) or "name"
+    await callback.message.answer(prompt, reply_markup=onboarding_markup_for_step(next_step))
 
 
 @router.callback_query(F.data == "leia:skip_time")
@@ -437,9 +579,10 @@ async def leia_menu(callback: CallbackQuery, state: FSMContext) -> None:
         return
     telegram_id = callback.from_user.id
     user = await _db_user(telegram_id)
-    plan = None
-    if user:
-        plan = await EntitlementService().active_plan_label(user.id)
+    if user is None or not user.is_onboarded:
+        await _ensure_onboarded_or_restart(callback.message, telegram_id)
+        return
+    plan = await EntitlementService().active_plan_label(user.id)
     await callback_leia_scene(
         callback,
         format_leia_menu_rich(plan_label=plan),
@@ -524,8 +667,15 @@ async def leia_buy_package(callback: CallbackQuery, state: FSMContext) -> None:
         flow = await ProductService().create_package_payment(user, package_id)
         if flow.completed:
             await _deliver_payment_flow(callback.message, flow)
+        elif flow.payment_url:
+            await callback.message.answer(
+                PACKAGE_PAYMENT,
+                reply_markup=inline_payment_button(
+                    flow.payment_url, amount_rub=flow.amount_rub, package=True
+                ),
+            )
         else:
-            await callback.message.answer(PACKAGE_PAYMENT.format(url=flow.payment_url))
+            await callback.message.answer("Оплата временно недоступна.")
     except Exception as exc:
         logger.exception("Package payment create failed")
         await callback.message.answer(f"Оплата временно недоступна. ({exc})")
@@ -855,6 +1005,7 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
                 reading_excerpt=reading,
                 question=question,
                 user_name=name,
+                user_id=user.id if user else None,
             ),
             loading_text="💬 Думаю над твоим вопросом…",
             progress_text="✨ Ещё собираю ответ…",
@@ -957,6 +1108,16 @@ async def product_question(message: Message, state: FSMContext) -> None:
     if user is None:
         await state.clear()
         return
+
+    from app.services.dialog_log import log_dialog_message
+    from app.database.models import MessageRole
+
+    await log_dialog_message(
+        user.id,
+        MessageRole.USER.value,
+        question,
+        meta={"source": "product_question", "product_id": product_id, "mode": mode},
+    )
 
     if mode == "full_pay":
         await state.clear()

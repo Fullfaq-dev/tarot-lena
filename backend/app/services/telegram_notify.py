@@ -101,17 +101,20 @@ async def send_telegram_message(
     *,
     reply_markup=None,
 ) -> None:
+    """Send Leia product texts with rich/HTML markup (not raw markdown)."""
     settings = get_settings()
     if settings.telegram_bot_token == "replace-me":
         return
     try:
         async with Bot(token=settings.telegram_bot_token) as bot:
-            await bot.send_message(
-                telegram_id,
-                text,
-                parse_mode=None,
-                reply_markup=reply_markup,
-            )
+            ok = await send_bot_rich(bot, telegram_id, text, reply_markup=reply_markup)
+            if not ok:
+                await bot.send_message(
+                    telegram_id,
+                    text,
+                    parse_mode=None,
+                    reply_markup=reply_markup,
+                )
     except Exception as exc:
         logger.warning("Failed to notify telegram_id=%s: %s", telegram_id, exc)
 

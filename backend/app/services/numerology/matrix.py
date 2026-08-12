@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from app.services.numerology.calculations import life_path_number, personal_year_number
+from app.services.numerology.calculations import (
+    life_path_number,
+    personal_month_number,
+    personal_year_number,
+)
 
 MAJOR_ARCANA: dict[int, tuple[str, str]] = {
     1: ("Маг", "воля, действие, старт"),
@@ -119,12 +123,20 @@ def arcana_of_year(birth: date, year: int | None = None) -> int:
     return arcana_reduce(py)
 
 
+def arcana_of_month(birth: date, for_day: date | None = None) -> int:
+    return arcana_reduce(personal_month_number(birth, for_day))
+
+
 def patron_arcana(birth: date) -> int:
     lp = life_path_number(birth)
     return arcana_reduce(lp)
 
 
-def weekly_patron_arcana(birth: date, for_day: date) -> tuple[str, str]:
+def week_arcana_number(birth: date, for_day: date) -> int:
     week = for_day.isocalendar().week
-    num = arcana_reduce(week + birth.day + birth.month)
+    return arcana_reduce(week + birth.day + birth.month)
+
+
+def weekly_patron_arcana(birth: date, for_day: date) -> tuple[str, str]:
+    num = week_arcana_number(birth, for_day)
     return arcana_name(num), arcana_meaning(num)

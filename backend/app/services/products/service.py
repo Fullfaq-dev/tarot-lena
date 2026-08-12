@@ -1,20 +1,20 @@
 import logging
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Payment, ProductUsage, SoulProfile, User
+from app.database.models import Message, MessageRole, Payment, ProductUsage, SoulProfile, User
 from app.database.session import AsyncSessionLocal
-from app.bot.leia_rich import enrich_ai_prompt, normalize_leia_rich
+from app.bot.leia_rich import normalize_leia_rich
 from app.services.ai.kie_client import KieClient
-from app.services.astrology.zodiac import zodiac_sign
-from app.services.numerology.calculations import life_path_number, personal_year_number
+from app.services.numerology.service import NumerologyService
 from app.services.products.catalog import PRODUCTS, product_purpose
 from app.services.products.entitlements import EntitlementService
-from app.services.numerology.service import NumerologyService
-from app.services.products.prompts import leia_reading_system
+from app.services.products.prompts import (
+    product_system,
+    user_trigger,
+)
 from app.services.billing.providers import PaymentFlowResult
 from app.services.tarot.service import TarotService
 
@@ -86,15 +86,35 @@ class ProductService:
         payment_id: str | None = None,
         content: str = "",
     ) -> None:
-        session.add(
-            ProductUsage(
-                user_id=user_id,
-                product_id=product_id,
-                level=level,
-                payment_id=payment_id,
-                content_preview=content[:4000] if content else None,
-            )
+        usage = ProductUsage(
+            user_id=user_id,
+            product_id=product_id,
+            level=level,
+            payment_id=payment_id,
+            content_preview=content[:4000] if content else None,
         )
+        session.add(usage)
+        if content.strip():
+            await session.flush()
+            product = PRODUCTS.get(product_id)
+            title = f"{product.emoji} {product.title}" if product else product_id
+            level_label = "мини" if level == "mini" else "полная"
+            session.add(
+                Message(
+                    user_id=user_id,
+                    role=MessageRole.ASSISTANT.value,
+                    content=content[:20000],
+                    meta={
+                        "source": "product_reading",
+                        "product_id": product_id,
+                        "product_title": title,
+                        "level": level,
+                        "level_label": level_label,
+                        "product_usage_id": usage.id,
+                        "payment_id": payment_id,
+                    },
+                )
+            )
 
     async def create_full_payment(
         self, user: User, product_id: str, *, extra_context: str = ""
@@ -135,13 +155,31 @@ class ProductService:
                 package.purpose,
             )
 
-    async def _complete_leia(self, messages: list) -> str:
+    async def _complete_leia(
+        self,
+        messages: list,
+        *,
+        user_id: str | None = None,
+        feature: str = "leia_product",
+        question: str = "",
+    ) -> str:
         """One retry only on transport errors — empty answers fail fast to fallbacks."""
         last_error: Exception | None = None
         for attempt in range(2):
             try:
                 text = normalize_leia_rich(await self.kie.chat_completion(messages))
-                return text.strip() and text or ""
+                text = text.strip() and text or ""
+                if text and user_id:
+                    from app.services.billing.usage_log import record_kie_usage
+
+                    await record_kie_usage(
+                        user_id,
+                        feature=feature,
+                        question=question,
+                        answer=text,
+                        api_usage=self.kie.last_usage,
+                    )
+                return text
             except Exception as exc:
                 last_error = exc
                 logger.warning("Leia AI attempt %s failed: %s", attempt + 1, exc)
@@ -249,6 +287,31 @@ class ProductService:
             session.expunge(row)
             return row
 
+    def _prompt_vars(
+        self,
+        profile: SoulProfile,
+        *,
+        partner_bd: str = "",
+        question: str = "",
+        cards: str = "",
+    ) -> dict[str, str | int]:
+        return NumerologyService().prompt_vars(
+            name=profile.name or "ты",
+            birth=profile.birth_date,
+            birth_city=profile.birth_city,
+            partner_bd=partner_bd,
+            question=question,
+            cards=cards,
+        )
+
+    @staticmethod
+    def _format_cards(cards: list[dict], *, positions: list[str] | None = None) -> str:
+        lines = []
+        for idx, card in enumerate(cards):
+            label = positions[idx] if positions and idx < len(positions) else str(idx + 1)
+            lines.append(f"{label}: {card['name']} — {card.get('description', '')}")
+        return "\n".join(lines)
+
     async def generate_tarot_spread(
         self,
         user_id: str,
@@ -263,35 +326,29 @@ class ProductService:
             if profile is None:
                 return "Сначала пройди анкету — /start", []
 
-            name = profile.name or "ты"
-            bd = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "—"
             cards = TarotService().draw_cards(4)
-            card_block = "\n".join(
-                f"{idx + 1}. {card['name']} — {card.get('description', '')}"
-                for idx, card in enumerate(cards)
-            )
-            depth = "полный" if level == "full" else "мини"
-            user_prompt = enrich_ai_prompt(
-                f"{depth.capitalize()} расклад Таро (4 карты) для {name}, ДР {bd}.\n"
-                f"Вопрос: {question}\n\n"
-                f"Выпавшие карты:\n{card_block}\n\n"
-                "Дай толкование по каждой позиции (1–4), общий вывод и совет от Леи. "
-                "Заголовок ### 🃏 Расклад Таро."
-            )
+            positions = ["ситуация", "что мешает", "что помогает", "итог"]
             if level == "mini":
-                user_prompt = enrich_ai_prompt(
-                    f"Мини-расклад Таро (4 карты) для {name}.\n"
-                    f"Вопрос: {question}\n\n"
-                    f"Карты:\n{card_block}\n\n"
-                    "Кратко: 1–2 предложения на карту + итог. "
-                    "В конце: «💎 Хочешь полную расшифровку?»"
-                )
+                # Мини: только позиция «что мешает»
+                card_block = self._format_cards([cards[1]], positions=["что мешает"])
+            else:
+                card_block = self._format_cards(cards, positions=positions)
+            vars_ = self._prompt_vars(profile, question=question, cards=card_block)
+            system = product_system("tarot_spread", level=level, variables=vars_)
             messages = [
-                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
-                {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+                {"role": "system", "content": [{"type": "text", "text": system}]},
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": user_trigger("расклад Таро")}],
+                },
             ]
             try:
-                text = await self._complete_leia(messages)
+                text = await self._complete_leia(
+                    messages,
+                    user_id=user_id,
+                    feature=f"tarot_{level}",
+                    question=question,
+                )
             except Exception as exc:
                 logger.warning("Tarot AI failed, using fallback: %s", exc)
                 text = ""
@@ -317,23 +374,18 @@ class ProductService:
             if profile is None or profile.birth_date is None:
                 return "Для портрета нужна дата рождения. Нажми /start и заполни анкету."
 
-            name = profile.name or "дорогая"
-            ctx = NumerologyService().profile_context(
-                name=name,
-                birth=profile.birth_date,
-                birth_city=profile.birth_city,
-            )
-            user_prompt = enrich_ai_prompt(
-                f"Составь МИНИ **Матрицу судьбы** (метод Хшановской) для {name}.\n\n{ctx}\n\n"
-                "Формат: ### 🔮 Твоя матрица судьбы, таблица ключевых чисел матрицы, "
-                "архетип, одна сила, одна точка роста, аркан-покровитель, совет от Леи. "
-                "Кратко — не больше 8–10 предложений."
-            )
+            vars_ = self._prompt_vars(profile)
+            system = product_system("forecast", level="mini", variables=vars_)
             messages = [
-                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
-                {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+                {"role": "system", "content": [{"type": "text", "text": system}]},
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": user_trigger("мини-матрицу судьбы")}],
+                },
             ]
-            return await self._complete_leia(messages)
+            return await self._complete_leia(
+                messages, user_id=user_id, feature="portrait_mini", question="portrait_mini"
+            )
 
     async def generate_portrait(self, user_id: str) -> str:
         return await self.generate_mini_portrait(user_id)
@@ -344,26 +396,18 @@ class ProductService:
             if profile is None or profile.birth_date is None:
                 return "Для портрета нужна дата рождения. Нажми /start и заполни анкету."
 
-            name = profile.name or "друг"
-            ctx = NumerologyService().profile_context(
-                name=name,
-                birth=profile.birth_date,
-                birth_city=profile.birth_city,
-            )
-            year = date.today().year
-
-            user_prompt = enrich_ai_prompt(
-                f"Составь полную **Матрицу судьбы** (метод Хшановской) для {name}.\n\n{ctx}\n\n"
-                "Структура: заголовок ###, таблица матрицы и ключевых чисел, "
-                "сильные стороны, зоны роста, кармические задачи, "
-                f"фокус на {year}, аркан-покровитель, совет от Леи. "
-                "В конце: «💎 Хочешь узнать больше о какой-то из сфер жизни?»"
-            )
+            vars_ = self._prompt_vars(profile)
+            system = product_system("forecast", level="full", variables=vars_)
             messages = [
-                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
-                {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+                {"role": "system", "content": [{"type": "text", "text": system}]},
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": user_trigger("полную матрицу судьбы")}],
+                },
             ]
-            return await self._complete_leia(messages)
+            return await self._complete_leia(
+                messages, user_id=user_id, feature="portrait_full", question="portrait_full"
+            )
 
     async def generate_mini(
         self,
@@ -378,42 +422,40 @@ class ProductService:
             if profile is None:
                 return "Сначала пройди анкету — /start"
 
-            name = profile.name or "ты"
-            bd = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "—"
-            sign, emoji = zodiac_sign(profile.birth_date) if profile.birth_date else ("—", "")
+            cards_text = ""
+            if product_id == "question":
+                cards = TarotService().draw_cards(1)
+                cards_text = self._format_cards(cards, positions=["ключ"])
+            elif product_id == "tarot_spread":
+                # Handled by generate_tarot_spread; keep path for safety
+                cards = TarotService().draw_cards(4)
+                cards_text = self._format_cards([cards[1]], positions=["что мешает"])
 
-            prompts = {
-                "love": enrich_ai_prompt(
-                    f"Мини-разбор отношений для {name} (ДР: {bd}).\n"
-                    f"Партнёр: {extra_context}\n"
-                    "Секции: 🧠 Мысли, ❤️ Чувства, 🎯 Действия — кратко. "
-                    "В конце: «💎 Хочешь полную расшифровку?»"
-                ),
-                "wealth": enrich_ai_prompt(
-                    f"Мини денежный код для {name}, ДР {bd}. "
-                    "Число богатства + 1 совет + куда утекают деньги. Кратко."
-                ),
-                "negative": enrich_ai_prompt(
-                    f"Мини энергодиагностика для {name}, ДР {bd}. "
-                    "Индекс чистоты 0–10 + одна сфера внимания. Кратко."
-                ),
-                "forecast": enrich_ai_prompt(
-                    f"Мини-матрица судьбы (Хшановская) для {name}, ДР {bd}.\n"
-                    f"{NumerologyService().profile_context(name=name, birth=profile.birth_date, birth_city=profile.birth_city) if profile.birth_date else ''}\n"
-                    "Ключевые энергии матрицы + 1 сила + 1 точка роста. Кратко."
-                ),
-                "question": enrich_ai_prompt(
-                    f"Мини-ответ Леи для {name} (ДР {bd}, {sign}):\n"
-                    f"Вопрос: {extra_context}\n"
-                    "Краткий ответ таро+нумерология, 4–6 предложений."
-                ),
-            }
-            user_prompt = prompts.get(product_id, enrich_ai_prompt(product.mini_hint))
+            vars_ = self._prompt_vars(
+                profile,
+                partner_bd=extra_context if product_id == "love" else "",
+                question=extra_context if product_id in ("question", "tarot_spread") else "",
+                cards=cards_text,
+            )
+            system = product_system(product_id, level="mini", variables=vars_)
             messages = [
-                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
-                {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+                {"role": "system", "content": [{"type": "text", "text": system}]},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": user_trigger(f"мини «{product.title}»"),
+                        }
+                    ],
+                },
             ]
-            text = await self._complete_leia(messages)
+            text = await self._complete_leia(
+                messages,
+                user_id=user_id,
+                feature=f"product_{product_id}_mini",
+                question=extra_context[:500] or product_id,
+            )
             if (text or "").strip():
                 await self.record_usage(session, user_id, product_id, "mini", content=text)
                 await session.commit()
@@ -429,56 +471,15 @@ class ProductService:
         use_entitlement: bool = False,
     ) -> str:
         async with AsyncSessionLocal() as session:
-            profile = await self._profile(session, user_id)
-            if profile is None:
-                return "Сначала пройди анкету — /start"
-
-            name = profile.name or "ты"
-            bd = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "—"
-            sign, emoji = zodiac_sign(profile.birth_date) if profile.birth_date else ("—", "")
-
-            full_prompts = {
-                "love": enrich_ai_prompt(
-                    f"Полный разбор отношений для {name} (ДР: {bd}). Партнёр: {extra_context}. "
-                    "Совместимость, кармический аркан пары, астрология, "
-                    "мысли/чувства/действия партнёра, подводные камни, совет."
-                ),
-                "wealth": enrich_ai_prompt(
-                    f"Полный нумерологический расчёт богатства для {name}, ДР {bd}. "
-                    "Число богатства, чёрные дыры, топ-3 профессии, даты на 3 месяца, аффирмация."
-                ),
-                "negative": enrich_ai_prompt(
-                    f"Полная диагностика негатива для {name}, ДР {bd}. "
-                    "5 сфер, блоки, индекс чистоты, ритуал/практика, аркан-защитник."
-                ),
-                "forecast": enrich_ai_prompt(
-                    f"Полная **Матрица судьбы** (Хшановская) для {name}, ДР {bd}.\n"
-                    f"{NumerologyService().profile_context(name=name, birth=profile.birth_date, birth_city=profile.birth_city) if profile.birth_date else ''}\n"
-                    "Разбор ключевых энергий матрицы, кармические задачи, "
-                    "сильные стороны, зоны роста, персональные рекомендации."
-                ),
-                "question": enrich_ai_prompt(
-                    f"Полный ответ для {name} (ДР {bd}): {extra_context}. "
-                    "Таро + нумерология, развёрнуто, с конкретными шагами."
-                ),
-            }
-            user_prompt = full_prompts.get(product_id, enrich_ai_prompt(extra_context))
-            messages = [
-                {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
-                {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
-            ]
-            try:
-                text = await self._complete_leia(messages)
-            except Exception as exc:
-                logger.warning("Full AI failed for %s: %s", product_id, exc)
-                text = ""
-            if (text or "").strip():
-                await self.record_usage(
-                    session, user_id, product_id, "full", payment_id=payment_id, content=text
-                )
-                if use_entitlement:
-                    await EntitlementService().consume_credit(session, user_id, product_id)
-                await session.commit()
+            text = await self._generate_full_in_session(
+                session,
+                user_id,
+                product_id,
+                extra_context=extra_context,
+                payment_id=payment_id,
+                use_entitlement=use_entitlement,
+            )
+            await session.commit()
             return text
 
     async def fulfill_payment(self, session: AsyncSession, payment: Payment) -> str | None:
@@ -529,42 +530,34 @@ class ProductService:
         if profile is None:
             return "Сначала пройди анкету — /start"
 
-        name = profile.name or "ты"
-        bd = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "—"
-        sign, emoji = zodiac_sign(profile.birth_date) if profile.birth_date else ("—", "")
+        product = PRODUCTS.get(product_id)
+        cards_text = ""
+        if product_id == "question":
+            cards = TarotService().draw_cards(3)
+            cards_text = self._format_cards(cards)
 
-        full_prompts = {
-            "love": enrich_ai_prompt(
-                f"Полный разбор отношений для {name} (ДР: {bd}). Партнёр: {extra_context}. "
-                "Совместимость, кармический аркан пары, астрология, "
-                "мысли/чувства/действия партнёра, подводные камни, совет."
-            ),
-            "wealth": enrich_ai_prompt(
-                f"Полный нумерологический расчёт богатства для {name}, ДР {bd}. "
-                "Число богатства, чёрные дыры, топ-3 профессии, даты на 3 месяца, аффирмация."
-            ),
-            "negative": enrich_ai_prompt(
-                f"Полная диагностика негатива для {name}, ДР {bd}. "
-                "5 сфер, блоки, индекс чистоты, ритуал/практика, аркан-защитник."
-            ),
-            "forecast": enrich_ai_prompt(
-                f"Полная **Матрица судьбы** (Хшановская) для {name}, ДР {bd}.\n"
-                f"{NumerologyService().profile_context(name=name, birth=profile.birth_date, birth_city=profile.birth_city) if profile.birth_date else ''}\n"
-                "Разбор ключевых энергий матрицы, кармические задачи, "
-                "сильные стороны, зоны роста, персональные рекомендации."
-            ),
-            "question": enrich_ai_prompt(
-                f"Полный ответ для {name} (ДР {bd}): {extra_context}. "
-                "Таро + нумерология, развёрнуто, с конкретными шагами."
-            ),
-        }
-        user_prompt = full_prompts.get(product_id, enrich_ai_prompt(extra_context))
+        vars_ = self._prompt_vars(
+            profile,
+            partner_bd=extra_context if product_id == "love" else "",
+            question=extra_context if product_id in ("question", "tarot_spread") else "",
+            cards=cards_text,
+        )
+        system = product_system(product_id, level="full", variables=vars_)
+        title = product.title if product else product_id
         messages = [
-            {"role": "system", "content": [{"type": "text", "text": leia_reading_system()}]},
-            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+            {"role": "system", "content": [{"type": "text", "text": system}]},
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": user_trigger(f"полный «{title}»")}],
+            },
         ]
         try:
-            text = await self._complete_leia(messages)
+            text = await self._complete_leia(
+                messages,
+                user_id=user_id,
+                feature=f"product_{product_id}_full",
+                question=extra_context[:500] or product_id,
+            )
         except Exception as exc:
             logger.warning("Full AI failed in-session for %s: %s", product_id, exc)
             text = ""

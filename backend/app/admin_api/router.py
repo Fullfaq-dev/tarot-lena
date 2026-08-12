@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, User
 from app.database.session import get_session
 from app.services.billing.platega_client import fetch_balances
+from app.services.billing.robokassa_cashbox import fetch_robokassa_cashbox
 from app.services.billing.service import BillingService
 from app.services.landing import analytics as landing_analytics
 from app.services.referrals.service import ReferralService
@@ -24,11 +25,22 @@ router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin)])
 @router.get("/dashboard")
 async def dashboard(session: AsyncSession = Depends(get_session)) -> dict:
     stats = await admin_service.dashboard_stats(session)
+    cashbox, cashbox_error = await fetch_robokassa_cashbox()
+    stats["robokassa_cashbox"] = cashbox
+    if cashbox_error:
+        stats["robokassa_cashbox_error"] = cashbox_error
+    # Legacy Platega block kept for old shops that still have keys.
     balances, error = await fetch_balances()
     stats["platega_balances"] = balances
     if error:
         stats["platega_balances_error"] = error
     return stats
+
+
+@router.get("/robokassa/cashbox")
+async def robokassa_cashbox() -> dict:
+    cashbox, error = await fetch_robokassa_cashbox()
+    return {"cashbox": cashbox, "error": error}
 
 
 @router.get("/platega/balances")
@@ -168,6 +180,14 @@ async def request_logs(session: AsyncSession = Depends(get_session), limit: int 
 @router.get("/billing/payments")
 async def payments(session: AsyncSession = Depends(get_session)) -> list[dict]:
     return await admin_service.list_payments(session)
+
+
+@router.get("/billing/payments/{payment_id}")
+async def payment_detail(payment_id: str, session: AsyncSession = Depends(get_session)) -> dict:
+    data = await admin_service.payment_detail(session, payment_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return data
 
 
 @router.patch("/billing/payments/{payment_id}")

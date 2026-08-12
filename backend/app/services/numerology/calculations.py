@@ -21,7 +21,18 @@ def personal_year_number(birth: date, year: int | None = None) -> int:
     return _reduce(total, keep_master=False)
 
 
+def personal_month_number(birth: date, for_day: date | None = None) -> int:
+    d = for_day or date.today()
+    return _reduce(personal_year_number(birth, d.year) + d.month, keep_master=False)
+
+
+def personal_day_number(birth: date, for_day: date | None = None) -> int:
+    d = for_day or date.today()
+    return _reduce(personal_month_number(birth, d) + d.day, keep_master=False)
+
+
 def day_number(for_day: date | None = None) -> int:
+    """Calendar day number (not personal). Kept for legacy templates."""
     d = for_day or date.today()
     total = d.day + d.month + d.year
     return _reduce(total, keep_master=False)

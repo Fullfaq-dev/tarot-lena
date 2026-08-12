@@ -101,6 +101,7 @@ def normalize_leia_rich(text: str) -> str:
 def format_leia_profile_rich(
     *,
     name: str,
+    gender: str,
     birth_date: str,
     zodiac: str,
     life_path: str,
@@ -125,6 +126,7 @@ def format_leia_profile_rich(
     if has_profile:
         profile_rows = [
             ["Имя", name],
+            ["Пол", gender],
             ["Дата рождения", birth_date],
             ["Знак зодиака", zodiac],
             ["Число пути", life_path],

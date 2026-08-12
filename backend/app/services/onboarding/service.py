@@ -22,12 +22,22 @@ from app.database.session import AsyncSessionLocal
 ONBOARDING_STEPS: list[tuple[str, str]] = [
     ("legal_consent", "legal_consent"),
     ("name", "name"),
+    ("gender", "gender"),
     ("birth_date", "birth_date"),
     ("birth_time", "birth_time"),
     ("birth_city", "birth_city"),
 ]
 
 ONBOARDING_STEP_KEYS = [step for step, _ in ONBOARDING_STEPS]
+
+# Fields the user can change later from «Профиль → Изменить».
+PROFILE_EDIT_FIELDS: tuple[str, ...] = (
+    "name",
+    "gender",
+    "birth_date",
+    "birth_time",
+    "birth_city",
+)
 
 
 class OnboardingService:
@@ -149,6 +159,10 @@ class OnboardingService:
             return text, user.id, False
 
     async def advance_from_consent(self, telegram_user: TelegramUser | None) -> tuple[str | None, str | None]:
+        if telegram_user is None:
+            return None, None
+        # Ensure row exists (clicking an old consent button after user reset).
+        await self.start_or_resume(telegram_user)
         return await self._advance_step(telegram_user, "legal_consent", "accepted")
 
     async def skip_birth_time(self, telegram_user: TelegramUser | None) -> tuple[str | None, str | None, bool]:

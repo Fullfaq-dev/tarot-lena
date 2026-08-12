@@ -109,47 +109,83 @@ def format_morning_message(
     name: str,
     for_day: date,
     birth: date | None,
-    card_name: str,
-    card_meaning: str,
+    sign_forecast: str = "",
+    personal_block: str = "",
+    action: str = "",
+    sign: str = "",
+    sign_emoji: str = "♈",
+    personal_day: int = 0,
+    # legacy kwargs (карта дня) — игнорируем
+    card_name: str = "",
+    card_meaning: str = "",
 ) -> str:
+    """Ежедневная рассылка: слой знака + персональное уточнение (без карты дня)."""
+    if not sign and birth:
+        sign, sign_emoji = zodiac_sign(birth)
+    if not sign:
+        sign, sign_emoji = "—", "♈"
+    if not sign_forecast:
+        # legacy fallback: астросовет + число дня
+        sign_forecast = astro_block(birth).replace("**АСТРОСОВЕТ:** ", "")
+    if not personal_block:
+        personal_block = numerology_block(birth, for_day)
+    if not action:
+        action = _affirmation_for_day(for_day)
+    day_label = for_day.strftime("%d.%m.%Y")
+    pd_line = f"Личное число дня: **{personal_day}**\n\n" if personal_day else ""
     return (
-        f"🔔 **ДОБРОЕ УТРО, {name}!**\n\n"
-        f"🌞 Сегодня {for_day.strftime('%d.%m.%Y')}\n"
-        f"Твой личный прогноз:\n\n"
-        f"🃏 **КАРТА ДНЯ:** {card_name} — {card_meaning}\n"
-        f"{numerology_block(birth, for_day)}\n"
-        f"{astro_block(birth)}\n\n"
-        f"⭐ **СОВЕТ ДНЯ:**\n{_affirmation_for_day(for_day)}"
+        f"### ☀️ {day_label}, {name}\n\n"
+        f"### {sign_emoji} {sign} сегодня\n"
+        f"{sign_forecast}\n\n"
+        f"### 🔢 А теперь про тебя\n"
+        f"{pd_line}{personal_block}\n\n"
+        f"### 🎯 Одно дело на сегодня\n"
+        f"{action}"
     )
 
 
-def format_weekly_horoscope(*, name: str, birth: date | None, for_day: date) -> str:
+def format_weekly_horoscope(
+    *,
+    name: str,
+    birth: date | None,
+    for_day: date,
+    body: str = "",
+    sign: str = "",
+    sign_emoji: str = "♈",
+) -> str:
     astro = AstrologyService()
     week_dates = astro.week_range_label(for_day)
 
+    if birth and not sign:
+        sign, sign_emoji = zodiac_sign(birth)
+    if not birth:
+        sign, sign_emoji = "—", "♈"
+
+    if body:
+        return (
+            f"### 🔮 {name}, твоя неделя\n"
+            f"**{week_dates}** · {sign_emoji} {sign}\n\n"
+            f"{body}"
+        )
+
+    # Legacy template fallback
     if birth:
-        sign, emoji = zodiac_sign(birth)
         love, money, health = SIGN_WEEKLY.get(sign, SIGN_WEEKLY["Рыбы"])
         energy = SIGN_WEEKLY_ENERGY.get(sign, SIGN_WEEKLY_ENERGY["Рыбы"])
         patron_name, patron_meaning = weekly_patron_arcana(birth, for_day)
     else:
-        sign, emoji = "—", "♈"
         love = money = health = "заполни анкету — прогноз станет персональным"
         energy = "Заполни анкету — и я соберу прогноз точно под тебя."
         patron_name, patron_meaning = "Звезда", "надежда и вдохновение"
 
     return (
-        f"🔮 **{name}, твой еженедельный прогноз от Леи!**\n\n"
-        f"🌟 **ДАТЫ НЕДЕЛИ:** {week_dates}\n"
-        f"{emoji} **{sign}**\n\n"
-        f"✨ **ОБЩАЯ ЭНЕРГИЯ НЕДЕЛИ:**\n{energy}\n\n"
-        f"❤️ **ЛЮБОВЬ И ОТНОШЕНИЯ:**\n{love}\n\n"
-        f"💰 **ДЕНЬГИ И РАБОТА:**\n{money}\n\n"
-        f"🧘 **ЗДОРОВЬЕ И ЭНЕРГИЯ:**\n{health}\n\n"
-        f"⭐ **СОВЕТ НЕДЕЛИ ОТ ЛЕИ:**\n{_weekly_advice(for_day)}\n\n"
-        f"🃏 **КАРТА-ПОКРОВИТЕЛЬ НЕДЕЛИ:**\n{patron_name} — {patron_meaning}\n\n"
-        "---\n"
-        "💎 Хочешь более подробный прогноз по любой из тем?"
+        f"### 🔮 {name}, твоя неделя\n"
+        f"**{week_dates}** · {sign_emoji} {sign}\n\n"
+        f"### ⚡ Про что эта неделя\n{energy}\n\n"
+        f"### 💬 Главное\n"
+        f"Любовь: {love}\nДеньги: {money}\nСилы: {health}\n\n"
+        f"### 🃏 Аркан недели\n{patron_name} — {patron_meaning}\n\n"
+        f"### ⭐ Одна фраза\n{_weekly_advice(for_day)}"
     )
 
 
@@ -177,7 +213,7 @@ def format_evening_reading(*, card_name: str, card_meaning: str, insight: str) -
 
 def format_funnel_day2(*, name: str) -> str:
     return (
-        f"👋 **Привет, {name}!** Вчера ты узнала свою карту дня.\n\n"
+        f"👋 **Привет, {name}!** Вчера ты получила утренний прогноз.\n\n"
         "Сегодня я хочу спросить:\n"
         "✅ Что у тебя в отношениях?\n"
         "✅ Как дела с деньгами?\n"
