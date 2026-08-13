@@ -31,9 +31,10 @@ from app.services.broadcasts.content import (
     format_no_purchase_nudge,
     format_weekly_horoscope,
 )
+from app.services.products.entitlements import EntitlementService
 from app.services.products.service import ProductService
 from app.services.referrals.discount import PROMO_NO_PURCHASE_PERCENT, grant_promo_discount
-from app.services.telegram_notify import send_bot_html, send_bot_photo
+from app.services.telegram_notify import send_bot_html, send_bot_photo, send_bot_rich
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,16 @@ async def _user_has_paid(session, user_id: str) -> bool:
     return row is not None
 
 
+async def _morning_access(session, user_id: str, settings: UserSettings, today: date) -> bool:
+    """Trial week OR VIP / ЛЮБОВЬ+ / любая оплата — ежедневный прогноз им тоже нужен."""
+    if _morning_trial_active(settings, today):
+        return True
+    ent = EntitlementService()
+    if await ent.has_vip(user_id) or await ent.has_love_plus(user_id):
+        return True
+    return await _user_has_paid(session, user_id)
+
+
 class LeiaBroadcastService:
     async def tick(self, bot: Bot) -> None:
         for fn in (
@@ -200,11 +211,11 @@ class LeiaBroadcastService:
                 continue
             if _is_quiet(now_local, user_settings.quiet_hours_start, user_settings.quiet_hours_end):
                 continue
-            if not _morning_trial_active(user_settings, today):
-                continue
 
             day_start, _ = _local_day_bounds(now_local)
             async with AsyncSessionLocal() as session:
+                if not await _morning_access(session, user.id, user_settings, today):
+                    continue
                 if await self._already_sent_kind(session, user.id, "leia_morning", day_start):
                     continue
                 already = await session.scalar(
@@ -226,9 +237,7 @@ class LeiaBroadcastService:
                     birth=birth,
                     for_day=today,
                 )
-                ok = await send_bot_html(
-                    bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
-                )
+                ok = await send_bot_rich(bot, user.telegram_id, text, reply_markup=keyboard)
                 if ok:
                     async with AsyncSessionLocal() as session:
                         await self._record_sent(session, user.id, "leia_morning", text)
@@ -287,9 +296,7 @@ class LeiaBroadcastService:
                 logger.warning("Weekly AI failed for %s: %s", user.telegram_id, exc)
                 text = format_weekly_horoscope(name=name, birth=birth, for_day=now_local.date())
 
-            ok = await send_bot_html(
-                bot, user.telegram_id, to_telegram_html(text), reply_markup=keyboard
-            )
+            ok = await send_bot_rich(bot, user.telegram_id, text, reply_markup=keyboard)
             if ok:
                 async with AsyncSessionLocal() as session:
                     await self._record_sent(session, user.id, "leia_weekly", text)

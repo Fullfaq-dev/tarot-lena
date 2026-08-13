@@ -63,6 +63,25 @@ async def last_7_summaries(user_id: str, *, limit: int = 14) -> str:
     return "\n".join(f"- {s}" for s in snippets) if snippets else "нет"
 
 
+def _strip_md_headings(text: str) -> str:
+    """Утренние слои — без ###: шапка уже в шаблоне сообщения."""
+    lines = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            # «### 🔮 Прогноз» → оставляем смысл без решёток, если есть текст после #
+            body = stripped.lstrip("#").strip()
+            if body and not body.startswith(("☀️", "🔢", "🎯")):
+                # заголовок-мусор вроде «Прогноз» — пропускаем
+                if body.lower() in {"прогноз", "уточнение", "личное"} or body.startswith(
+                    ("Прогноз", "Уточнение")
+                ):
+                    continue
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 async def _complete(system: str, user: str, *, feature: str) -> str:
     kie = KieClient()
     messages = [
@@ -71,6 +90,8 @@ async def _complete(system: str, user: str, *, feature: str) -> str:
     ]
     try:
         text = normalize_leia_rich(await kie.chat_completion(messages)).strip()
+        if feature.startswith("daily_"):
+            text = _strip_md_headings(text)
         return text
     except Exception as exc:
         logger.warning("Broadcast AI %s failed: %s", feature, exc)

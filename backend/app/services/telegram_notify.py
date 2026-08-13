@@ -20,20 +20,22 @@ async def send_bot_rich(
 ) -> bool:
     from aiogram.exceptions import TelegramBadRequest
 
-    from app.bot.formatting import to_telegram_html
+    from app.bot.formatting import leia_markdown_to_html, prepare_rich_markdown
     from app.bot.rich_messages import send_rich_message
 
     if not text.strip():
         return False
+    markdown = prepare_rich_markdown(text)
     try:
-        await send_rich_message(bot, telegram_id, text, reply_markup=reply_markup)
+        await send_rich_message(bot, telegram_id, markdown, reply_markup=reply_markup)
         return True
     except TelegramBadRequest as exc:
         logger.warning("Rich message to telegram_id=%s failed: %s", telegram_id, exc)
+        # HTML fallback must convert ### headings — plain to_telegram_html leaves them visible
         return await send_bot_html(
             bot,
             telegram_id,
-            to_telegram_html(text),
+            leia_markdown_to_html(markdown),
             reply_markup=reply_markup,
         )
 
