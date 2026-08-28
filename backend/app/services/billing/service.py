@@ -54,6 +54,7 @@ _PAYMENT_DESCRIPTIONS = {
     "subscription_vip": "VIP-пакет — подписка на месяц",
     "combo_happy_woman": "Комбо «Счастливая женщина»",
     "product_love_full": "Любовь — полная расшифровка",
+    "product_chat_full": "Переписка — полная расшифровка",
     "product_wealth_full": "Денежный код — полная расшифровка",
     "product_negative_full": "Диагностика негатива — полная",
     "product_forecast_full": "Личный прогноз — полная",
@@ -124,6 +125,11 @@ class BillingService:
                 product_id = payment.purpose.removeprefix("product_").removesuffix("_full")
                 if product_id == "love":
                     text = "Оплата прошла ✨ Введите дату рождения партнёра (ДД.ММ.ГГГГ):"
+                elif product_id == "chat":
+                    text = (
+                        "Оплата прошла ✨ Пришли фрагмент переписки текстом или перешли сообщения. "
+                        "Когда закончишь — напиши «готово»."
+                    )
                 else:
                     text = "Оплата прошла ✨ Напишите свой вопрос:"
             else:

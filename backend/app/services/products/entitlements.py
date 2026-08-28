@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 SUBSCRIPTION_DAYS = 30
 COMBO_PRODUCTS = ("love", "wealth", "forecast")
+# ЛЮБОВЬ+: безлимит на эти продукты (как на «Любовь»)
+LOVE_PLUS_PRODUCTS = ("love", "chat")
 
 
 class EntitlementService:
@@ -51,7 +53,7 @@ class EntitlementService:
     async def can_use_full_free(self, user_id: str, product_id: str) -> bool:
         if await self.has_vip(user_id):
             return True
-        if product_id == "love" and await self.has_love_plus(user_id):
+        if product_id in LOVE_PLUS_PRODUCTS and await self.has_love_plus(user_id):
             return True
         if product_id in COMBO_PRODUCTS:
             return await self.combo_credits(user_id, product_id) > 0
@@ -60,7 +62,7 @@ class EntitlementService:
     async def full_access_label(self, user_id: str, product_id: str) -> str | None:
         if await self.has_vip(user_id):
             return "VIP"
-        if product_id == "love" and await self.has_love_plus(user_id):
+        if product_id in LOVE_PLUS_PRODUCTS and await self.has_love_plus(user_id):
             return "ЛЮБОВЬ+"
         if product_id in COMBO_PRODUCTS:
             credits = await self.combo_credits(user_id, product_id)
@@ -140,7 +142,7 @@ class EntitlementService:
         rows = await self._active_rows(session, user_id)
         if any(r.kind == "vip" for r in rows):
             return
-        if product_id == "love" and any(r.kind == "love_plus" for r in rows):
+        if product_id in LOVE_PLUS_PRODUCTS and any(r.kind == "love_plus" for r in rows):
             return
         kind = f"combo_{product_id}"
         for row in rows:

@@ -11,7 +11,7 @@ from app.database.models import ProductUsage
 from app.database.session import AsyncSessionLocal
 from app.services.ai.kie_client import KieClient
 from app.services.products.catalog import PRODUCTS
-from app.services.products.entitlements import COMBO_PRODUCTS, EntitlementService
+from app.services.products.entitlements import COMBO_PRODUCTS, LOVE_PLUS_PRODUCTS, EntitlementService
 from app.services.products.prompts import leia_menu_navigation_block, leia_reading_system
 from app.services.products.service import ProductService
 
@@ -73,7 +73,7 @@ class LeiaChatService:
 
         allowed: set[str] = set()
         if await ent.has_love_plus(user_id):
-            allowed.add("love")
+            allowed.update(LOVE_PLUS_PRODUCTS)
         for pid in COMBO_PRODUCTS:
             if await ent.combo_credits(user_id, pid) > 0:
                 allowed.add(pid)

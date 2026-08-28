@@ -178,15 +178,20 @@ class LeiaBroadcastService:
         )
         return row is not None
 
-    async def _record_sent(self, session, user_id: str, kind: str, text: str) -> None:
+    async def _record_sent(
+        self, session, user_id: str, kind: str, text: str, *, extra: dict | None = None
+    ) -> None:
         now = datetime.now(UTC)
+        payload = {"text": text}
+        if extra:
+            payload.update(extra)
         session.add(
             Notification(
                 user_id=user_id,
                 kind=kind,
                 scheduled_at=now,
                 sent_at=now,
-                payload={"text": text},
+                payload=payload,
             )
         )
         await session.commit()
@@ -231,7 +236,7 @@ class LeiaBroadcastService:
             birth = profile.birth_date if profile else None
 
             try:
-                text = await build_morning_text(
+                text, meta = await build_morning_text(
                     user_id=user.id,
                     name=name,
                     birth=birth,
@@ -240,7 +245,7 @@ class LeiaBroadcastService:
                 ok = await send_bot_rich(bot, user.telegram_id, text, reply_markup=keyboard)
                 if ok:
                     async with AsyncSessionLocal() as session:
-                        await self._record_sent(session, user.id, "leia_morning", text)
+                        await self._record_sent(session, user.id, "leia_morning", text, extra=meta)
                         try:
                             session.add(
                                 DailyPrediction(

@@ -15,6 +15,7 @@ _LEIA_DIR = _PROMPTS_DIR / "leia"
 # product_id → (full_block, mini_block)
 PRODUCT_BLOCKS: dict[str, tuple[str, str]] = {
     "love": ("full_love", "mini_love"),
+    "chat": ("full_chat", "mini_chat"),
     "question": ("full_question", "mini_question"),
     "tarot_spread": ("full_tarot", "mini_tarot"),
     "wealth": ("full_wealth", "mini_wealth"),

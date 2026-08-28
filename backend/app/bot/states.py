@@ -16,4 +16,6 @@ class BotStates(StatesGroup):
     waiting_bracelet_query = State()
     waiting_partner_birth_date = State()
     waiting_product_question = State()
+    waiting_chat_collect = State()
+    waiting_chat_role = State()
     waiting_reading_followup = State()
