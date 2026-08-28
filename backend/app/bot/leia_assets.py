@@ -15,6 +15,7 @@ ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "leia"
 # Content images from docx (screenshots in «Правки» are excluded).
 PRODUCT_IMAGES: dict[str, str] = {
     "love": "image5.jpg",
+    "chat": "image5.jpg",
     "forecast": "image9.jpg",
     "wealth": "image10.jpg",
     "negative": "image2.jpg",

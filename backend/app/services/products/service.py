@@ -294,6 +294,8 @@ class ProductService:
         partner_bd: str = "",
         question: str = "",
         cards: str = "",
+        chat_text: str = "",
+        chat_role: str = "",
     ) -> dict[str, str | int]:
         return NumerologyService().prompt_vars(
             name=profile.name or "ты",
@@ -302,7 +304,25 @@ class ProductService:
             partner_bd=partner_bd,
             question=question,
             cards=cards,
+            chat_text=chat_text,
+            chat_role=chat_role,
         )
+
+    @staticmethod
+    def pack_chat_context(*, role: str, text: str) -> str:
+        return f"chat_role={role}\n<<<CHAT>>>\n{text.strip()}"
+
+    @staticmethod
+    def _parse_chat_extra(extra: str) -> tuple[str, str]:
+        raw = (extra or "").strip()
+        if "<<<CHAT>>>" in raw:
+            head, body = raw.split("<<<CHAT>>>", 1)
+            role = "пользователь бота"
+            for line in head.splitlines():
+                if line.startswith("chat_role="):
+                    role = line.split("=", 1)[1].strip() or role
+            return role, body.strip()
+        return "пользователь бота", raw
 
     @staticmethod
     def _format_cards(cards: list[dict], *, positions: list[str] | None = None) -> str:
@@ -423,19 +443,23 @@ class ProductService:
                 return "Сначала пройди анкету — /start"
 
             cards_text = ""
+            chat_role, chat_text = "", ""
             if product_id == "question":
                 cards = TarotService().draw_cards(1)
                 cards_text = self._format_cards(cards, positions=["ключ"])
             elif product_id == "tarot_spread":
-                # Handled by generate_tarot_spread; keep path for safety
                 cards = TarotService().draw_cards(4)
                 cards_text = self._format_cards([cards[1]], positions=["что мешает"])
+            elif product_id == "chat":
+                chat_role, chat_text = self._parse_chat_extra(extra_context)
 
             vars_ = self._prompt_vars(
                 profile,
                 partner_bd=extra_context if product_id == "love" else "",
                 question=extra_context if product_id in ("question", "tarot_spread") else "",
                 cards=cards_text,
+                chat_text=chat_text,
+                chat_role=chat_role,
             )
             system = product_system(product_id, level="mini", variables=vars_)
             messages = [
@@ -490,7 +514,7 @@ class ProductService:
         if product_id not in PRODUCTS:
             return None
         prefs = (payment.payload or {}).get("extra_context", "")
-        if product_id in ("love", "question", "tarot_spread") and not prefs:
+        if product_id in ("love", "question", "tarot_spread", "chat") and not prefs:
             payload = dict(payment.payload or {})
             payload["awaiting_context"] = True
             payment.payload = payload
@@ -532,15 +556,20 @@ class ProductService:
 
         product = PRODUCTS.get(product_id)
         cards_text = ""
+        chat_role, chat_text = "", ""
         if product_id == "question":
             cards = TarotService().draw_cards(3)
             cards_text = self._format_cards(cards)
+        elif product_id == "chat":
+            chat_role, chat_text = self._parse_chat_extra(extra_context)
 
         vars_ = self._prompt_vars(
             profile,
             partner_bd=extra_context if product_id == "love" else "",
             question=extra_context if product_id in ("question", "tarot_spread") else "",
             cards=cards_text,
+            chat_text=chat_text,
+            chat_role=chat_role,
         )
         system = product_system(product_id, level="full", variables=vars_)
         title = product.title if product else product_id

@@ -19,6 +19,8 @@ from app.bot.leia_panel import answer_leia_rich, callback_leia_scene, present_le
 from app.bot.leia_keyboards import (
     inline_after_full_reading,
     inline_after_mini,
+    inline_chat_collect,
+    inline_chat_role,
     inline_evening_reading,
     inline_funnel_day2_topics,
     inline_gender_choice,
@@ -799,6 +801,9 @@ async def leia_launch(callback: CallbackQuery, state: FSMContext) -> None:
         await state.update_data(product_id=product_id, mode="full_entitled")
         await callback.message.answer(PRODUCTS["love"].mini_hint)
         return
+    if product_id == "chat":
+        await _start_chat_collect(callback.message, state, product_id=product_id, mode="full_entitled")
+        return
     if product_id in ("question", "tarot_spread"):
         await state.set_state(BotStates.waiting_product_question)
         await state.update_data(product_id=product_id, mode="full_entitled")
@@ -842,6 +847,9 @@ async def leia_mini(callback: CallbackQuery, state: FSMContext) -> None:
         await state.set_state(BotStates.waiting_partner_birth_date)
         await state.update_data(product_id=product_id, mode="mini")
         await callback.message.answer(product.mini_hint)
+        return
+    if product_id == "chat":
+        await _start_chat_collect(callback.message, state, product_id=product_id, mode="mini")
         return
     if product_id in ("question", "tarot_spread"):
         await state.set_state(BotStates.waiting_product_question)
@@ -908,6 +916,14 @@ async def leia_full_pay(callback: CallbackQuery, state: FSMContext) -> None:
             mode="full_entitled" if entitled else "full_pay",
         )
         await callback.message.answer(product.mini_hint)
+        return
+    if product_id == "chat":
+        await _start_chat_collect(
+            callback.message,
+            state,
+            product_id=product_id,
+            mode="full_entitled" if entitled else "full_pay",
+        )
         return
     if product_id in ("question", "tarot_spread"):
         await state.set_state(BotStates.waiting_product_question)
@@ -1017,6 +1033,162 @@ async def reading_followup(message: Message, state: FSMContext) -> None:
     except Exception:
         logger.exception("Reading followup failed")
         await message.answer("Не получилось ответить сейчас — попробуй переформулировать вопрос.")
+
+
+async def _start_chat_collect(
+    message: Message,
+    state: FSMContext,
+    *,
+    product_id: str,
+    mode: str,
+) -> None:
+    await state.set_state(BotStates.waiting_chat_collect)
+    await state.update_data(product_id=product_id, mode=mode, chat_chunks=[])
+    await message.answer(
+        PRODUCTS["chat"].mini_hint,
+        reply_markup=inline_chat_collect(),
+    )
+
+
+def _extract_chat_chunk(message: Message) -> str | None:
+    text = (message.text or message.caption or "").strip()
+    if not text:
+        return None
+    origin = ""
+    if message.forward_from:
+        name = message.forward_from.full_name or message.forward_from.username or "собеседник"
+        origin = f"[от {name}] "
+    elif getattr(message, "forward_origin", None) is not None:
+        origin = "[переслано] "
+    return f"{origin}{text}"
+
+
+@router.message(BotStates.waiting_chat_collect)
+async def chat_collect(message: Message, state: FSMContext) -> None:
+    if await refuse_if_busy_message(message):
+        return
+    raw = (message.text or "").strip().lower()
+    if raw in {"готово", "готово.", "готово!", "done"}:
+        await _finish_chat_collect(message, state)
+        return
+    chunk = _extract_chat_chunk(message)
+    if not chunk:
+        await message.answer(
+            "Пришли текст или перешли сообщения. Когда хватит — нажми «Готово».",
+            reply_markup=inline_chat_collect(),
+        )
+        return
+    data = await state.get_data()
+    chunks = list(data.get("chat_chunks") or [])
+    chunks.append(chunk)
+    # лимит ~12k символов суммарно
+    joined = "\n".join(chunks)
+    if len(joined) > 12000:
+        chunks = [joined[-12000:]]
+    await state.update_data(chat_chunks=chunks)
+    await message.answer(
+        f"Приняла ({len(chunks)} фрагм.). Ещё или «Готово».",
+        reply_markup=inline_chat_collect(),
+    )
+
+
+@router.callback_query(F.data == "leia:chat_done")
+async def chat_done(callback: CallbackQuery, state: FSMContext) -> None:
+    await safe_callback_answer(callback)
+    await _finish_chat_collect(callback.message, state)
+
+
+async def _finish_chat_collect(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    chunks = list(data.get("chat_chunks") or [])
+    if not chunks:
+        await message.answer(
+            "Пока пусто — пришли хотя бы несколько реплик.",
+            reply_markup=inline_chat_collect(),
+        )
+        return
+    await state.set_state(BotStates.waiting_chat_role)
+    await state.update_data(chat_text="\n".join(chunks))
+    await message.answer(
+        "Кто ты в этой переписке? Так Лея не перепутает роли.",
+        reply_markup=inline_chat_role(),
+    )
+
+
+@router.callback_query(F.data.startswith("leia:chat_role:"))
+async def chat_role_chosen(callback: CallbackQuery, state: FSMContext) -> None:
+    if await refuse_if_busy_callback(callback):
+        return
+    which = callback.data.removeprefix("leia:chat_role:")
+    role = "я (пользователь бота)" if which == "me" else "партнёр; пользователь бота = вторая сторона"
+
+    data = await state.get_data()
+    product_id = data.get("product_id", "chat")
+    mode = data.get("mode", "mini")
+    chat_text = str(data.get("chat_text") or "").strip()
+    if len(chat_text) < 20:
+        await safe_callback_answer(callback, "Переписки мало — добавь ещё", show_alert=True)
+        await state.set_state(BotStates.waiting_chat_collect)
+        return
+
+    await safe_callback_answer(callback)
+    user = await _db_user(callback.from_user.id)
+    if user is None:
+        await state.clear()
+        return
+
+    packed = ProductService.pack_chat_context(role=role, text=chat_text)
+
+    if mode == "full_pay":
+        await state.clear()
+        try:
+            flow = await run_busy_job(
+                callback.message,
+                lambda: ProductService().create_full_payment(
+                    user, product_id, extra_context=packed
+                ),
+                loading_text="💳 Готовлю полный разбор…",
+                progress_text="✨ Читаю подтекст…",
+                telegram_id=callback.from_user.id,
+                label=f"pay:{product_id}",
+            )
+            if flow is None:
+                return
+            await _deliver_payment_flow(callback.message, flow, state=state)
+        except Exception:
+            await callback.message.answer("Оплата временно недоступна.")
+        return
+
+    if mode == "full_entitled":
+        await _run_entitled_full(
+            callback.message,
+            user=user,
+            product_id=product_id,
+            extra_context=packed,
+            state=state,
+            telegram_id=callback.from_user.id,
+        )
+        await state.clear()
+        return
+
+    await state.clear()
+    text = await run_busy_job(
+        callback.message,
+        lambda: ProductService().generate_mini(user.id, product_id, extra_context=packed),
+        loading_text=PRODUCT_LOADING,
+        progress_text="💬 Читаю переписку…",
+        telegram_id=callback.from_user.id,
+        label=f"mini:{product_id}",
+    )
+    if text is None:
+        return
+    if not (text or "").strip():
+        await callback.message.answer("Не получилось разобрать — попробуй ещё раз.")
+        return
+    access_label = await _product_access_label(user.id, product_id)
+    await answer_rich_message(
+        callback.message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
+    )
 
 
 @router.message(BotStates.waiting_partner_birth_date)

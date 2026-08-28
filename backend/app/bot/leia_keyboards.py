@@ -278,6 +278,29 @@ def inline_evening_reading() -> InlineKeyboardMarkup:
     )
 
 
+def inline_chat_collect() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Готово", callback_data="leia:chat_done")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="leia:menu")],
+        ]
+    )
+
+
+def inline_chat_role() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Я в переписке", callback_data="leia:chat_role:me"),
+                InlineKeyboardButton(
+                    text="Партнёр пишет как я", callback_data="leia:chat_role:partner"
+                ),
+            ],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="leia:menu")],
+        ]
+    )
+
+
 def inline_broadcast_products() -> InlineKeyboardMarkup:
     """Кнопки продуктов — для рассылок."""
     p = PRODUCTS
@@ -293,15 +316,21 @@ def inline_broadcast_products() -> InlineKeyboardMarkup:
                     callback_data="leia:product:love",
                 ),
                 InlineKeyboardButton(
-                    text=f"{p['wealth'].emoji} {p['wealth'].title}",
-                    callback_data="leia:product:wealth",
+                    text=f"{p['chat'].emoji} {p['chat'].title}",
+                    callback_data="leia:product:chat",
                 ),
             ],
             [
                 InlineKeyboardButton(
+                    text=f"{p['wealth'].emoji} {p['wealth'].title}",
+                    callback_data="leia:product:wealth",
+                ),
+                InlineKeyboardButton(
                     text=f"{p['negative'].emoji} {p['negative'].title}",
                     callback_data="leia:product:negative",
                 ),
+            ],
+            [
                 InlineKeyboardButton(
                     text=f"{p['forecast'].emoji} {p['forecast'].title}",
                     callback_data="leia:product:forecast",

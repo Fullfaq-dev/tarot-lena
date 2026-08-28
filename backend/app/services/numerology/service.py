@@ -50,6 +50,8 @@ class NumerologyService:
         last_7: str = "",
         sign_forecast: str = "",
         dates: str = "",
+        chat_text: str = "",
+        chat_role: str = "",
     ) -> dict[str, str | int]:
         """Готовые цифры для блоков промпта — модель ничего не считает."""
         day = for_day or date.today()
@@ -73,6 +75,8 @@ class NumerologyService:
             "dates": dates or "",
             "matrix": "",
             "city": birth_city or "не указано",
+            "chat_text": chat_text or "—",
+            "chat_role": chat_role or "пользователь бота",
         }
         if birth is None:
             return vars_
