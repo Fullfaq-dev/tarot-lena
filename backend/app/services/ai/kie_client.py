@@ -20,20 +20,42 @@ def _map_reasoning_effort(effort: str) -> str:
 
 
 def _normalize_messages(messages: list[dict]) -> list[dict]:
-    """KIE is more stable with plain string content than content-part arrays."""
+    """Flatten text-only arrays; keep multimodal parts with image_url intact."""
     out: list[dict] = []
     for message in messages:
         content = message.get("content")
-        if isinstance(content, list):
-            parts = []
-            for part in content:
-                if isinstance(part, dict) and part.get("text"):
-                    parts.append(str(part["text"]))
-                elif isinstance(part, str):
-                    parts.append(part)
-            out.append({**message, "content": "\n".join(parts)})
-        else:
+        if not isinstance(content, list):
             out.append(message)
+            continue
+
+        has_image = any(
+            isinstance(part, dict) and part.get("type") == "image_url" for part in content
+        )
+        if has_image:
+            parts: list[dict] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                ptype = part.get("type")
+                if ptype == "text":
+                    text = str(part.get("text") or "").strip()
+                    if text:
+                        parts.append({"type": "text", "text": text})
+                elif ptype == "image_url":
+                    image = part.get("image_url")
+                    url = image.get("url") if isinstance(image, dict) else None
+                    if url:
+                        parts.append({"type": "image_url", "image_url": {"url": str(url)}})
+            out.append({**message, "content": parts})
+            continue
+
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("text"):
+                text_parts.append(str(part["text"]))
+            elif isinstance(part, str):
+                text_parts.append(part)
+        out.append({**message, "content": "\n".join(text_parts)})
     return out
 
 

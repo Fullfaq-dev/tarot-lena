@@ -20,7 +20,6 @@ from app.bot.leia_keyboards import (
     inline_after_full_reading,
     inline_after_mini,
     inline_chat_collect,
-    inline_chat_role,
     inline_evening_reading,
     inline_funnel_day2_topics,
     inline_gender_choice,
@@ -75,6 +74,8 @@ from app.services.products.profile_view import build_leia_profile_text
 from app.services.products.chat import LeiaChatService
 from app.services.products.service import ProductService
 from app.services.profile.service import ProfileService
+from app.services.media.telegram_photo import store_telegram_photo
+from app.services.media.kie_upload import KieFileUpload
 
 _GENDER_VALUES = {
     "female": "женский",
@@ -1043,24 +1044,104 @@ async def _start_chat_collect(
     mode: str,
 ) -> None:
     await state.set_state(BotStates.waiting_chat_collect)
-    await state.update_data(product_id=product_id, mode=mode, chat_chunks=[])
-    await message.answer(
+    sent = await message.answer(
         PRODUCTS["chat"].mini_hint,
         reply_markup=inline_chat_collect(),
     )
+    await state.update_data(
+        product_id=product_id,
+        mode=mode,
+        chat_fragments=[],
+        chat_status_message_id=sent.message_id,
+    )
 
 
-def _extract_chat_chunk(message: Message) -> str | None:
-    text = (message.text or message.caption or "").strip()
-    if not text:
-        return None
-    origin = ""
+def _forward_speaker(message: Message) -> str | None:
     if message.forward_from:
-        name = message.forward_from.full_name or message.forward_from.username or "собеседник"
-        origin = f"[от {name}] "
-    elif getattr(message, "forward_origin", None) is not None:
-        origin = "[переслано] "
-    return f"{origin}{text}"
+        return (
+            message.forward_from.full_name
+            or message.forward_from.username
+            or None
+        )
+    if getattr(message, "forward_sender_name", None):
+        return str(message.forward_sender_name)
+    origin = getattr(message, "forward_origin", None)
+    if origin is None:
+        return None
+    sender_user = getattr(origin, "sender_user", None)
+    if sender_user is not None:
+        return sender_user.full_name or sender_user.username or None
+    hidden = getattr(origin, "sender_user_name", None)
+    if hidden:
+        return str(hidden)
+    sender_chat = getattr(origin, "sender_chat", None)
+    if sender_chat is not None and getattr(sender_chat, "title", None):
+        return str(sender_chat.title)
+    chat = getattr(origin, "chat", None)
+    if chat is not None and getattr(chat, "title", None):
+        return str(chat.title)
+    return "переслано"
+
+
+def _fragment_counts(fragments: list[dict]) -> tuple[int, int]:
+    texts = sum(1 for f in fragments if f.get("kind") == "text")
+    photos = sum(1 for f in fragments if f.get("kind") == "photo")
+    return texts, photos
+
+
+def _status_collect_text(fragments: list[dict]) -> str:
+    texts, photos = _fragment_counts(fragments)
+    parts = []
+    if texts:
+        parts.append(f"{texts} сообщ.")
+    if photos:
+        parts.append(f"{photos} фото")
+    if not parts:
+        return PRODUCTS["chat"].mini_hint
+    return f"Приняла: {', '.join(parts)}. Ещё или «Готово» — без лишних ответов."
+
+
+async def _update_chat_status(message: Message, state: FSMContext, text: str) -> None:
+    data = await state.get_data()
+    mid = data.get("chat_status_message_id")
+    kb = inline_chat_collect()
+    if mid:
+        try:
+            await message.bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=mid,
+                text=text,
+                reply_markup=kb,
+            )
+            return
+        except Exception:
+            pass
+    sent = await message.answer(text, reply_markup=kb)
+    await state.update_data(chat_status_message_id=sent.message_id)
+
+
+def _pack_fragments(fragments: list[dict]) -> tuple[str, list[str]]:
+    lines: list[str] = []
+    urls: list[str] = []
+    for frag in fragments:
+        kind = frag.get("kind")
+        speaker = frag.get("from")
+        if kind == "text":
+            body = str(frag.get("text") or "").strip()
+            if not body:
+                continue
+            lines.append(f"[от {speaker}]: {body}" if speaker else body)
+        elif kind == "photo":
+            url = str(frag.get("url") or "").strip()
+            if url:
+                urls.append(url)
+            caption = str(frag.get("caption") or "").strip()
+            if caption:
+                prefix = f"[скрин от {speaker}] " if speaker else "[скрин] "
+                lines.append(f"{prefix}{caption}")
+            elif speaker:
+                lines.append(f"[скрин от {speaker}]")
+    return "\n".join(lines).strip(), urls
 
 
 @router.message(BotStates.waiting_chat_collect)
@@ -1071,123 +1152,149 @@ async def chat_collect(message: Message, state: FSMContext) -> None:
     if raw in {"готово", "готово.", "готово!", "done"}:
         await _finish_chat_collect(message, state)
         return
-    chunk = _extract_chat_chunk(message)
-    if not chunk:
-        await message.answer(
-            "Пришли текст или перешли сообщения. Когда хватит — нажми «Готово».",
-            reply_markup=inline_chat_collect(),
-        )
-        return
+
     data = await state.get_data()
-    chunks = list(data.get("chat_chunks") or [])
-    chunks.append(chunk)
-    # лимит ~12k символов суммарно
-    joined = "\n".join(chunks)
-    if len(joined) > 12000:
-        chunks = [joined[-12000:]]
-    await state.update_data(chat_chunks=chunks)
-    await message.answer(
-        f"Приняла ({len(chunks)} фрагм.). Ещё или «Готово».",
-        reply_markup=inline_chat_collect(),
-    )
+    fragments = list(data.get("chat_fragments") or [])
+
+    if message.photo:
+        if _fragment_counts(fragments)[1] >= 12:
+            await _update_chat_status(
+                message, state, "Уже 12 фото — жми «Готово» или пришли текст."
+            )
+            return
+        try:
+            file_id = message.photo[-1].file_id
+            stored = await store_telegram_photo(message.bot, file_id)
+            kie_url = await KieFileUpload().ensure_kie_url(
+                local_path=stored.path,
+                source_url=stored.public_url,
+                upload_path="chat",
+                file_name=stored.path.name,
+                kind="image",
+            )
+            fragments.append(
+                {
+                    "kind": "photo",
+                    "url": kie_url,
+                    "caption": (message.caption or "").strip(),
+                    "from": _forward_speaker(message),
+                }
+            )
+        except Exception:
+            logger.exception("Chat photo upload failed")
+            await _update_chat_status(
+                message, state, "Не смогла загрузить фото — попробуй ещё раз или кинь текстом."
+            )
+            return
+    else:
+        text = (message.text or message.caption or "").strip()
+        if not text:
+            await _update_chat_status(
+                message,
+                state,
+                "Кидай текст, пересылку или скрин. Когда хватит — «Готово».",
+            )
+            return
+        speaker = _forward_speaker(message)
+        fragments.append({"kind": "text", "text": text, "from": speaker})
+        joined, _urls = _pack_fragments(fragments)
+        if len(joined) > 12000:
+            # обрезаем старые текстовые фрагменты, фото оставляем
+            photos = [f for f in fragments if f.get("kind") == "photo"]
+            texts = [f for f in fragments if f.get("kind") == "text"]
+            while texts and len(_pack_fragments(photos + texts)[0]) > 12000:
+                texts.pop(0)
+            fragments = photos + texts
+
+    await state.update_data(chat_fragments=fragments)
+    await _update_chat_status(message, state, _status_collect_text(fragments))
 
 
 @router.callback_query(F.data == "leia:chat_done")
 async def chat_done(callback: CallbackQuery, state: FSMContext) -> None:
     await safe_callback_answer(callback)
-    await _finish_chat_collect(callback.message, state)
+    await _finish_chat_collect(callback.message, state, telegram_id=callback.from_user.id)
 
 
-async def _finish_chat_collect(message: Message, state: FSMContext) -> None:
+async def _finish_chat_collect(
+    message: Message,
+    state: FSMContext,
+    *,
+    telegram_id: int | None = None,
+) -> None:
     data = await state.get_data()
-    chunks = list(data.get("chat_chunks") or [])
-    if not chunks:
-        await message.answer(
-            "Пока пусто — пришли хотя бы несколько реплик.",
-            reply_markup=inline_chat_collect(),
+    fragments = list(data.get("chat_fragments") or [])
+    chat_text, image_urls = _pack_fragments(fragments)
+    if not chat_text and not image_urls:
+        await _update_chat_status(
+            message, state, "Пока пусто — пришли текст, пересылку или скрины."
         )
         return
-    await state.set_state(BotStates.waiting_chat_role)
-    await state.update_data(chat_text="\n".join(chunks))
-    await message.answer(
-        "Кто ты в этой переписке? Так Лея не перепутает роли.",
-        reply_markup=inline_chat_role(),
-    )
-
-
-@router.callback_query(F.data.startswith("leia:chat_role:"))
-async def chat_role_chosen(callback: CallbackQuery, state: FSMContext) -> None:
-    if await refuse_if_busy_callback(callback):
+    if len(chat_text) < 20 and not image_urls:
+        await _update_chat_status(
+            message, state, "Маловато текста — добавь ещё или кинь скрины."
+        )
         return
-    which = callback.data.removeprefix("leia:chat_role:")
-    role = "я (пользователь бота)" if which == "me" else "партнёр; пользователь бота = вторая сторона"
 
-    data = await state.get_data()
     product_id = data.get("product_id", "chat")
     mode = data.get("mode", "mini")
-    chat_text = str(data.get("chat_text") or "").strip()
-    if len(chat_text) < 20:
-        await safe_callback_answer(callback, "Переписки мало — добавь ещё", show_alert=True)
-        await state.set_state(BotStates.waiting_chat_collect)
-        return
+    packed = ProductService.pack_chat_context(text=chat_text, image_urls=image_urls)
 
-    await safe_callback_answer(callback)
-    user = await _db_user(callback.from_user.id)
+    tg_id = telegram_id or (message.from_user.id if message.from_user else None)
+    user = await _db_user(tg_id) if tg_id else None
     if user is None:
         await state.clear()
         return
-
-    packed = ProductService.pack_chat_context(role=role, text=chat_text)
 
     if mode == "full_pay":
         await state.clear()
         try:
             flow = await run_busy_job(
-                callback.message,
+                message,
                 lambda: ProductService().create_full_payment(
                     user, product_id, extra_context=packed
                 ),
                 loading_text="💳 Готовлю полный разбор…",
                 progress_text="✨ Читаю подтекст…",
-                telegram_id=callback.from_user.id,
+                telegram_id=tg_id,
                 label=f"pay:{product_id}",
             )
             if flow is None:
                 return
-            await _deliver_payment_flow(callback.message, flow, state=state)
+            await _deliver_payment_flow(message, flow, state=state)
         except Exception:
-            await callback.message.answer("Оплата временно недоступна.")
+            await message.answer("Оплата временно недоступна.")
         return
 
     if mode == "full_entitled":
         await _run_entitled_full(
-            callback.message,
+            message,
             user=user,
             product_id=product_id,
             extra_context=packed,
             state=state,
-            telegram_id=callback.from_user.id,
+            telegram_id=tg_id,
         )
         await state.clear()
         return
 
     await state.clear()
     text = await run_busy_job(
-        callback.message,
+        message,
         lambda: ProductService().generate_mini(user.id, product_id, extra_context=packed),
         loading_text=PRODUCT_LOADING,
         progress_text="💬 Читаю переписку…",
-        telegram_id=callback.from_user.id,
+        telegram_id=tg_id,
         label=f"mini:{product_id}",
     )
     if text is None:
         return
     if not (text or "").strip():
-        await callback.message.answer("Не получилось разобрать — попробуй ещё раз.")
+        await message.answer("Не получилось разобрать — попробуй ещё раз.")
         return
     access_label = await _product_access_label(user.id, product_id)
     await answer_rich_message(
-        callback.message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
+        message, text, reply_markup=inline_after_mini(product_id, access_label=access_label)
     )
 
 
