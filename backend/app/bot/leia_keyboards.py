@@ -287,20 +287,6 @@ def inline_chat_collect() -> InlineKeyboardMarkup:
     )
 
 
-def inline_chat_role() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Я в переписке", callback_data="leia:chat_role:me"),
-                InlineKeyboardButton(
-                    text="Партнёр пишет как я", callback_data="leia:chat_role:partner"
-                ),
-            ],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="leia:menu")],
-        ]
-    )
-
-
 def inline_broadcast_products() -> InlineKeyboardMarkup:
     """Кнопки продуктов — для рассылок."""
     p = PRODUCTS

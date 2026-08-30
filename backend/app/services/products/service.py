@@ -309,20 +309,48 @@ class ProductService:
         )
 
     @staticmethod
-    def pack_chat_context(*, role: str, text: str) -> str:
-        return f"chat_role={role}\n<<<CHAT>>>\n{text.strip()}"
+    def pack_chat_context(*, text: str, image_urls: list[str] | None = None) -> str:
+        """Упаковка переписки для payment/generate. Роль не передаём — модель сама читает подписи."""
+        urls = [u.strip() for u in (image_urls or []) if u and str(u).strip()]
+        parts: list[str] = []
+        if urls:
+            parts.append("<<<IMAGES>>>\n" + "\n".join(urls[:12]))
+        parts.append("<<<CHAT>>>\n" + (text or "").strip())
+        return "\n".join(parts)
 
     @staticmethod
-    def _parse_chat_extra(extra: str) -> tuple[str, str]:
+    def _parse_chat_extra(extra: str) -> tuple[str, list[str]]:
+        """Returns (chat_text, image_urls). Legacy chat_role= в head игнорируется."""
         raw = (extra or "").strip()
-        if "<<<CHAT>>>" in raw:
-            head, body = raw.split("<<<CHAT>>>", 1)
-            role = "пользователь бота"
-            for line in head.splitlines():
-                if line.startswith("chat_role="):
-                    role = line.split("=", 1)[1].strip() or role
-            return role, body.strip()
-        return "пользователь бота", raw
+        images: list[str] = []
+        body = raw
+        if "<<<IMAGES>>>" in raw:
+            _before, rest = raw.split("<<<IMAGES>>>", 1)
+            if "<<<CHAT>>>" in rest:
+                img_block, body = rest.split("<<<CHAT>>>", 1)
+            else:
+                img_block, body = rest, ""
+            for line in img_block.splitlines():
+                line = line.strip()
+                if line.startswith("http"):
+                    images.append(line)
+                elif line.startswith("images="):
+                    images.extend(
+                        u.strip() for u in line.split("=", 1)[1].split(",") if u.strip().startswith("http")
+                    )
+        elif "<<<CHAT>>>" in raw:
+            _head, body = raw.split("<<<CHAT>>>", 1)
+        text = body.strip()
+        if not text and images:
+            text = "(переписка на скриншотах — см. изображения в запросе)"
+        return text, images
+
+    @staticmethod
+    def _chat_user_content(trigger: str, image_urls: list[str]) -> list[dict]:
+        parts: list[dict] = [{"type": "text", "text": trigger}]
+        for url in image_urls[:12]:
+            parts.append({"type": "image_url", "image_url": {"url": url}})
+        return parts
 
     @staticmethod
     def _format_cards(cards: list[dict], *, positions: list[str] | None = None) -> str:
@@ -443,7 +471,8 @@ class ProductService:
                 return "Сначала пройди анкету — /start"
 
             cards_text = ""
-            chat_role, chat_text = "", ""
+            chat_text = ""
+            chat_images: list[str] = []
             if product_id == "question":
                 cards = TarotService().draw_cards(1)
                 cards_text = self._format_cards(cards, positions=["ключ"])
@@ -451,7 +480,7 @@ class ProductService:
                 cards = TarotService().draw_cards(4)
                 cards_text = self._format_cards([cards[1]], positions=["что мешает"])
             elif product_id == "chat":
-                chat_role, chat_text = self._parse_chat_extra(extra_context)
+                chat_text, chat_images = self._parse_chat_extra(extra_context)
 
             vars_ = self._prompt_vars(
                 profile,
@@ -459,20 +488,17 @@ class ProductService:
                 question=extra_context if product_id in ("question", "tarot_spread") else "",
                 cards=cards_text,
                 chat_text=chat_text,
-                chat_role=chat_role,
             )
             system = product_system(product_id, level="mini", variables=vars_)
+            trigger = user_trigger(f"мини «{product.title}»")
+            user_content = (
+                self._chat_user_content(trigger, chat_images)
+                if product_id == "chat" and chat_images
+                else [{"type": "text", "text": trigger}]
+            )
             messages = [
                 {"role": "system", "content": [{"type": "text", "text": system}]},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": user_trigger(f"мини «{product.title}»"),
-                        }
-                    ],
-                },
+                {"role": "user", "content": user_content},
             ]
             text = await self._complete_leia(
                 messages,
@@ -556,12 +582,13 @@ class ProductService:
 
         product = PRODUCTS.get(product_id)
         cards_text = ""
-        chat_role, chat_text = "", ""
+        chat_text = ""
+        chat_images: list[str] = []
         if product_id == "question":
             cards = TarotService().draw_cards(3)
             cards_text = self._format_cards(cards)
         elif product_id == "chat":
-            chat_role, chat_text = self._parse_chat_extra(extra_context)
+            chat_text, chat_images = self._parse_chat_extra(extra_context)
 
         vars_ = self._prompt_vars(
             profile,
@@ -569,16 +596,18 @@ class ProductService:
             question=extra_context if product_id in ("question", "tarot_spread") else "",
             cards=cards_text,
             chat_text=chat_text,
-            chat_role=chat_role,
         )
         system = product_system(product_id, level="full", variables=vars_)
         title = product.title if product else product_id
+        trigger = user_trigger(f"полный «{title}»")
+        user_content = (
+            self._chat_user_content(trigger, chat_images)
+            if product_id == "chat" and chat_images
+            else [{"type": "text", "text": trigger}]
+        )
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system}]},
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": user_trigger(f"полный «{title}»")}],
-            },
+            {"role": "user", "content": user_content},
         ]
         try:
             text = await self._complete_leia(
