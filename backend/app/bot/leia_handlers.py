@@ -549,13 +549,11 @@ async def leia_consent(callback: CallbackQuery) -> None:
     if callback.from_user is None or callback.message is None:
         return
     service = OnboardingService()
-    # Old «Соглашаюсь» after reset: recreate user first.
-    await service.start_or_resume(callback.from_user)
     prompt, _ = await service.advance_from_consent(callback.from_user)
-    if not prompt:
-        step = await service.get_current_step_key(callback.from_user) or "legal_consent"
-        prompt = service.prompt_for_step(step)
     next_step = await service.get_current_step_key(callback.from_user) or "name"
+    if not prompt:
+        # Soft-fail: show whatever step is current (never re-trap on consent blindly).
+        prompt = service.prompt_for_step(next_step)
     await callback.message.answer(prompt, reply_markup=onboarding_markup_for_step(next_step))
 
 

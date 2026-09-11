@@ -169,6 +169,32 @@ function DashboardPage() {
       </div>
 
       <section className="panel">
+        <h2>KIE — баланс API</h2>
+        {stats?.kie_credits_error && <p className="error">{stats.kie_credits_error}</p>}
+        {stats?.kie_credits ? (
+          <div className="cards grid-4">
+            <Metric
+              title="Кредиты"
+              value={
+                stats.kie_credits.credits != null
+                  ? stats.kie_credits.credits.toLocaleString("ru-RU", { maximumFractionDigits: 4 })
+                  : "—"
+              }
+              hint="живой остаток в кабинете KIE"
+            />
+            <Metric title="Модель" value={stats.kie_credits.model || "—"} hint="основная" />
+            <Metric
+              title="Fallback"
+              value={stats.kie_credits.fallback_model || "—"}
+              hint="если Luna недоступна"
+            />
+          </div>
+        ) : (
+          !stats?.kie_credits_error && <p className="muted">Нет данных по KIE</p>
+        )}
+      </section>
+
+      <section className="panel">
         <h2>Касса Robokassa</h2>
         {stats?.robokassa_cashbox_error && (
           <p className="error">{stats.robokassa_cashbox_error}</p>

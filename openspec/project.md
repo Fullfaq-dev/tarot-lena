@@ -5,7 +5,7 @@
 ## Stack
 
 - Backend: Python 3.12, FastAPI, aiogram 3, SQLAlchemy async, asyncpg, Alembic, Redis FSM storage.
-- AI: KIE.ai для генерации текстов (таро, нумерология, астрология).
+- AI: KIE.ai, модель **GPT-5.6 Luna** (`gpt-5-6-luna`, `/codex/v1/responses`); fallback `gpt-5-2`.
 - Payments: **Robokassa** (MD5, ResultURL) — фиксированные продукты и подписки; `PAYMENTS_DEMO_MODE` пока нет ключей. Platega — legacy в коде.
 - Frontend: статический лендинг `site/`, admin SPA `frontend-admin`.
 - Production: Docker Compose на **новом VPS** (`/opt/tarot-lena`), nginx + SSL.

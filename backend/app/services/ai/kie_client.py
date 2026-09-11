@@ -10,13 +10,76 @@ from app.core.http import get_async_client
 logger = logging.getLogger(__name__)
 
 
-def _map_reasoning_effort(effort: str) -> str:
-    """GPT-5.2 supports only low/high; map legacy medium to high."""
+def _uses_responses_api(model: str) -> bool:
+    """GPT-5.6 Luna/Sol/Terra живут на /codex/v1/responses, не на chat/completions."""
+    normalized = (model or "").strip().lower().replace(".", "-")
+    return normalized.startswith("gpt-5-6") or normalized.endswith("-luna")
+
+
+def _map_reasoning_effort(effort: str, *, model: str = "") -> str:
+    if _uses_responses_api(model):
+        if effort in {"low", "medium", "high", "xhigh"}:
+            return effort
+        return "low"
+    # GPT-5.2 chat/completions: only low/high
     if effort == "medium":
         return "high"
     if effort in {"low", "high"}:
         return effort
     return "low"
+
+
+def _messages_to_responses_input(messages: list[dict]) -> tuple[str, list[dict]]:
+    """Convert OpenAI-style messages to KIE Responses `instructions` + `input`."""
+    instructions: list[str] = []
+    items: list[dict] = []
+    for message in messages:
+        role = str(message.get("role") or "user")
+        content = message.get("content")
+        texts: list[str] = []
+        parts: list[dict] = []
+        if isinstance(content, str):
+            texts.append(content)
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, str):
+                    texts.append(part)
+                    continue
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "image_url":
+                    image = part.get("image_url")
+                    url = image.get("url") if isinstance(image, dict) else image
+                    if url:
+                        parts.append({"type": "input_image", "image_url": str(url)})
+                elif part.get("text"):
+                    texts.append(str(part["text"]))
+        if role == "system":
+            instructions.extend(t.strip() for t in texts if t and t.strip())
+            continue
+        for text in texts:
+            if text.strip():
+                parts.append({"type": "input_text", "text": text})
+        if parts:
+            items.append({"role": role if role in {"user", "assistant"} else "user", "content": parts})
+    return "\n\n".join(instructions), items
+
+
+def _extract_responses_text(data: dict) -> str:
+    if isinstance(data.get("output_text"), str) and data["output_text"].strip():
+        return data["output_text"].strip()
+    parts: list[str] = []
+    for item in data.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") not in {None, "message"} and item.get("role") != "assistant":
+            continue
+        for chunk in item.get("content") or []:
+            if isinstance(chunk, dict) and chunk.get("text"):
+                parts.append(str(chunk["text"]))
+            elif isinstance(chunk, str):
+                parts.append(chunk)
+    return "\n".join(parts).strip()
 
 
 def _normalize_messages(messages: list[dict]) -> list[dict]:
@@ -90,10 +153,12 @@ class KieClient:
 
     def _chat_url(self, model: str | None = None) -> str:
         chosen = (model or self.settings.kie_chat_model).strip("/")
+        if _uses_responses_api(chosen):
+            return f"{self.settings.kie_base_url.rstrip('/')}/codex/v1/responses"
         return f"{self.settings.kie_base_url.rstrip('/')}/{chosen}/v1/chat/completions"
 
     def _chat_models(self) -> list[str]:
-        primary = (self.settings.kie_chat_model or "gpt-5-2").strip()
+        primary = (self.settings.kie_chat_model or "gpt-5-6-luna").strip()
         fallback = (getattr(self.settings, "kie_chat_fallback_model", "") or "").strip()
         models = [primary]
         if fallback and fallback != primary:
@@ -117,11 +182,24 @@ class KieClient:
         *,
         reasoning_effort: str,
     ) -> str:
-        payload = {
-            "messages": _normalize_messages(messages),
-            "stream": False,
-            "reasoning_effort": _map_reasoning_effort(reasoning_effort),
-        }
+        if _uses_responses_api(model):
+            instructions, input_items = _messages_to_responses_input(_normalize_messages(messages))
+            if not input_items:
+                input_items = [{"role": "user", "content": [{"type": "input_text", "text": "Продолжи."}]}]
+            payload = {
+                "model": model,
+                "stream": False,
+                "input": input_items,
+                "reasoning": {"effort": _map_reasoning_effort(reasoning_effort, model=model)},
+            }
+            if instructions:
+                payload["instructions"] = instructions
+        else:
+            payload = {
+                "messages": _normalize_messages(messages),
+                "stream": False,
+                "reasoning_effort": _map_reasoning_effort(reasoning_effort, model=model),
+            }
         client = get_async_client()
         response = await client.post(
             self._chat_url(model),
@@ -135,13 +213,16 @@ class KieClient:
         code = data.get("code")
         if isinstance(code, int) and code not in (0, 200):
             raise ValueError(data.get("msg") or f"KIE chat code {code}")
+        if isinstance(data.get("error"), dict):
+            err = data["error"]
+            raise ValueError(err.get("message") or str(err))
 
         usage = data.get("usage") or {}
         self.last_usage = {
             "input_tokens": int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
             "output_tokens": int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
         }
-        text = _extract_content(data)
+        text = _extract_responses_text(data) if _uses_responses_api(model) else _extract_content(data)
         if not text:
             raise ValueError(data.get("msg") or "KIE вернул пустой ответ")
         return text

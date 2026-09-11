@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, User
 from app.database.session import get_session
 from app.services.billing.platega_client import fetch_balances
+from app.services.billing.kie_credits import fetch_kie_credits
 from app.services.billing.robokassa_cashbox import fetch_robokassa_cashbox
 from app.services.billing.service import BillingService
 from app.services.landing import analytics as landing_analytics
@@ -29,6 +30,10 @@ async def dashboard(session: AsyncSession = Depends(get_session)) -> dict:
     stats["robokassa_cashbox"] = cashbox
     if cashbox_error:
         stats["robokassa_cashbox_error"] = cashbox_error
+    kie, kie_error = await fetch_kie_credits()
+    stats["kie_credits"] = kie
+    if kie_error:
+        stats["kie_credits_error"] = kie_error
     # Legacy Platega block kept for old shops that still have keys.
     balances, error = await fetch_balances()
     stats["platega_balances"] = balances
