@@ -59,7 +59,12 @@ jobs:
             set -euo pipefail
             cd /opt/tarot-lena
             VPS_IP="${VPS_HOST:-85.234.106.108}"
-            PUBLIC_URL="http://${VPS_IP}"
+            DOMAIN="arcaneai.online"
+            if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+              PUBLIC_URL="https://${DOMAIN}"
+            else
+              PUBLIC_URL="http://${VPS_IP}"
+            fi
 
             set_env() {
               local key="$1"
