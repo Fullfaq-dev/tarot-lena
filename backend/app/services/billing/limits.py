@@ -36,7 +36,7 @@ TOP_UP_AMOUNTS_RUB = [Decimal("100"), Decimal("300"), Decimal("500")]
 # One-time gift credited for subscribing to the channel.
 CHANNEL_GIFT_RUB = Decimal("50")
 
-AI_MODEL_NAME = "gpt-5-2"
+AI_MODEL_NAME = "gpt-5-6-luna"
 AI_PROVIDER_NAME = "kie"
 
 

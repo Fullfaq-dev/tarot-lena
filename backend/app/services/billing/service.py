@@ -54,7 +54,7 @@ _PAYMENT_DESCRIPTIONS = {
     "subscription_vip": "VIP-пакет — подписка на месяц",
     "combo_happy_woman": "Комбо «Счастливая женщина»",
     "product_love_full": "Любовь — полная расшифровка",
-    "product_chat_full": "Переписка — полная расшифровка",
+    "product_chat_full": "Разбор переписки — полная расшифровка",
     "product_wealth_full": "Денежный код — полная расшифровка",
     "product_negative_full": "Диагностика негатива — полная",
     "product_forecast_full": "Личный прогноз — полная",
@@ -78,6 +78,8 @@ class BillingService:
         *,
         subscription: Subscription | None = None,
     ) -> dict[str, int | str] | None:
+        if int(user.telegram_id or 0) <= 0:
+            return None
         lang = await self._user_lang(session, user.id)
         if payment.purpose == "topup":
             text = t(
@@ -1131,16 +1133,48 @@ class BillingService:
                 payload = dict(payment.payload or {})
                 payload["generated_text"] = product_text
                 payment.payload = payload
+            else:
+                payload = dict(payment.payload or {})
+                # Оплата есть, текста нет — либо ждём контекст, либо AI пустой.
+                if not payload.get("awaiting_context") and not payload.get("generated_text"):
+                    logger.error(
+                        "Payment %s fulfilled without reading text purpose=%s",
+                        payment.id,
+                        payment.purpose,
+                    )
+                    payload["fulfill_empty"] = True
+                    payment.payload = payload
+        elif payment.purpose in {"web_reading", "web_unlimited"}:
+            from app.database.models import WebReading, WebSession
+            from app.services.web.service import fulfill_paid
+
+            payload = dict(payment.payload or {})
+            reading = None
+            token = payload.get("token")
+            reading_id = payload.get("reading_id")
+            if reading_id:
+                reading = await session.scalar(select(WebReading).where(WebReading.id == reading_id))
+            if reading is None and token:
+                reading = await session.scalar(select(WebReading).where(WebReading.token == token))
+            if reading:
+                await fulfill_paid(session, reading)
+                if payment.purpose == "web_unlimited":
+                    web = await session.scalar(
+                        select(WebSession).where(WebSession.id == reading.session_id)
+                    )
+                    if web:
+                        web.unlimited_until = datetime.now(timezone.utc) + timedelta(days=30)
         else:
             raise ValueError(f"Неизвестное назначение платежа: {payment.purpose}")
 
-        from app.services.referrals.service import ReferralService
+        if user.telegram_id and user.telegram_id > 0:
+            from app.services.referrals.service import ReferralService
 
-        await ReferralService().accrue_reward(session, user.id, payment.amount_rub)
+            await ReferralService().accrue_reward(session, user.id, payment.amount_rub)
 
-        from app.services.referrals.invite import schedule_friend_invite
+            from app.services.referrals.invite import schedule_friend_invite
 
-        await schedule_friend_invite(session, user, payment)
+            await schedule_friend_invite(session, user, payment)
 
         payment.status = "completed"
         if admin_comment.strip():
@@ -1158,9 +1192,10 @@ class BillingService:
         }
         owner_name = user.first_name or user.username or str(user.telegram_id)
         owner_handle = f" (@{user.username})" if user.username else ""
+        paid = format_balance(payment.amount_rub)
         if payment.purpose == "topup":
             owner_title = "💰 Пополнение баланса"
-            owner_item = format_balance(payment.amount_rub)
+            owner_item = paid
         elif payment.purpose.startswith("subscription_"):
             tier = payment.purpose.removeprefix("subscription_")
             tier_labels = {
@@ -1171,20 +1206,29 @@ class BillingService:
             }
             tier_label = tier_labels.get(tier, tier)
             owner_title = "⭐ Покупка подписки"
-            owner_item = f"{tier_label} ({format_balance(payment.amount_rub)})"
+            owner_item = f"{tier_label} ({paid})"
         elif payment.purpose == "combo_happy_woman":
             owner_title = "🎁 Комбо-пакет"
-            owner_item = f"Счастливая женщина ({format_balance(payment.amount_rub)})"
+            owner_item = f"Счастливая женщина ({paid})"
         elif payment.purpose.startswith("product_"):
             owner_title = "🛒 Покупка"
-            owner_item = _PAYMENT_DESCRIPTIONS.get(payment.purpose, format_balance(payment.amount_rub))
+            label = _PAYMENT_DESCRIPTIONS.get(payment.purpose, payment.purpose)
+            owner_item = f"{label} — {paid}"
+        else:
+            owner_title = "💳 Оплата"
+            owner_item = paid
         result["owner_notify"] = (
             f"{owner_title}\n"
             f"Пользователь: {owner_name}{owner_handle}\n"
             f"ID: {user.telegram_id}\n"
             f"Что: {owner_item}\n"
-            f"Баланс: {format_balance(user.balance_rub)}"
+            f"Сумма: {paid}\n"
+            f"Баланс пользователя: {format_balance(user.balance_rub)}"
         )
+        if (payment.payload or {}).get("fulfill_empty"):
+            result["owner_notify"] += (
+                "\n⚠️ Разбор не сгенерировался — проверь вручную / перевыдай."
+            )
         notify = await self._payment_success_notify(
             session,
             user,

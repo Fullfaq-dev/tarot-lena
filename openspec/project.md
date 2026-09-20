@@ -5,16 +5,16 @@
 ## Stack
 
 - Backend: Python 3.12, FastAPI, aiogram 3, SQLAlchemy async, asyncpg, Alembic, Redis FSM storage.
-- AI: KIE.ai для генерации текстов (таро, нумерология, астрология).
+- AI: KIE.ai, модель **GPT-5.6 Luna** (`gpt-5-6-luna`, `/codex/v1/responses`). Fallback: **302.ai** `gpt-5.6-luna-pro` (`/v1/chat/completions`).
 - Payments: **Robokassa** (MD5, ResultURL) — фиксированные продукты и подписки; `PAYMENTS_DEMO_MODE` пока нет ключей. Platega — legacy в коде.
-- Frontend: статический лендинг `site/`, admin SPA `frontend-admin`.
+- Frontend: квиз-сайт `frontend-web/` (Vite/React) вместо лендинга, legal в `site/legal.html`, admin SPA `frontend-admin`.
 - Production: Docker Compose на **новом VPS** (`/opt/tarot-lena`), nginx + SSL.
 
 ## Продукт
 
 - Персона: **Лея** — таро, нумерология (Матрица Судьбы / Хшановская), западный зодиак.
 - 5 платных продуктов + комбо-пакеты + 2 подписки.
-- Бесплатно: утренняя рассылка (1 нед.), нумеропортрет, недельный гороскоп.
+- Бесплатно: утренняя AI-персоналка (3 дня), нумеропортрет, недельный гороскоп.
 - Язык: **ru only** (MVP).
 
 ## Architecture

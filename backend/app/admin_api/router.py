@@ -10,9 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.admin_api import service as admin_service
 from app.admin_api.auth import get_current_admin
 from app.core.config import get_settings
-from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, User
+from app.database.models import Payment, ReferralWithdrawalRequest, TarotCard, User, WebCardOverride
 from app.database.session import get_session
 from app.services.billing.platega_client import fetch_balances
+from app.services.billing.kie_credits import fetch_kie_credits
 from app.services.billing.robokassa_cashbox import fetch_robokassa_cashbox
 from app.services.billing.service import BillingService
 from app.services.landing import analytics as landing_analytics
@@ -29,6 +30,10 @@ async def dashboard(session: AsyncSession = Depends(get_session)) -> dict:
     stats["robokassa_cashbox"] = cashbox
     if cashbox_error:
         stats["robokassa_cashbox_error"] = cashbox_error
+    kie, kie_error = await fetch_kie_credits()
+    stats["kie_credits"] = kie
+    if kie_error:
+        stats["kie_credits_error"] = kie_error
     # Legacy Platega block kept for old shops that still have keys.
     balances, error = await fetch_balances()
     stats["platega_balances"] = balances
@@ -329,3 +334,48 @@ async def upload_tarot_card(
     await session.commit()
     await session.refresh(card)
     return {"id": card.id, "slug": card.slug, "image_path": card.image_path}
+
+
+class WebCardSaveIn(BaseModel):
+    card_id: str
+    payload: dict
+
+
+@router.get("/web/cards")
+async def admin_web_cards(session: AsyncSession = Depends(get_session)) -> dict:
+    from app.services.web.catalog import CARDS, public_card
+    from app.services.web.service import resolved_cards
+
+    overrides = {
+        row.card_id: row.payload
+        for row in (await session.scalars(select(WebCardOverride))).all()
+    }
+    cards = []
+    for card in (await resolved_cards(session)).values():
+        item = public_card(card)
+        item["price_rub"] = card.price_rub
+        item["lead"] = card.lead
+        item["override"] = overrides.get(card.id) or {}
+        cards.append(item)
+    return {"cards": cards, "defaults": [public_card(c) | {"price_rub": c.price_rub} for c in CARDS.values()]}
+
+
+@router.put("/web/cards/{card_id}")
+async def admin_save_web_card(
+    card_id: str,
+    body: WebCardSaveIn,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from app.services.web.catalog import CARDS
+
+    if card_id not in CARDS:
+        raise HTTPException(status_code=404, detail="Нет такой карточки")
+    row = await session.scalar(select(WebCardOverride).where(WebCardOverride.card_id == card_id))
+    if row is None:
+        row = WebCardOverride(card_id=card_id, payload=body.payload)
+        session.add(row)
+    else:
+        row.payload = body.payload
+    await session.commit()
+    return {"ok": True, "card_id": card_id}
+

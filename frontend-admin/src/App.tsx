@@ -11,7 +11,8 @@ type Route =
   | { page: "billing" }
   | { page: "payment"; id: string }
   | { page: "referrals" }
-  | { page: "tarot" };
+  | { page: "tarot" }
+  | { page: "web" };
 
 function parseRoute(): Route {
   const hash = window.location.hash.replace("#", "") || "/";
@@ -25,6 +26,7 @@ function parseRoute(): Route {
   if (parts[0] === "billing") return { page: "billing" };
   if (parts[0] === "referrals") return { page: "referrals" };
   if (parts[0] === "tarot") return { page: "tarot" };
+  if (parts[0] === "web") return { page: "web" };
   return { page: "dashboard" };
 }
 
@@ -104,6 +106,7 @@ export function App() {
           <NavItem active={route.page === "billing" || route.page === "payment"} onClick={() => navigate({ page: "billing" })}>Биллинг</NavItem>
           <NavItem active={route.page === "referrals"} onClick={() => navigate({ page: "referrals" })}>Рефералка</NavItem>
           <NavItem active={route.page === "tarot"} onClick={() => navigate({ page: "tarot" })}>Карты Таро</NavItem>
+          <NavItem active={route.page === "web"} onClick={() => navigate({ page: "web" })}>Сайт-квиз</NavItem>
         </nav>
         <button className="logout-btn" type="button" onClick={() => { setToken(null); setAuthed(false); }}>
           Выйти
@@ -120,6 +123,7 @@ export function App() {
         {route.page === "payment" && <PaymentDetailPage id={route.id} />}
         {route.page === "referrals" && <ReferralsPage />}
         {route.page === "tarot" && <TarotPage />}
+        {route.page === "web" && <WebCardsPage />}
       </main>
     </div>
   );
@@ -167,6 +171,32 @@ function DashboardPage() {
         <Metric title="По реферальной ссылке" value={Number(stats?.referred_users ?? 0)} />
         <Metric title="Заявки на вывод" value={Number(stats?.pending_withdrawals ?? 0)} />
       </div>
+
+      <section className="panel">
+        <h2>KIE — баланс API</h2>
+        {stats?.kie_credits_error && <p className="error">{stats.kie_credits_error}</p>}
+        {stats?.kie_credits ? (
+          <div className="cards grid-4">
+            <Metric
+              title="Кредиты"
+              value={
+                stats.kie_credits.credits != null
+                  ? stats.kie_credits.credits.toLocaleString("ru-RU", { maximumFractionDigits: 4 })
+                  : "—"
+              }
+              hint="живой остаток в кабинете KIE"
+            />
+            <Metric title="Модель" value={stats.kie_credits.model || "—"} hint="KIE Luna" />
+            <Metric
+              title="Fallback"
+              value={stats.kie_credits.fallback_model || "gpt-5.6-luna-pro"}
+              hint={stats.kie_credits.fallback_provider || "302.ai"}
+            />
+          </div>
+        ) : (
+          !stats?.kie_credits_error && <p className="muted">Нет данных по KIE</p>
+        )}
+      </section>
 
       <section className="panel">
         <h2>Касса Robokassa</h2>
@@ -1464,5 +1494,57 @@ function PaymentsTable({ rows }: { rows: BillingData["payments"] }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+function WebCardsPage() {
+  const [cards, setCards] = useState<Record<string, unknown>[]>([]);
+  const [edit, setEdit] = useState("");
+  const [current, setCurrent] = useState("");
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    api.webCards().then((data) => setCards(data.cards || []));
+  }, []);
+
+  function openCard(card: Record<string, unknown>) {
+    setCurrent(String(card.id || ""));
+    const fallback = { title: card.title, lead: card.lead, price_rub: card.price_rub };
+    const override = card.override && Object.keys(card.override as object).length ? card.override : fallback;
+    setEdit(JSON.stringify(override, null, 2));
+  }
+
+  async function save() {
+    setMsg("");
+    try {
+      await api.saveWebCard(current, JSON.parse(edit));
+      setMsg("Сохранено — квиз подхватит без релиза");
+      const data = await api.webCards();
+      setCards(data.cards || []);
+    } catch {
+      setMsg("Не сохранился JSON");
+    }
+  }
+
+  return (
+    <>
+      <h1>Карточки сайта</h1>
+      <p className="muted">Тексты и цены квиза. Пустой override = дефолт из кода.</p>
+      {msg && <p>{msg}</p>}
+      <div className="cards">
+        {cards.map((card) => (
+          <button key={String(card.id)} className="nav-item" type="button" onClick={() => openCard(card)}>
+            {String(card.title)} · {String(card.price_rub)} ₽
+          </button>
+        ))}
+      </div>
+      {current && (
+        <>
+          <h2>{current}</h2>
+          <textarea value={edit} onChange={(e) => setEdit(e.target.value)} rows={16} style={{ width: "100%" }} />
+          <p><button type="button" onClick={save}>Сохранить</button></p>
+        </>
+      )}
+    </>
   );
 }

@@ -149,7 +149,13 @@ class OnboardingService:
                     OnboardingSession.completed_at.is_(None),
                 )
             )
-            step = onboarding.current_step if onboarding else ONBOARDING_STEP_KEYS[0]
+            if onboarding is None:
+                # Reset / orphaned user: recreate open session so consent can advance.
+                onboarding = OnboardingSession(user_id=user.id, current_step="legal_consent")
+                session.add(onboarding)
+                await session.commit()
+
+            step = onboarding.current_step or ONBOARDING_STEP_KEYS[0]
             if step == "legal_consent":
                 text = format_welcome_onboarding_rich()
             else:
@@ -161,7 +167,7 @@ class OnboardingService:
     async def advance_from_consent(self, telegram_user: TelegramUser | None) -> tuple[str | None, str | None]:
         if telegram_user is None:
             return None, None
-        # Ensure row exists (clicking an old consent button after user reset).
+        # Ensure open session exists (clicking «Соглашаюсь» after user reset).
         await self.start_or_resume(telegram_user)
         return await self._advance_step(telegram_user, "legal_consent", "accepted")
 
@@ -188,6 +194,7 @@ class OnboardingService:
             if onboarding is None:
                 onboarding = OnboardingSession(user_id=user.id, current_step="legal_consent")
                 session.add(onboarding)
+                await session.flush()
 
             current_index = next(
                 (index for index, step in enumerate(ONBOARDING_STEP_KEYS) if step == onboarding.current_step),
@@ -196,6 +203,7 @@ class OnboardingService:
             step_key = ONBOARDING_STEP_KEYS[current_index]
 
             if step_key == "legal_consent":
+                # Text answers while on consent — remind to press the button.
                 return self.prompt_for_step("legal_consent"), user.id, False
 
             answers = dict(onboarding.answers or {})
@@ -227,8 +235,13 @@ class OnboardingService:
                     OnboardingSession.completed_at.is_(None),
                 )
             )
-            if onboarding is None or onboarding.current_step != step_key:
-                return None, user.id
+            if onboarding is None:
+                onboarding = OnboardingSession(user_id=user.id, current_step=step_key)
+                session.add(onboarding)
+                await session.flush()
+            if onboarding.current_step != step_key:
+                # Already past this step — return current prompt instead of soft-failing to consent.
+                return self.prompt_for_step(onboarding.current_step), user.id
             answers = dict(onboarding.answers or {})
             answers[step_key] = answer
             onboarding.answers = answers
@@ -270,10 +283,10 @@ class OnboardingService:
 
         settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
         if settings:
-            from datetime import timedelta
+            from app.services.broadcasts.leia import free_morning_trial_ends_on
 
             today = date.today()
             settings.morning_digest_enabled = True
             settings.weekly_horoscope_enabled = True
             settings.daily_card_enabled = True
-            settings.free_morning_week_ends_at = today + timedelta(days=7)
+            settings.free_morning_week_ends_at = free_morning_trial_ends_on(today)

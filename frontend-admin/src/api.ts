@@ -75,6 +75,14 @@ export type PlategaBalance = {
   frozen_balance: number;
 };
 
+export type KieCredits = {
+  configured: boolean;
+  model: string;
+  fallback_provider?: string;
+  fallback_model?: string;
+  credits: number | null;
+};
+
 export type RobokassaCashbox = {
   configured: boolean;
   merchant_login: string;
@@ -109,6 +117,8 @@ export type DashboardStats = {
   pending_withdrawals: number;
   robokassa_cashbox?: RobokassaCashbox;
   robokassa_cashbox_error?: string;
+  kie_credits?: KieCredits;
+  kie_credits_error?: string;
   platega_balances?: PlategaBalance[];
   platega_balances_error?: string;
 };
@@ -165,6 +175,13 @@ export const api = {
     });
     return handleResponse(res);
   },
+  webCards: () => get<{ cards: Record<string, unknown>[] }>("/web/cards"),
+  saveWebCard: (cardId: string, payload: Record<string, unknown>) =>
+    fetch(`${BASE}/web/cards/${cardId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ card_id: cardId, payload }),
+    }).then((res) => handleResponse(res)),
 };
 
 export type UserRow = {

@@ -42,7 +42,7 @@ PRODUCTS: dict[str, Product] = {
     ),
     "chat": Product(
         id="chat",
-        title="Переписка",
+        title="Разбор переписки",
         emoji="💬",
         price_rub=Decimal("300"),
         pitch=(

@@ -59,6 +59,15 @@ services:
     image: tarot-lena-admin:latest
     restart: unless-stopped
 
+  web:
+    build:
+      context: ./frontend-web
+      dockerfile: Dockerfile.prod
+    image: tarot-lena-web:latest
+    restart: unless-stopped
+    depends_on:
+      - api
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -73,6 +82,7 @@ services:
     depends_on:
       - api
       - admin
+      - web
 
   postgres:
     image: postgres:16-alpine

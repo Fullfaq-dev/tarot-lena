@@ -435,3 +435,49 @@ class AdminAuditLog(UUIDMixin, TimestampMixin, Base):
     entity_type: Mapped[str | None] = mapped_column(String(128))
     entity_id: Mapped[str | None] = mapped_column(String(128))
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class WebSession(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "web_sessions"
+
+    guest_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    utm: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metrika_client_id: Mapped[str | None] = mapped_column(String(128))
+    email: Mapped[str | None] = mapped_column(String(255))
+    telegram: Mapped[str | None] = mapped_column(String(255))
+    marketing_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    privacy_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    unlimited_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebReading(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "web_readings"
+
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    session_id: Mapped[str] = mapped_column(ForeignKey("web_sessions.id", ondelete="CASCADE"), index=True)
+    card_id: Mapped[str] = mapped_column(String(64), index=True)
+    branch: Mapped[str] = mapped_column(String(16))
+    sku: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(32), default="mini", index=True)
+    answers: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    input_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    mini: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    paid_text: Mapped[str | None] = mapped_column(Text)
+    payment_id: Mapped[str | None] = mapped_column(ForeignKey("payments.id", ondelete="SET NULL"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WebCardOverride(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "web_card_overrides"
+
+    card_id: Mapped[str] = mapped_column(String(64), unique=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class WebMatrixCache(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "web_matrix_cache"
+    __table_args__ = (UniqueConstraint("cache_key", name="uq_web_matrix_cache_key"),)
+
+    cache_key: Mapped[str] = mapped_column(String(255))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

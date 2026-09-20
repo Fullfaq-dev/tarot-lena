@@ -26,7 +26,7 @@ async def record_kie_usage(
     feature: str,
     question: str = "",
     answer: str = "",
-    api_usage: dict[str, int] | None = None,
+    api_usage: dict | None = None,
     extra_meta: dict | None = None,
 ) -> None:
     """Persist usage without charging the user (Leia fixed-price products)."""
@@ -53,12 +53,21 @@ async def record_kie_usage(
 
             cost_credits = provider_cost_credits(input_tokens, output_tokens)
             cost_usd = provider_cost_usd(input_tokens, output_tokens)
-            model = get_settings().kie_chat_model or "gpt-5-2"
+            settings = get_settings()
+            model = settings.kie_chat_model or "gpt-5-6-luna"
+            provider = "kie"
+            if api_usage:
+                raw_model = api_usage.get("model")
+                if isinstance(raw_model, str) and raw_model.strip():
+                    model = raw_model.strip()
+                raw_provider = api_usage.get("provider")
+                if isinstance(raw_provider, str) and raw_provider.strip():
+                    provider = raw_provider.strip()
             session.add(
                 UsageRecord(
                     user_id=user.id,
                     feature=feature,
-                    provider="kie",
+                    provider=provider,
                     model=model,
                     input_units=input_tokens,
                     output_units=output_tokens,
