@@ -3,11 +3,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request, Response
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,22 @@ from app.services.web.service import ensure_session, guest_telegram_id
 
 COOKIE = "leia_sid"
 COOKIE_DAYS = 30
+_oauth_redis: Redis | None = None
+
+
+async def _oauth_r() -> Redis:
+    global _oauth_redis
+    if _oauth_redis is None:
+        _oauth_redis = Redis.from_url(get_settings().redis_url, decode_responses=True)
+    return _oauth_redis
+
+
+def _pkce() -> tuple[str, str]:
+    verifier = secrets.token_urlsafe(48).replace("=", "")
+    if len(verifier) < 43:
+        verifier = (verifier + "A" * 43)[:64]
+    challenge = urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).decode("ascii").rstrip("=")
+    return verifier, challenge
 
 
 def _secret() -> bytes:
@@ -88,14 +106,14 @@ def _redirect_uri(provider: str) -> str:
     return f"{base}/api/web/auth/{provider}/callback"
 
 
-def start_url(provider: str, *, guest_id: str, next_path: str) -> str:
+async def start_url(provider: str, *, guest_id: str, next_path: str) -> str:
     settings = get_settings()
-    state = urlsafe_b64encode(
-        json.dumps({"g": guest_id, "n": next_path, "p": provider}).encode()
-    ).decode()
     if provider == "yandex":
         if not settings.yandex_oauth_client_id:
             raise HTTPException(400, "Яндекс OAuth не настроен")
+        state = urlsafe_b64encode(
+            json.dumps({"g": guest_id, "n": next_path, "p": provider}, separators=(",", ":")).encode()
+        ).decode().rstrip("=")
         return "https://oauth.yandex.ru/authorize?" + urlencode(
             {
                 "response_type": "code",
@@ -108,15 +126,22 @@ def start_url(provider: str, *, guest_id: str, next_path: str) -> str:
     if provider == "vk":
         if not settings.vk_oauth_client_id:
             raise HTTPException(400, "VK OAuth не настроен")
-        return "https://oauth.vk.com/authorize?" + urlencode(
+        verifier, challenge = _pkce()
+        state = secrets.token_hex(16)
+        await (await _oauth_r()).setex(
+            f"web:oauth:{state}",
+            600,
+            json.dumps({"g": guest_id, "n": next_path, "p": provider, "v": verifier}),
+        )
+        return "https://id.vk.ru/authorize?" + urlencode(
             {
-                "client_id": settings.vk_oauth_client_id,
-                "display": "page",
-                "redirect_uri": _redirect_uri("vk"),
-                "scope": "email",
                 "response_type": "code",
-                "v": "5.199",
+                "client_id": settings.vk_oauth_client_id,
+                "redirect_uri": _redirect_uri("vk"),
                 "state": state,
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+                "scope": "email",
             }
         )
     raise HTTPException(404, "Неизвестный провайдер")
@@ -133,6 +158,16 @@ def parse_state(state: str) -> dict:
         raise HTTPException(400, "Сломан state") from exc
 
 
+async def consume_oauth_state(state: str) -> dict:
+    raw = await (await _oauth_r()).get(f"web:oauth:{state}")
+    if raw:
+        await (await _oauth_r()).delete(f"web:oauth:{state}")
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return data
+    return parse_state(state)
+
+
 async def _yandex_profile(code: str) -> tuple[str, str | None, str | None]:
     settings = get_settings()
     client = get_async_client()
@@ -144,6 +179,7 @@ async def _yandex_profile(code: str) -> tuple[str, str | None, str | None]:
                 "code": code,
                 "client_id": settings.yandex_oauth_client_id,
                 "client_secret": settings.yandex_oauth_client_secret,
+                "redirect_uri": _redirect_uri("yandex"),
             },
         )
         token_res.raise_for_status()
@@ -165,34 +201,47 @@ async def _yandex_profile(code: str) -> tuple[str, str | None, str | None]:
     return subject, email, name
 
 
-async def _vk_profile(code: str) -> tuple[str, str | None, str | None]:
+async def _vk_profile(
+    code: str,
+    *,
+    device_id: str,
+    code_verifier: str,
+    state: str,
+) -> tuple[str, str | None, str | None]:
     settings = get_settings()
     client = get_async_client()
-    token_res = await client.get(
-        "https://oauth.vk.com/access_token",
-        params={
-            "client_id": settings.vk_oauth_client_id,
-            "client_secret": settings.vk_oauth_client_secret,
-            "redirect_uri": _redirect_uri("vk"),
-            "code": code,
-        },
-    )
-    token_res.raise_for_status()
-    body = token_res.json()
+    payload = {
+        "grant_type": "authorization_code",
+        "code": code,
+        "code_verifier": code_verifier,
+        "client_id": settings.vk_oauth_client_id,
+        "device_id": device_id,
+        "redirect_uri": _redirect_uri("vk"),
+        "state": state,
+    }
+    if settings.vk_oauth_service_token:
+        payload["service_token"] = settings.vk_oauth_service_token
+    elif settings.vk_oauth_client_secret:
+        payload["client_secret"] = settings.vk_oauth_client_secret
+    token_res = await client.post("https://id.vk.ru/oauth2/auth", data=payload)
+    body = token_res.json() if token_res.content else {}
+    if token_res.status_code >= 400 or body.get("error"):
+        raise HTTPException(400, body.get("error_description") or body.get("error") or "VK не пустил")
     subject = str(body.get("user_id") or "")
+    access = body.get("access_token")
+    email = None
+    name = None
+    if access:
+        info = await client.post(
+            "https://id.vk.ru/oauth2/user_info",
+            data={"client_id": settings.vk_oauth_client_id, "access_token": access},
+        )
+        user = (info.json() or {}).get("user") or {}
+        subject = str(user.get("user_id") or subject)
+        email = user.get("email")
+        name = " ".join(p for p in [user.get("first_name"), user.get("last_name")] if p) or None
     if not subject:
         raise HTTPException(400, "VK не вернул профиль")
-    email = body.get("email")
-    name = None
-    access = body.get("access_token")
-    if access:
-        users = await client.get(
-            "https://api.vk.com/method/users.get",
-            params={"access_token": access, "v": "5.199"},
-        )
-        if users.status_code == 200:
-            item = ((users.json().get("response") or [{}])[0])
-            name = " ".join(p for p in [item.get("first_name"), item.get("last_name")] if p) or None
     return subject, email, name
 
 

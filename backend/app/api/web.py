@@ -177,7 +177,7 @@ async def auth_start(
     next: str = "/lk",
 ) -> RedirectResponse:
     next_path = next if next.startswith("/") else "/lk"
-    url = web_auth.start_url(provider, guest_id=guest_id, next_path=next_path)
+    url = await web_auth.start_url(provider, guest_id=guest_id, next_path=next_path)
     return RedirectResponse(url)
 
 
@@ -192,11 +192,17 @@ async def auth_callback(
 ) -> RedirectResponse:
     if error or not code or not state:
         return RedirectResponse("/lk?auth=fail")
-    data = web_auth.parse_state(state)
+    data = await web_auth.consume_oauth_state(state)
     if provider == "yandex":
         subject, email, name = await web_auth._yandex_profile(code)
     elif provider == "vk":
-        subject, email, name = await web_auth._vk_profile(code)
+        device_id = request.query_params.get("device_id") or ""
+        subject, email, name = await web_auth._vk_profile(
+            code,
+            device_id=device_id,
+            code_verifier=str(data.get("v") or ""),
+            state=state,
+        )
     else:
         raise HTTPException(404, "Неизвестный провайдер")
     user = await web_auth.upsert_oauth_user(
