@@ -673,6 +673,8 @@ def _inject_system_addon(messages: list[dict], addon: str) -> list[dict]:
 
 
 def serialize_chat_message(row: Message) -> dict:
+    from app.bot.formatting import leia_markdown_to_web_html
+
     meta = row.meta or {}
     text = row.content or ""
     if meta.get("source") == "product_reading":
@@ -680,10 +682,12 @@ def serialize_chat_message(row: Message) -> dict:
         text = f"{title}\n\n{text}"
     if len(text) > 4000:
         text = text[:4000] + "…"
+    role = "user" if row.role == MessageRole.USER.value else "leia"
     return {
         "id": row.id,
-        "role": "user" if row.role == MessageRole.USER.value else "leia",
+        "role": role,
         "text": text,
+        "html": leia_markdown_to_web_html(text) if role == "leia" else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 
@@ -825,6 +829,11 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
             }
         )
     readings.sort(key=lambda item: item.get("created_at") or "", reverse=True)
+    from app.bot.formatting import leia_markdown_to_web_html
+
+    for item in readings:
+        body = item.get("paid_text") or (item.get("mini") or {}).get("lead") or ""
+        item["html"] = leia_markdown_to_web_html(body)
     ent = EntitlementService()
     plan = await ent.active_plan_label(user.id)
     vip = await ent.has_vip(user.id)

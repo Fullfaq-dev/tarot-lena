@@ -149,6 +149,79 @@ def leia_markdown_to_html(text: str) -> str:
     return "\n\n".join(blocks)
 
 
+def leia_markdown_to_web_html(text: str) -> str:
+    """Same Leia markdown as Telegram, as safe HTML for the site chat."""
+    if not text:
+        return ""
+    prepared = prepare_rich_markdown(text)
+    lines = prepared.replace("\r\n", "\n").split("\n")
+    blocks: list[str] = []
+    paragraph: list[str] = []
+    list_items: list[str] = []
+
+    def flush_paragraph() -> None:
+        if not paragraph:
+            return
+        inner = "<br>".join(_inline_markdown_to_html(line) for line in paragraph)
+        blocks.append(f"<p>{inner}</p>")
+        paragraph.clear()
+
+    def flush_list() -> None:
+        if not list_items:
+            return
+        items = "".join(f"<li>{_inline_markdown_to_html(item)}</li>" for item in list_items)
+        blocks.append(f"<ul>{items}</ul>")
+        list_items.clear()
+
+    for raw in lines:
+        stripped = raw.strip()
+        if not stripped:
+            flush_paragraph()
+            flush_list()
+            continue
+        if _MD_IMAGE.match(stripped) or stripped in {"<tg-collage>", "</tg-collage>"}:
+            continue
+        heading = _MD_HEADING.match(stripped)
+        if heading:
+            flush_paragraph()
+            flush_list()
+            blocks.append(f"<h3>{escape(heading.group(1).strip())}</h3>")
+            continue
+        if _TABLE_SEP.match(stripped):
+            continue
+        if stripped.startswith("|") and stripped.endswith("|"):
+            flush_paragraph()
+            flush_list()
+            cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+            if len(cells) >= 2 and cells[0] not in {"", "-"}:
+                blocks.append(
+                    "<p>"
+                    f"<b>{_inline_markdown_to_html(cells[0])}</b>"
+                    f": {_inline_markdown_to_html(cells[1])}</p>"
+                )
+            continue
+        bullet = None
+        if stripped.startswith(("- ", "* ", "• ")):
+            bullet = stripped[2:].strip()
+        elif len(stripped) > 3 and stripped[0].isdigit() and ". " in stripped[:4]:
+            bullet = stripped.split(". ", 1)[1].strip()
+        if bullet is not None:
+            flush_paragraph()
+            list_items.append(bullet)
+            continue
+        if stripped.startswith("> "):
+            flush_paragraph()
+            flush_list()
+            blocks.append(f"<blockquote>{_inline_markdown_to_html(stripped[2:])}</blockquote>")
+            continue
+        flush_list()
+        paragraph.append(stripped)
+
+    flush_paragraph()
+    flush_list()
+    return "".join(blocks)
+
+
 def to_telegram_html(text: str) -> str:
     """Конвертирует markdown от модели в HTML для Telegram."""
     if not text:

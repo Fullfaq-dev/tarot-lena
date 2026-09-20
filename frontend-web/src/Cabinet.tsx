@@ -10,6 +10,7 @@ type Reading = {
   created_at?: string;
   mini?: { title?: string; lead?: string };
   paid_text?: string;
+  html?: string | null;
 };
 
 type QuizCard = { id: string; title: string; icon: string; tab: string };
@@ -21,7 +22,14 @@ type Profile = {
   birth_time: string;
 };
 
-type ChatRow = { id?: string; role: string; text: string };
+type ChatRow = { id?: string; role: string; text: string; html?: string | null };
+
+function LeiaText({ text, html }: { text: string; html?: string | null }) {
+  if (html) {
+    return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+  return <>{text}</>;
+}
 
 type Tab = "profile" | "chat" | "history";
 
@@ -320,7 +328,9 @@ export function Cabinet() {
                   </p>
                   <div className="chat-log">
                     {log.map((row, i) => (
-                      <div key={row.id || i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>{row.text}</div>
+                      <div key={row.id || i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>
+                        {row.role === "leia" ? <LeiaText text={row.text} html={row.html} /> : row.text}
+                      </div>
                     ))}
                     {busy && (
                       <div className="chat-bubble leia typing" aria-live="polite">
@@ -383,7 +393,12 @@ export function Cabinet() {
                             </span>
                           </button>
                           {open && (
-                            <div className="lk-reading-body stream">{r.paid_text || r.mini?.lead || "Текст разбора не сохранился."}</div>
+                            <div className="lk-reading-body">
+                              <LeiaText
+                                text={r.paid_text || r.mini?.lead || "Текст разбора не сохранился."}
+                                html={r.html}
+                              />
+                            </div>
                           )}
                         </article>
                       );
