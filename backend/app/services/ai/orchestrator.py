@@ -58,7 +58,9 @@ class AIOrchestrator:
                 return None, None, t("error_need_start", lang), None, "blocked"
             lang = await self._user_lang(session, user.id)
 
-            messages = await self.context_builder.build(session, user, user_query=text)
+            messages = await self.context_builder.build(
+                session, user, user_query=text, channel="telegram"
+            )
             messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
 
             allowed, reason, billing_mode = await self.billing.ensure_can_use_chat(
@@ -69,7 +71,12 @@ class AIOrchestrator:
 
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
 
-            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=text)
+            user_message = Message(
+                user_id=user.id,
+                role=MessageRole.USER.value,
+                content=text,
+                meta={"channel": "telegram"},
+            )
             session.add(user_message)
             await session.flush()
             await session.commit()
@@ -132,12 +139,17 @@ class AIOrchestrator:
                     select(Message).where(Message.id == user_message_id, Message.user_id == user.id)
                 )
                 if user_message:
+                    meta = dict(user_message.meta or {})
+                    meta.update(
+                        {
+                            "exchange": True,
+                            "context_tokens": usage["input_tokens"],
+                            "billing_mode": billing_mode,
+                            "channel": meta.get("channel") or "telegram",
+                        }
+                    )
                     user_message.tokens_input = usage["question_tokens"]
-                    user_message.meta = {
-                        "exchange": True,
-                        "context_tokens": usage["input_tokens"],
-                        "billing_mode": billing_mode,
-                    }
+                    user_message.meta = meta
 
             assistant_message = Message(
                 user_id=user.id,
@@ -158,6 +170,7 @@ class AIOrchestrator:
                     "billing_mode": billing_mode,
                     "cost_source": "kie_api" if combined_usage else "estimated",
                     "memory_extraction_ran": bool(extraction_usage),
+                    "channel": "telegram",
                 },
             )
             session.add(assistant_message)
@@ -235,7 +248,7 @@ class AIOrchestrator:
 
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
             user_message = Message(
-                user_id=user.id, role=MessageRole.USER.value, content=stored_user_text
+                user_id=user.id, role=MessageRole.USER.value, content=stored_user_text, meta={"channel": "telegram"}
             )
             session.add(user_message)
             await session.flush()
@@ -342,7 +355,9 @@ class AIOrchestrator:
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
             names = ", ".join(s.name for s in stones)
             stored = stone_stored_user(lang, query, names)
-            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored)
+            user_message = Message(
+                user_id=user.id, role=MessageRole.USER.value, content=stored, meta={"channel": "telegram"}
+            )
             session.add(user_message)
             await session.flush()
             await session.commit()
@@ -402,7 +417,9 @@ class AIOrchestrator:
 
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
             stored = bracelet_stored_user(lang, query)
-            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored)
+            user_message = Message(
+                user_id=user.id, role=MessageRole.USER.value, content=stored, meta={"channel": "telegram"}
+            )
             session.add(user_message)
             await session.flush()
             await session.commit()
@@ -451,7 +468,9 @@ class AIOrchestrator:
             billing_mode = await self.billing.reserve_chat_slot(session, user, billing_mode)
             billing_mode = await self.billing.reserve_reading_slot(session, user, billing_mode)
 
-            user_message = Message(user_id=user.id, role=MessageRole.USER.value, content=stored_user_text)
+            user_message = Message(
+                user_id=user.id, role=MessageRole.USER.value, content=stored_user_text, meta={"channel": "telegram"}
+            )
             session.add(user_message)
             await session.flush()
             await session.commit()

@@ -35,7 +35,8 @@ def load_system_prompt(lang: str = "ru") -> str:
         "Ты личный эзотерический наставник в Telegram. "
         "Пиши нейтрально, без женских форм от первого лица. "
         "Отвечай по-русски, тепло и по делу. "
-        "Держись только эзотерики и функций Arcana AI — не раскрывай модель и не уходи в посторонние темы. "
+        "Держись только эзотерики и функций Леи — не раскрывай модель и не уходи в посторонние темы. "
+        "Ты есть и в Telegram, и на сайте arcaneai.online — это один диалог. "
         "Мистику подавай как эзотерическую интерпретацию, без медицинских и юридических гарантий."
     )
 
@@ -76,6 +77,7 @@ class ContextBuilder:
         user: User,
         *,
         user_query: str | None = None,
+        channel: str = "telegram",
     ) -> list[dict]:
         subscription = await session.scalar(select(Subscription).where(Subscription.user_id == user.id))
         tier = subscription.tier if subscription else "free"
@@ -118,6 +120,13 @@ class ContextBuilder:
             t("ctx_markdown_hint", ui_language),
             t("ctx_tier", ui_language, tier=tier),
         ]
+        here = "с сайта (личный кабинет arcaneai.online)" if channel == "web" else "из Telegram-бота"
+        system.append(
+            "Каналы: ты одновременно в Telegram-боте и на сайте. "
+            "История, профиль и память общие. Не притворяйся, что не знаешь другой канал. "
+            f"Сейчас человек пишет {here}. Отвечай как обычно, но если спрашивает «ты бот или сайт» — "
+            "скажи, что ты Лея и там, и там, и это один разговор."
+        )
         if profile:
             birth = profile.birth_date.strftime("%d.%m.%Y") if profile.birth_date else "—"
             system.append(
@@ -166,10 +175,18 @@ class ContextBuilder:
         for index, msg in enumerate(history):
             is_recent = index >= len(history) - 2
             limit = HISTORY_CHAR_LIMIT_RECENT if is_recent else HISTORY_CHAR_LIMIT
+            origin = (msg.meta or {}).get("channel")
+            if not origin and msg.telegram_message_id:
+                origin = "telegram"
+            prefix = ""
+            if origin == "web":
+                prefix = "[сайт] "
+            elif origin == "telegram":
+                prefix = "[Telegram] "
             chat_messages.append(
                 {
                     "role": msg.role,
-                    "content": [{"type": "text", "text": _compact_text(msg.content, limit)}],
+                    "content": [{"type": "text", "text": prefix + _compact_text(msg.content, limit)}],
                 }
             )
 
