@@ -74,20 +74,31 @@ async def deck(n: int = 7, session: AsyncSession = Depends(get_session)) -> dict
 
 
 @router.post("/sessions")
-async def sessions(body: SessionIn, session: AsyncSession = Depends(get_session)) -> dict:
+async def sessions(
+    body: SessionIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    user = await web_auth.user_from_request(request, session)
     row = await web.ensure_session(
         session,
         body.guest_id,
         utm=body.utm,
         metrika_client_id=body.metrika_client_id,
+        user=user,
     )
     await session.commit()
     return {"guest_id": row.guest_id, "unlimited": bool(row.unlimited_until)}
 
 
 @router.post("/readings")
-async def create_reading(body: ReadingIn, session: AsyncSession = Depends(get_session)) -> dict:
+async def create_reading(
+    body: ReadingIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
     try:
+        user = await web_auth.user_from_request(request, session)
         reading = await web.create_reading(
             session,
             guest_id=body.guest_id,
@@ -100,6 +111,7 @@ async def create_reading(body: ReadingIn, session: AsyncSession = Depends(get_se
             partner_birth=body.partner_birth,
             utm=body.utm,
             metrika_client_id=body.metrika_client_id,
+            user=user,
         )
         await session.commit()
     except ValueError as exc:
@@ -170,6 +182,13 @@ class PackageIn(BaseModel):
     package_id: str
 
 
+class ProfileIn(BaseModel):
+    name: str | None = None
+    birth_date: str | None = None
+    birth_city: str | None = None
+    birth_time: str | None = None
+
+
 @router.get("/auth/{provider}")
 async def auth_start(
     provider: str,
@@ -194,10 +213,10 @@ async def auth_callback(
         return RedirectResponse("/lk?auth=fail")
     data = await web_auth.consume_oauth_state(state)
     if provider == "yandex":
-        subject, email, name = await web_auth._yandex_profile(code)
+        subject, email, name, birth = await web_auth._yandex_profile(code)
     elif provider == "vk":
         device_id = request.query_params.get("device_id") or ""
-        subject, email, name = await web_auth._vk_profile(
+        subject, email, name, birth = await web_auth._vk_profile(
             code,
             device_id=device_id,
             code_verifier=str(data.get("v") or ""),
@@ -212,6 +231,7 @@ async def auth_callback(
         email=email,
         name=name,
         guest_id=str(data.get("g") or "guest-unknown-xx"),
+        birth=birth,
     )
     await session.commit()
     response = RedirectResponse(str(data.get("n") or "/lk"))
@@ -234,6 +254,28 @@ async def me(
     user = await web_auth.user_from_request(request, session)
     if user is None:
         return {"user": None, "oauth": web_auth.oauth_ready()}
+    payload = await web.cabinet_payload(session, user)
+    payload["oauth"] = web_auth.oauth_ready()
+    await session.commit()
+    return payload
+
+
+@router.patch("/profile")
+async def patch_profile(
+    body: ProfileIn,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    await web.upsert_soul_profile(
+        session,
+        user,
+        name=body.name,
+        birth=body.birth_date,
+        birth_city=body.birth_city,
+        birth_time=body.birth_time,
+        overwrite=True,
+    )
+    await session.commit()
     payload = await web.cabinet_payload(session, user)
     payload["oauth"] = web_auth.oauth_ready()
     return payload

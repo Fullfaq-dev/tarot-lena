@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.database.models import (
     Payment,
+    SoulProfile,
     TarotCard,
+    TarotReading,
     User,
     WebCardOverride,
     WebIdentity,
@@ -42,6 +44,107 @@ def _parse_date(value: str | None) -> date | None:
         except ValueError:
             continue
     return None
+
+
+def _fmt_birth(value: date | None) -> str:
+    return value.strftime("%d.%m.%Y") if value else ""
+
+
+async def upsert_soul_profile(
+    session: AsyncSession,
+    user: User,
+    *,
+    name: str | None = None,
+    birth: str | date | None = None,
+    birth_city: str | None = None,
+    birth_time: str | None = None,
+    overwrite: bool = False,
+) -> SoulProfile:
+    profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
+    if profile is None:
+        profile = SoulProfile(user_id=user.id)
+        session.add(profile)
+        await session.flush()
+
+    if name is not None:
+        cleaned = name.strip()
+        if overwrite:
+            profile.name = cleaned[:255] or None
+            if cleaned:
+                user.first_name = cleaned[:255]
+        elif cleaned and not profile.name:
+            profile.name = cleaned[:255]
+            if not user.first_name or user.first_name in {"Гость сайта", "Лея"}:
+                user.first_name = cleaned[:255]
+
+    if isinstance(birth, date):
+        parsed = birth
+        empty = False
+    else:
+        raw = (birth or "").strip() if birth is not None else None
+        empty = birth is not None and not raw
+        parsed = _parse_date(raw) if raw else None
+    if overwrite and empty:
+        profile.birth_date = None
+    elif parsed and (overwrite or not profile.birth_date):
+        profile.birth_date = parsed
+
+    if birth_city is not None:
+        city = birth_city.strip()
+        if overwrite:
+            profile.birth_city = city[:255] or None
+        elif city and not profile.birth_city:
+            profile.birth_city = city[:255]
+
+    if birth_time is not None:
+        clock = birth_time.strip()
+        if overwrite:
+            profile.birth_time = clock[:128] or None
+        elif clock and not profile.birth_time:
+            profile.birth_time = clock[:128]
+
+    await session.flush()
+    return profile
+
+
+def serialize_profile(profile: SoulProfile | None, user: User, ident: WebIdentity | None) -> dict:
+    name = (profile.name if profile else None) or (ident.name if ident else None) or user.first_name
+    return {
+        "name": name or "",
+        "birth_date": _fmt_birth(profile.birth_date if profile else None),
+        "birth_city": (profile.birth_city if profile else None) or "",
+        "birth_time": (profile.birth_time if profile else None) or "",
+    }
+
+
+async def backfill_profile_from_readings(session: AsyncSession, user: User) -> SoulProfile:
+    profile = await upsert_soul_profile(session, user)
+    if profile.birth_date and profile.birth_city:
+        return profile
+    webs = list((await session.scalars(select(WebSession).where(WebSession.user_id == user.id))).all())
+    if not webs:
+        return profile
+    rows = (
+        await session.scalars(
+            select(WebReading)
+            .where(WebReading.session_id.in_([row.id for row in webs]))
+            .order_by(WebReading.created_at.desc())
+        )
+    ).all()
+    for row in rows:
+        payload = row.input_payload or {}
+        await upsert_soul_profile(
+            session,
+            user,
+            birth=payload.get("birth"),
+            birth_city=payload.get("birth_city"),
+            birth_time=payload.get("birth_time"),
+            overwrite=False,
+        )
+        profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id)) or profile
+        if profile.birth_date and profile.birth_city:
+            break
+    return profile
 
 
 def _card_image_url(path: str | None) -> str | None:
@@ -72,19 +175,21 @@ async def ensure_session(
     *,
     utm: dict | None = None,
     metrika_client_id: str | None = None,
+    user: User | None = None,
 ) -> WebSession:
     row = await session.scalar(select(WebSession).where(WebSession.guest_id == guest_id))
     if row is None:
         row = WebSession(guest_id=guest_id, utm=utm or {}, metrika_client_id=metrika_client_id)
         session.add(row)
         await session.flush()
-        return row
     if utm:
         merged = dict(row.utm or {})
         merged.update({k: v for k, v in utm.items() if v})
         row.utm = merged
     if metrika_client_id:
         row.metrika_client_id = metrika_client_id
+    if user:
+        row.user_id = user.id
     return row
 
 
@@ -170,6 +275,7 @@ async def create_reading(
     partner_birth: str | None = None,
     utm: dict | None = None,
     metrika_client_id: str | None = None,
+    user: User | None = None,
 ) -> WebReading:
     if _topic_blocked(answers):
         raise ValueError("Эта тема закрыта. Выбери соседний вопрос — про чувства, деньги или работу.")
@@ -177,7 +283,9 @@ async def create_reading(
     card = cards.get(card_id)
     if card is None:
         raise ValueError("Неизвестная карточка")
-    web = await ensure_session(session, guest_id, utm=utm, metrika_client_id=metrika_client_id)
+    web = await ensure_session(
+        session, guest_id, utm=utm, metrika_client_id=metrika_client_id, user=user
+    )
     birth_d = _parse_date(birth)
     partner_d = _parse_date(partner_birth)
     if card.branch in {"date", "pair"} and birth_d is None:
@@ -231,6 +339,15 @@ async def create_reading(
     )
     session.add(reading)
     await session.flush()
+    owner = user or await ensure_guest_user(session, web)
+    await upsert_soul_profile(
+        session,
+        owner,
+        birth=birth,
+        birth_city=birth_city,
+        birth_time=birth_time,
+        overwrite=True,
+    )
     return reading
 
 
@@ -255,6 +372,7 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
         "product_name": (reading.input_payload or {}).get("product_name"),
         "drawn": (reading.input_payload or {}).get("drawn") or [],
         "paid": paid,
+        "source": "web",
         "expires_at": reading.expires_at.isoformat() if reading.expires_at else None,
     }
     if include_paid and paid:
@@ -531,6 +649,7 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
     from app.services.products.packages import PACKAGES
 
     ident = await session.scalar(select(WebIdentity).where(WebIdentity.user_id == user.id))
+    profile = await backfill_profile_from_readings(session, user)
     webs = list((await session.scalars(select(WebSession).where(WebSession.user_id == user.id))).all())
     web_ids = [row.id for row in webs]
     readings = []
@@ -543,6 +662,31 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
             )
         ).all()
         readings = [public_reading(row, include_paid=row.status in {"paid", "ready"}) for row in rows]
+    tg_rows = list(
+        (
+            await session.scalars(
+                select(TarotReading)
+                .where(TarotReading.user_id == user.id)
+                .order_by(TarotReading.created_at.desc())
+                .limit(40)
+            )
+        ).all()
+    )
+    for row in tg_rows:
+        readings.append(
+            {
+                "token": f"tg:{row.id}",
+                "card_id": row.reading_type,
+                "product_name": row.reading_type,
+                "paid": True,
+                "source": "telegram",
+                "mini": {
+                    "title": row.reading_type,
+                    "lead": (row.question or "")[:240],
+                },
+                "paid_text": row.interpretation,
+            }
+        )
     ent = EntitlementService()
     plan = await ent.active_plan_label(user.id)
     vip = await ent.has_vip(user.id)
@@ -550,11 +694,12 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
     return {
         "user": {
             "id": user.id,
-            "name": (ident.name if ident else None) or user.first_name,
+            "name": serialize_profile(profile, user, ident)["name"],
             "email": ident.email if ident else None,
             "telegram_bound": bool(user.telegram_id and user.telegram_id > 0),
             "telegram_username": user.username,
         },
+        "profile": serialize_profile(profile, user, ident),
         "plan": plan,
         "vip": vip,
         "love_plus": love_plus,
@@ -588,12 +733,23 @@ async def chat_reply(
     if len(text) > 4000:
         raise ValueError("Слишком длинно")
     reading = None
+    tg_reading = None
     if reading_token:
-        reading = await session.scalar(select(WebReading).where(WebReading.token == reading_token))
-        if reading is None:
-            raise ValueError("Разбор не найден")
+        if reading_token.startswith("tg:"):
+            tg_reading = await session.scalar(
+                select(TarotReading).where(
+                    TarotReading.id == reading_token[3:],
+                    TarotReading.user_id == user.id,
+                )
+            )
+            if tg_reading is None:
+                raise ValueError("Разбор не найден")
+        else:
+            reading = await session.scalar(select(WebReading).where(WebReading.token == reading_token))
+            if reading is None:
+                raise ValueError("Разбор не найден")
     vip = await EntitlementService().has_vip(user.id)
-    paid = bool(reading and reading.status in {"paid", "ready"} and reading.paid_text)
+    paid = bool(reading and reading.status in {"paid", "ready"} and reading.paid_text) or bool(tg_reading)
     if not vip and not paid:
         raise ValueError("Чат по разбору — после оплаты. Свободный чат — с VIP.")
     history = list(
@@ -607,16 +763,32 @@ async def chat_reply(
         ).all()
     )
     history.reverse()
+    profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
     system = (
         "Ты Лея, ИИ-таролог, не живой человек. Пиши на «ты», коротко и по делу. "
-        "Не давай медсоветов, юридических гарантий и предсказаний смерти."
+        "Не давай медсоветов, юридических гарантий и предсказаний смерти. "
+        "Если в профиле есть имя, дата и место рождения — считай их фактами и опирайся на них "
+        "в нумерологии, матрице и личных ответах. Не подставляй другие даты."
     )
+    if profile:
+        system += (
+            f"\nПрофиль: имя {profile.name or '—'}, "
+            f"дата рождения {_fmt_birth(profile.birth_date) or '—'}, "
+            f"место рождения {profile.birth_city or '—'}, "
+            f"время рождения {profile.birth_time or '—'}."
+        )
     if reading:
         system += (
             f"\nКонтекст разбора «{reading.card_id}». Мини: {json.dumps(reading.mini, ensure_ascii=False)[:2500]}"
         )
         if paid:
             system += f"\nПолный текст:\n{(reading.paid_text or '')[:5000]}"
+    if tg_reading:
+        system += (
+            f"\nКонтекст разбора из Telegram «{tg_reading.reading_type}». "
+            f"Вопрос: {(tg_reading.question or '')[:800]}\n"
+            f"Текст:\n{(tg_reading.interpretation or '')[:5000]}"
+        )
     messages = [{"role": "system", "content": system}]
     for row in history:
         if (row.meta or {}).get("reading_token") not in {None, reading_token}:
