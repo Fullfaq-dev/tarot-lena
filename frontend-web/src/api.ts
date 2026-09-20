@@ -1,9 +1,17 @@
 const GUEST_KEY = "leia_guest";
 
+function newGuestId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") {
+    return c.randomUUID();
+  }
+  return `g-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function guestId(): string {
   let id = localStorage.getItem(GUEST_KEY);
   if (!id) {
-    id = crypto.randomUUID();
+    id = newGuestId();
     localStorage.setItem(GUEST_KEY, id);
   }
   return id;
