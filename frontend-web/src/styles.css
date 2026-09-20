@@ -349,8 +349,22 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 50% { opacity: 0; } }
 
+.lk-grid { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 28px; align-items: start; }
+.chat-log {
+  min-height: 180px; max-height: 420px; overflow: auto; display: flex; flex-direction: column; gap: 10px;
+  margin: 12px 0 16px; padding: 12px; border-radius: 18px; background: rgba(255,255,255,.04);
+}
+.chat-bubble { padding: 12px 14px; border-radius: 16px; font-size: 14.5px; line-height: 1.5; white-space: pre-wrap; }
+.chat-bubble.me { align-self: flex-end; background: rgba(255, 217, 146, .16); max-width: 85%; }
+.chat-bubble.leia { align-self: flex-start; background: rgba(197, 156, 255, .12); max-width: 90%; }
+.chat-compose { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.chat-compose .btn { width: auto; margin: 0; min-width: 140px; }
+.pkg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.c.on { border-color: var(--gold); background: rgba(255, 217, 146, .12); }
 @media (max-width: 980px) {
-  .hero, .feature-grid, .flow, .quiz-layout { grid-template-columns: 1fr; }
+  .lk-grid, .pkg-grid { grid-template-columns: 1fr; }
+  .chat-compose { grid-template-columns: 1fr; }
+}
   .quiz-aside { position: static; display: flex; gap: 16px; align-items: center; }
   .quiz-aside img { margin: 0; }
   .landing-cards { grid-template-columns: 1fr 1fr; }

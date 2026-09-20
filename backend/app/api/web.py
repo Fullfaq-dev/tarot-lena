@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.database.models import WebReading
+from app.database.models import User, WebReading
 from app.database.session import get_session
 from app.services.web import service as web
+from app.services.web import auth as web_auth
 
 router = APIRouter(prefix="/api/web", tags=["web"])
 
@@ -57,6 +59,7 @@ async def web_config() -> dict:
         "bot_username": settings.telegram_bot_username,
         "legal_url": "/legal",
         "unlimited_price": 590,
+        "oauth": web_auth.oauth_ready(),
     }
 
 
@@ -148,3 +151,112 @@ async def contact(token: str, body: ContactIn, session: AsyncSession = Depends(g
 @router.post("/events")
 async def events(body: EventIn) -> dict:
     return {"ok": True, "name": body.name}
+
+
+async def require_user(request: Request, session: AsyncSession = Depends(get_session)) -> User:
+    user = await web_auth.user_from_request(request, session)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Нужно войти через Яндекс или VK")
+    return user
+
+
+class ChatIn(BaseModel):
+    text: str
+    reading_token: str | None = None
+    guest_id: str | None = None
+
+
+class PackageIn(BaseModel):
+    package_id: str
+
+
+@router.get("/auth/{provider}")
+async def auth_start(
+    provider: str,
+    guest_id: str = Query(min_length=8, max_length=64),
+    next: str = "/lk",
+) -> RedirectResponse:
+    next_path = next if next.startswith("/") else "/lk"
+    url = web_auth.start_url(provider, guest_id=guest_id, next_path=next_path)
+    return RedirectResponse(url)
+
+
+@router.get("/auth/{provider}/callback")
+async def auth_callback(
+    provider: str,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> RedirectResponse:
+    if error or not code or not state:
+        return RedirectResponse("/lk?auth=fail")
+    data = web_auth.parse_state(state)
+    if provider == "yandex":
+        subject, email, name = await web_auth._yandex_profile(code)
+    elif provider == "vk":
+        subject, email, name = await web_auth._vk_profile(code)
+    else:
+        raise HTTPException(404, "Неизвестный провайдер")
+    user = await web_auth.upsert_oauth_user(
+        session,
+        provider=provider,
+        subject=subject,
+        email=email,
+        name=name,
+        guest_id=str(data.get("g") or "guest-unknown-xx"),
+    )
+    await session.commit()
+    response = RedirectResponse(str(data.get("n") or "/lk"))
+    web_auth.set_login_cookie(response, user.id)
+    return response
+
+
+@router.post("/auth/logout")
+async def auth_logout() -> Response:
+    response = Response(content='{"ok":true}', media_type="application/json")
+    web_auth.clear_login_cookie(response)
+    return response
+
+
+@router.get("/me")
+async def me(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    user = await web_auth.user_from_request(request, session)
+    if user is None:
+        return {"user": None, "oauth": web_auth.oauth_ready()}
+    payload = await web.cabinet_payload(session, user)
+    payload["oauth"] = web_auth.oauth_ready()
+    return payload
+
+
+@router.post("/packages/checkout")
+async def package_checkout(
+    body: PackageIn,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        result = await web.checkout_package(session, user, body.package_id)
+        await session.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
+@router.post("/chat")
+async def chat(
+    body: ChatIn,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        result = await web.chat_reply(session, user, text=body.text, reading_token=body.reading_token)
+        await session.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, guestId, track, utm } from "./api";
+import { Cabinet } from "./Cabinet";
 import { Landing } from "./Landing";
 
 type Card = {
@@ -235,6 +236,11 @@ export function App() {
 
   const price = reading?.price_rub || 590;
   const bundle = price + 300;
+  const inCabinet = window.location.pathname.startsWith("/lk");
+
+  if (inCabinet) {
+    return <Cabinet />;
+  }
 
   return (
     <div className="site">
@@ -253,6 +259,7 @@ export function App() {
             <nav className="topnav">
               <a href="#how">Как это работает</a>
               <a href="#quiz">Разбор</a>
+              <a href="/lk">Кабинет</a>
               <a href={cfg.legal_url}>Документы</a>
             </nav>
           ) : (
@@ -414,6 +421,7 @@ export function App() {
                     {reading.mini.free && reading.card_id === "other" && (
                       <button className="btn" onClick={() => { track("paywall_view"); setScreen(7); }}>Открыть полный разбор</button>
                     )}
+                    <a className="btn ghost" href={`/lk?reading=${reading.token}`}>Сохранить в кабинете</a>
                   </>
                 )}
 
@@ -434,6 +442,7 @@ export function App() {
                     <button className="btn gold" onClick={pay}>Оплатить {tariff === "bundle" ? bundle : price} ₽</button>
                     {err && <p className="err">{err}</p>}
                     <p className="fine">Без подписок и автосписаний. Это разовый разбор с сайта.</p>
+                    <a className="btn ghost" href={`/lk?reading=${reading.token}`}>Сначала войти в кабинет</a>
                   </>
                 )}
 

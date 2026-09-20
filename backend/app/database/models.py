@@ -475,9 +475,13 @@ class WebCardOverride(UUIDMixin, TimestampMixin, Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
-class WebMatrixCache(UUIDMixin, TimestampMixin, Base):
-    __tablename__ = "web_matrix_cache"
-    __table_args__ = (UniqueConstraint("cache_key", name="uq_web_matrix_cache_key"),)
+class WebIdentity(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "web_identities"
+    __table_args__ = (UniqueConstraint("provider", "subject", name="uq_web_identity_provider_subject"),)
 
-    cache_key: Mapped[str] = mapped_column(String(255))
-    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(32))
+    subject: Mapped[str] = mapped_column(String(128))
+    email: Mapped[str | None] = mapped_column(String(255))
+    name: Mapped[str | None] = mapped_column(String(255))
+
