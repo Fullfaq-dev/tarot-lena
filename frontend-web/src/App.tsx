@@ -73,7 +73,22 @@ export function App() {
   const showLanding = screen === 1 && !tokenFromPath;
 
   useEffect(() => {
-    api<{ cards: Card[] }>("/api/web/cards").then((d) => setCards(d.cards));
+    api<{ cards: Card[] }>("/api/web/cards").then(async (d) => {
+      setCards(d.cards);
+      const startId = new URLSearchParams(window.location.search).get("start");
+      if (!startId || tokenFromPath) return;
+      const card = d.cards.find((item) => item.id === startId);
+      if (!card) return;
+      setSel(card);
+      setQi(0);
+      setAnswers(Array(card.questions.length).fill(""));
+      setPicks([]);
+      if (card.branch === "taro") {
+        const deckData = await api<{ cards: { slug: string; image?: string }[] }>("/api/web/deck?n=7");
+        setDeck(deckData.cards);
+      }
+      setScreen(2);
+    });
     api<typeof cfg>("/api/web/config").then(setCfg);
     api("/api/web/sessions", {
       method: "POST",

@@ -7,9 +7,12 @@ type Reading = {
   card_id: string;
   paid?: boolean;
   source?: string;
+  created_at?: string;
   mini?: { title?: string; lead?: string };
   paid_text?: string;
 };
+
+type QuizCard = { id: string; title: string; icon: string; tab: string };
 
 type Profile = {
   name: string;
@@ -42,6 +45,19 @@ type Me = {
 
 const emptyProfile: Profile = { name: "", birth_date: "", birth_city: "", birth_time: "" };
 
+function formatWhen(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function tabFromUrl(): Tab {
   const value = new URLSearchParams(window.location.search).get("tab");
   if (value === "chat" || value === "history" || value === "profile") return value;
@@ -51,16 +67,17 @@ function tabFromUrl(): Tab {
 export function Cabinet() {
   const params = new URLSearchParams(window.location.search);
   const [me, setMe] = useState<Me | null>(null);
-  const [tab, setTab] = useState<Tab>(tabFromUrl());
+  const [tab, setTab] = useState<Tab>(params.get("reading") ? "history" : tabFromUrl());
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
-  const [readingToken, setReadingToken] = useState(params.get("reading") || "");
   const [text, setText] = useState("");
   const [log, setLog] = useState<ChatRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [openReading, setOpenReading] = useState<string>(params.get("reading") || "");
+  const [quizCards, setQuizCards] = useState<QuizCard[]>([]);
   const chatEnd = useRef<HTMLDivElement | null>(null);
 
   async function reload() {
@@ -72,6 +89,9 @@ export function Cabinet() {
 
   useEffect(() => {
     reload().catch((e) => setErr(e instanceof Error ? e.message : "Не открылся кабинет"));
+    api<{ cards: QuizCard[] }>("/api/web/cards")
+      .then((d) => setQuizCards(d.cards || []))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -79,7 +99,6 @@ export function Cabinet() {
   }, [log, busy, tab]);
 
   const oauth = me?.oauth || {};
-  const selected = me?.readings?.find((r) => r.token === readingToken);
 
   function goTab(next: Tab) {
     setTab(next);
@@ -98,7 +117,7 @@ export function Cabinet() {
     try {
       const r = await api<{ reply: string; chat?: ChatRow[] }>("/api/web/chat", {
         method: "POST",
-        body: JSON.stringify({ text: mine, reading_token: readingToken || null }),
+        body: JSON.stringify({ text: mine }),
       });
       if (r.chat) setLog(r.chat);
       else setLog((rows) => [...rows, { role: "leia", text: r.reply }]);
@@ -291,21 +310,14 @@ export function Cabinet() {
               {tab === "chat" && (
                 <section className="quiz-frame wide">
                   <div className="eyebrow">Чат</div>
-                  <h2 className="h">{selected ? selected.mini?.title || selected.product_name : "Диалог с Леей"}</h2>
+                  <h2 className="h">Диалог с Леей</h2>
                   <p className="sub">
                     {me.user.telegram_bound
-                      ? "Это тот же чат, что в Telegram: история и память общие."
+                      ? "Это тот же чат, что в Telegram. Разборы лежат отдельно во вкладке «Разборы»."
                       : me.vip
-                        ? "VIP: можно писать без привязки к раскладу."
-                        : "Выбери оплаченный разбор во вкладке «Разборы» — или привяжи Telegram."}
+                        ? "VIP: можно писать свободно. Готовые разборы — во вкладке «Разборы»."
+                        : "Привяжи Telegram или возьми VIP, чтобы писать. Готовые разборы — отдельной вкладкой."}
                   </p>
-                  {selected && (
-                    <p className="fine" style={{ textAlign: "left", marginBottom: 8 }}>
-                      В контексте: {selected.mini?.title || selected.product_name}
-                      {" · "}
-                      <button type="button" className="nav-ghost" onClick={() => setReadingToken("")}>сбросить</button>
-                    </p>
-                  )}
                   <div className="chat-log">
                     {log.map((row, i) => (
                       <div key={row.id || i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>{row.text}</div>
@@ -317,7 +329,7 @@ export function Cabinet() {
                       </div>
                     )}
                     {!log.length && !busy && (
-                      <p className="chat-empty">Напиши Лее — продолжим с того места, где остановились в Telegram.</p>
+                      <p className="chat-empty">Напиши Лее — продолжим диалог. Расклады сюда не подмешиваются.</p>
                     )}
                     <div ref={chatEnd} />
                   </div>
@@ -340,29 +352,44 @@ export function Cabinet() {
 
               {tab === "history" && (
                 <section className="quiz-frame wide">
-                  <div className="eyebrow">История</div>
-                  <h2 className="h">Твои разборы</h2>
-                  <p className="sub">С сайта и из Telegram — один список, если аккаунты привязаны.</p>
-                  <div className="cards landing-cards">
-                    {(me.readings || []).map((r) => (
-                      <button
-                        key={r.token}
-                        className={`c ${readingToken === r.token ? "on" : ""}`}
-                        type="button"
-                        onClick={() => {
-                          setReadingToken(r.token);
-                          goTab("chat");
-                        }}
-                      >
-                        <b>{r.mini?.title || r.product_name || r.card_id}</b>
-                        <span className="fine">
-                          {r.source === "telegram" ? "telegram" : r.paid ? "сайт · открыт" : "сайт · мини"}
-                          {r.mini?.lead ? ` · ${r.mini.lead}` : ""}
-                        </span>
-                      </button>
-                    ))}
+                  <div className="eyebrow">Разборы</div>
+                  <h2 className="h">Проведённые разборы</h2>
+                  <p className="sub">Дата и ответ Леи. Чат сюда не подмешивается.</p>
+                  <div className="lk-new-readings">
+                    <a className="btn gold" href="/#quiz">Новый разбор на сайте</a>
+                    <div className="cards landing-cards">
+                      {quizCards.map((c) => (
+                        <a key={c.id} className="c" href={`/?start=${encodeURIComponent(c.id)}`}>
+                          <span className="ic">{c.icon}</span>
+                          <b>{c.title}</b>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="lk-readings">
+                    {(me.readings || []).map((r) => {
+                      const open = openReading === r.token;
+                      return (
+                        <article key={r.token} className={`lk-reading ${open ? "on" : ""}`}>
+                          <button
+                            className="lk-reading-head"
+                            type="button"
+                            onClick={() => setOpenReading(open ? "" : r.token)}
+                          >
+                            <span className="fine">{formatWhen(r.created_at) || "без даты"}</span>
+                            <b>{r.mini?.title || r.product_name || r.card_id}</b>
+                            <span className="fine">
+                              {r.source === "telegram" ? "Telegram" : r.paid ? "сайт" : "сайт · мини"}
+                            </span>
+                          </button>
+                          {open && (
+                            <div className="lk-reading-body stream">{r.paid_text || r.mini?.lead || "Текст разбора не сохранился."}</div>
+                          )}
+                        </article>
+                      );
+                    })}
                     {!me.readings?.length && (
-                      <p className="sub">Пока пусто — <a href="/#quiz">пройди квиз</a> или сделай расклад в боте.</p>
+                      <p className="sub">Пока пусто — выбери карточку выше или сделай расклад в боте.</p>
                     )}
                   </div>
                 </section>
