@@ -930,11 +930,10 @@ async def chat_reply(
     if not bound and not vip and not paid:
         raise ValueError("Чат по разбору — после оплаты. Свободный чат — с VIP или после привязки Telegram.")
 
-    messages = await ContextBuilder().build(session, user, user_query=text)
+    messages = await ContextBuilder().build(session, user, user_query=text, channel="web")
     messages = _inject_system_addon(
         messages,
-        "Telegram и сайт — один человек и один диалог. Продолжай переписку, не начинай сначала. "
-        "Дата, место рождения и память уже в профиле — опирайся на них.",
+        "Сейчас пишут с сайта. Ты та же Лея, что в Telegram. Не начинай диалог с нуля.",
     )
     addon_parts = []
     if reading:
