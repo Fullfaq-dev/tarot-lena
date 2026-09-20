@@ -11,7 +11,13 @@ type Reading = {
 };
 
 type Me = {
-  user: { id: string; name?: string; email?: string } | null;
+  user: {
+    id: string;
+    name?: string;
+    email?: string;
+    telegram_bound?: boolean;
+    telegram_username?: string | null;
+  } | null;
   oauth?: { yandex?: boolean; vk?: boolean };
   plan?: string | null;
   vip?: boolean;
@@ -28,6 +34,7 @@ export function Cabinet() {
   const [text, setText] = useState("");
   const [log, setLog] = useState<{ role: string; text: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   async function reload() {
     const data = await api<Me>("/api/web/me");
@@ -62,7 +69,9 @@ export function Cabinet() {
   }
 
   async function buy(packageId: string) {
+    if (paying) return;
     setErr("");
+    setPaying(true);
     try {
       const r = await api<{ payment_url?: string; demo?: boolean }>("/api/web/packages/checkout", {
         method: "POST",
@@ -75,6 +84,25 @@ export function Cabinet() {
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Оплата не прошла");
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  async function bindTelegram() {
+    setErr("");
+    try {
+      const r = await api<{ bound?: boolean; url?: string; username?: string | null }>(
+        "/api/web/telegram/bind",
+        { method: "POST" },
+      );
+      if (r.bound) {
+        await reload();
+        return;
+      }
+      if (r.url) window.open(r.url, "_blank", "noopener");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Не открылась ссылка в бота");
     }
   }
 
@@ -116,6 +144,16 @@ export function Cabinet() {
               <h3>{me.user.name || "Ты"}</h3>
               <p>{me.user.email || "аккаунт на сайте"}</p>
               <p className="eyebrow">{me.plan || "Без подписки"}</p>
+              {me.user.telegram_bound ? (
+                <p className="fine">Telegram: @{me.user.telegram_username || "привязан"}</p>
+              ) : (
+                <>
+                  <p className="fine">Бот и сайт пока разные аккаунты. Привяжи Telegram — покупки и чат станут общими.</p>
+                  <button className="btn" type="button" onClick={bindTelegram}>
+                    Привязать Telegram
+                  </button>
+                </>
+              )}
               <button
                 className="btn link"
                 type="button"
@@ -188,7 +226,9 @@ export function Cabinet() {
                       <h4>{pkg.emoji} {pkg.title}</h4>
                       <div className="pr">{pkg.price_rub} ₽</div>
                       <p className="sub">{pkg.pitch.replace(/\*\*/g, "")}</p>
-                      <button className="btn gold" type="button" onClick={() => buy(pkg.id)}>Оплатить</button>
+                      <button className="btn gold" type="button" disabled={paying} onClick={() => buy(pkg.id)}>
+                        {paying ? "Открываю оплату…" : "Оплатить"}
+                      </button>
                     </article>
                   ))}
                 </div>

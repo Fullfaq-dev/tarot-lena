@@ -930,6 +930,27 @@ class BillingService:
                 payload_extra["referral_discount_percent"] = discount
                 payload_extra["original_amount_rub"] = str(original)
 
+        key = f"bot:{user.id}:{purpose}:{amount}"
+        existing = await session.scalar(
+            select(Payment)
+            .where(
+                Payment.user_id == user.id,
+                Payment.status == "pending",
+                Payment.purpose == purpose,
+                Payment.amount_rub == amount,
+            )
+            .order_by(Payment.created_at.desc())
+        )
+        if existing and (existing.payload or {}).get("payment_url"):
+            payload = dict(existing.payload or {})
+            payload["idempotency_key"] = key
+            existing.payload = payload
+            await session.commit()
+            return PaymentFlowResult(
+                amount_rub=str(amount),
+                payment_url=payload["payment_url"],
+            )
+
         payment = Payment(
             user_id=user.id,
             provider="robokassa",
@@ -967,7 +988,11 @@ class BillingService:
             await session.rollback()
             raise
         payment.provider_payment_id = intent.provider_payment_id
-        payload = {"payment_url": intent.payment_url, "inv_id": intent.provider_payment_id}
+        payload = {
+            "payment_url": intent.payment_url,
+            "inv_id": intent.provider_payment_id,
+            "idempotency_key": key,
+        }
         if payload_extra:
             payload.update(payload_extra)
         payment.payload = payload

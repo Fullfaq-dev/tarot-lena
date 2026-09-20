@@ -233,6 +233,15 @@ async def me(
     return payload
 
 
+@router.post("/telegram/bind")
+async def telegram_bind(
+    user: User = Depends(require_user),
+) -> dict:
+    from app.services.web.telegram_bind import create_bind_link
+
+    return await create_bind_link(user)
+
+
 @router.post("/packages/checkout")
 async def package_checkout(
     body: PackageIn,

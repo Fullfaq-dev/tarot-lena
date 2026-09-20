@@ -262,6 +262,76 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
     return payload
 
 
+async def _pending_by_key(session: AsyncSession, user_id: str, key: str) -> Payment | None:
+    rows = list(
+        (
+            await session.scalars(
+                select(Payment)
+                .where(Payment.user_id == user_id, Payment.status == "pending")
+                .order_by(Payment.created_at.desc())
+                .limit(30)
+            )
+        ).all()
+    )
+    for row in rows:
+        if (row.payload or {}).get("idempotency_key") == key:
+            return row
+    return None
+
+
+def _payment_result(payment: Payment, *, token: str | None = None) -> dict:
+    if payment.provider == "demo" and payment.status == "completed":
+        out = {"ok": True, "demo": True}
+    elif (payment.payload or {}).get("payment_url"):
+        out = {"ok": True, "payment_url": payment.payload["payment_url"], "reused": True}
+    else:
+        out = {"ok": True}
+    if token:
+        out["token"] = token
+    return out
+
+
+async def _open_robokassa(
+    session: AsyncSession,
+    payment: Payment,
+    *,
+    amount: Decimal,
+    title: str,
+    success_url: str,
+    fail_url: str,
+) -> dict:
+    settings = get_settings()
+    if not settings.robokassa_configured:
+        if not settings.payments_demo_mode:
+            raise ValueError("Оплата временно недоступна")
+        payment.provider = "demo"
+        payment.provider_payment_id = f"demo_{payment.id}"
+        from app.services.billing.service import BillingService
+
+        await BillingService().complete_payment(session, payment)
+        return _payment_result(payment, token=(payment.payload or {}).get("token"))
+    if payment.provider_payment_id and (payment.payload or {}).get("payment_url"):
+        return _payment_result(payment, token=(payment.payload or {}).get("token"))
+    inv_id = await next_invoice_id()
+    try:
+        url = build_payment_url(
+            payment_id=str(payment.id),
+            inv_id=inv_id,
+            amount_rub=amount,
+            description=f"Лея · {title}"[:100],
+            success_url=success_url,
+            fail_url=fail_url,
+        )
+    except RobokassaNotConfiguredError as exc:
+        raise ValueError("Оплата временно недоступна") from exc
+    payment.provider_payment_id = str(inv_id)
+    payload = dict(payment.payload or {})
+    payload["payment_url"] = url
+    payload["inv_id"] = str(inv_id)
+    payment.payload = payload
+    return {"ok": True, "payment_url": url, "token": payload.get("token")}
+
+
 async def checkout(
     session: AsyncSession,
     reading: WebReading,
@@ -303,47 +373,64 @@ async def checkout(
         await fulfill_paid(session, reading)
         return {"ok": True, "token": reading.token}
 
+    if reading.status in {"paid", "ready"} and tariff in {"base", "bundle"}:
+        return {"ok": True, "token": reading.token}
+
     purpose = "web_unlimited" if sku == "web_unlimited_month" else "web_reading"
+    key = f"web_reading:{reading.id}:{tariff}"
+    settings = get_settings()
+    success_url = f"{settings.public_base_url.rstrip('/')}/r/{reading.token}"
+    fail_url = f"{settings.public_base_url.rstrip('/')}/r/{reading.token}?pay=fail"
+
+    payment = None
+    if reading.payment_id:
+        existing = await session.scalar(select(Payment).where(Payment.id == reading.payment_id))
+        if (
+            existing
+            and existing.status == "pending"
+            and existing.amount_rub == amount
+            and (existing.payload or {}).get("tariff") == tariff
+        ):
+            payment = existing
+    if payment is None:
+        payment = await _pending_by_key(session, user.id, key)
+    if payment is not None:
+        reading.payment_id = payment.id
+        payload = dict(payment.payload or {})
+        payload["idempotency_key"] = key
+        payload["token"] = reading.token
+        payload["sku"] = sku
+        payload["tariff"] = tariff
+        payload["reading_id"] = reading.id
+        payment.payload = payload
+        result = await _open_robokassa(
+            session, payment, amount=amount, title=title, success_url=success_url, fail_url=fail_url
+        )
+        result["token"] = reading.token
+        return result
+
     payment = Payment(
         user_id=user.id,
         provider="robokassa",
         purpose=purpose,
         amount_rub=amount,
         status="pending",
-        payload={"reading_id": reading.id, "token": reading.token, "sku": sku, "tariff": tariff},
+        payload={
+            "reading_id": reading.id,
+            "token": reading.token,
+            "sku": sku,
+            "tariff": tariff,
+            "idempotency_key": key,
+        },
     )
     session.add(payment)
     await session.flush()
     reading.payment_id = payment.id
-    settings = get_settings()
-    if not settings.robokassa_configured:
-        if not settings.payments_demo_mode:
-            raise ValueError("Оплата временно недоступна")
-        payment.provider = "demo"
-        payment.provider_payment_id = f"demo_{payment.id}"
-        from app.services.billing.service import BillingService
-
-        await BillingService().complete_payment(session, payment)
-        return {"ok": True, "demo": True, "token": reading.token}
-
-    inv_id = await next_invoice_id()
-    try:
-        url = build_payment_url(
-            payment_id=str(payment.id),
-            inv_id=inv_id,
-            amount_rub=amount,
-            description=f"Лея · {title}"[:100],
-            success_url=f"{settings.public_base_url.rstrip('/')}/r/{reading.token}",
-            fail_url=f"{settings.public_base_url.rstrip('/')}/r/{reading.token}?pay=fail",
-        )
-    except RobokassaNotConfiguredError:
-        raise ValueError("Оплата временно недоступна")
-    payment.provider_payment_id = str(inv_id)
-    payload = dict(payment.payload or {})
-    payload["payment_url"] = url
-    payload["inv_id"] = str(inv_id)
-    payment.payload = payload
-    return {"ok": True, "payment_url": url, "token": reading.token}
+    result = await _open_robokassa(
+        session, payment, amount=amount, title=title, success_url=success_url, fail_url=fail_url
+    )
+    result["token"] = reading.token
+    return result
 
 
 async def fulfill_paid(session: AsyncSession, reading: WebReading) -> None:
@@ -409,44 +496,34 @@ async def save_contact(
 
 async def checkout_package(session: AsyncSession, user: User, package_id: str) -> dict:
     from app.services.products.packages import PACKAGES
-    from app.services.billing.service import BillingService
 
     pkg = PACKAGES.get(package_id)
     if pkg is None:
         raise ValueError("Нет такого пакета")
-    payment = Payment(
-        user_id=user.id,
-        provider="robokassa",
-        purpose=pkg.purpose,
-        amount_rub=pkg.price_rub,
-        status="pending",
-        payload={"package_id": pkg.id, "title": pkg.title},
-    )
-    session.add(payment)
-    await session.flush()
     settings = get_settings()
-    if not settings.robokassa_configured:
-        if not settings.payments_demo_mode:
-            raise ValueError("Оплата временно недоступна")
-        payment.provider = "demo"
-        payment.provider_payment_id = f"demo_{payment.id}"
-        await BillingService().complete_payment(session, payment)
-        return {"ok": True, "demo": True}
-    inv_id = await next_invoice_id()
-    url = build_payment_url(
-        payment_id=str(payment.id),
-        inv_id=inv_id,
-        amount_rub=pkg.price_rub,
-        description=f"Лея · {pkg.title}"[:100],
-        success_url=f"{settings.public_base_url.rstrip('/')}/lk",
-        fail_url=f"{settings.public_base_url.rstrip('/')}/lk?pay=fail",
+    key = f"web_pkg:{user.id}:{pkg.id}"
+    success_url = f"{settings.public_base_url.rstrip('/')}/lk"
+    fail_url = f"{settings.public_base_url.rstrip('/')}/lk?pay=fail"
+    payment = await _pending_by_key(session, user.id, key)
+    if payment is None:
+        payment = Payment(
+            user_id=user.id,
+            provider="robokassa",
+            purpose=pkg.purpose,
+            amount_rub=pkg.price_rub,
+            status="pending",
+            payload={"package_id": pkg.id, "title": pkg.title, "idempotency_key": key},
+        )
+        session.add(payment)
+        await session.flush()
+    return await _open_robokassa(
+        session,
+        payment,
+        amount=pkg.price_rub,
+        title=pkg.title,
+        success_url=success_url,
+        fail_url=fail_url,
     )
-    payment.provider_payment_id = str(inv_id)
-    payload = dict(payment.payload or {})
-    payload["payment_url"] = url
-    payload["inv_id"] = str(inv_id)
-    payment.payload = payload
-    return {"ok": True, "payment_url": url}
 
 
 async def cabinet_payload(session: AsyncSession, user: User) -> dict:
@@ -475,6 +552,8 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
             "id": user.id,
             "name": (ident.name if ident else None) or user.first_name,
             "email": ident.email if ident else None,
+            "telegram_bound": bool(user.telegram_id and user.telegram_id > 0),
+            "telegram_username": user.username,
         },
         "plan": plan,
         "vip": vip,

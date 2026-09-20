@@ -751,6 +751,30 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
         text, user_id, is_new = await service.start_or_resume(telegram_user=message.from_user)
         onboarded = await service.is_onboarded(message.from_user)
 
+        if command.args and command.args.startswith("bind_"):
+            bind_token = command.args.removeprefix("bind_")
+            try:
+                from app.database.models import User
+                from app.database.session import AsyncSessionLocal
+                from app.services.web.telegram_bind import consume_bind_token
+
+                async with AsyncSessionLocal() as db:
+                    tg_user = await db.scalar(select(User).where(User.id == user_id))
+                    if tg_user is None:
+                        raise ValueError("Сначала напиши боту /start")
+                    merged = await consume_bind_token(db, bind_token, tg_user)
+                    await db.commit()
+                    user_id = merged.id
+                await message.answer(
+                    "Telegram привязан к кабинету на сайте. Можно вернуться в личный кабинет — покупки и чат теперь общие.",
+                    parse_mode=None,
+                )
+            except ValueError as exc:
+                await message.answer(str(exc), parse_mode=None)
+            except Exception:
+                logger.exception("telegram bind start failed")
+                await message.answer("Не получилось привязать. Открой кабинет и нажми ещё раз.", parse_mode=None)
+
         if command.args and command.args.startswith("web_"):
             token = command.args.removeprefix("web_")
             try:
@@ -773,7 +797,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
                 logger.exception("web reading start failed")
 
         referrer_name: str | None = None
-        if is_new and command.args and message.from_user:
+        if is_new and command.args and message.from_user and not command.args.startswith(("bind_", "web_")):
             try:
                 referrer_name = await ReferralService().attach_from_start_code(
                     message.from_user.id,
