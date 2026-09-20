@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, oauthStart } from "./api";
 
 type Reading = {
@@ -18,6 +18,10 @@ type Profile = {
   birth_time: string;
 };
 
+type ChatRow = { id?: string; role: string; text: string };
+
+type Tab = "profile" | "chat" | "history";
+
 type Me = {
   user: {
     id: string;
@@ -32,50 +36,72 @@ type Me = {
   vip?: boolean;
   love_plus?: boolean;
   readings?: Reading[];
+  chat?: ChatRow[];
   packages?: { id: string; title: string; emoji: string; price_rub: number; pitch: string }[];
 };
 
 const emptyProfile: Profile = { name: "", birth_date: "", birth_city: "", birth_time: "" };
 
+function tabFromUrl(): Tab {
+  const value = new URLSearchParams(window.location.search).get("tab");
+  if (value === "chat" || value === "history" || value === "profile") return value;
+  return "profile";
+}
+
 export function Cabinet() {
   const params = new URLSearchParams(window.location.search);
   const [me, setMe] = useState<Me | null>(null);
+  const [tab, setTab] = useState<Tab>(tabFromUrl());
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [readingToken, setReadingToken] = useState(params.get("reading") || "");
   const [text, setText] = useState("");
-  const [log, setLog] = useState<{ role: string; text: string }[]>([]);
+  const [log, setLog] = useState<ChatRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const chatEnd = useRef<HTMLDivElement | null>(null);
 
   async function reload() {
     const data = await api<Me>("/api/web/me");
     setMe(data);
     if (data.profile) setProfile({ ...emptyProfile, ...data.profile });
+    if (data.chat) setLog(data.chat);
   }
 
   useEffect(() => {
     reload().catch((e) => setErr(e instanceof Error ? e.message : "Не открылся кабинет"));
   }, []);
 
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ block: "end" });
+  }, [log, busy, tab]);
+
   const oauth = me?.oauth || {};
   const selected = me?.readings?.find((r) => r.token === readingToken);
 
+  function goTab(next: Tab) {
+    setTab(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", next);
+    window.history.replaceState({}, "", url);
+  }
+
   async function send() {
-    if (!text.trim()) return;
+    if (busy || !text.trim()) return;
     setBusy(true);
     setErr("");
     const mine = text.trim();
     setText("");
     setLog((rows) => [...rows, { role: "user", text: mine }]);
     try {
-      const r = await api<{ reply: string }>("/api/web/chat", {
+      const r = await api<{ reply: string; chat?: ChatRow[] }>("/api/web/chat", {
         method: "POST",
         body: JSON.stringify({ text: mine, reading_token: readingToken || null }),
       });
-      setLog((rows) => [...rows, { role: "leia", text: r.reply }]);
+      if (r.chat) setLog(r.chat);
+      else setLog((rows) => [...rows, { role: "leia", text: r.reply }]);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Чат не ответил");
     } finally {
@@ -132,6 +158,7 @@ export function Cabinet() {
       });
       setMe(data);
       if (data.profile) setProfile({ ...emptyProfile, ...data.profile });
+      if (data.chat) setLog(data.chat);
       setOk("Сохранила — в Telegram и на сайте это один профиль.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Не сохранилось");
@@ -186,52 +213,17 @@ export function Cabinet() {
                 <p className="fine">Telegram: @{me.user.telegram_username || "привязан"}</p>
               ) : (
                 <>
-                  <p className="fine">Бот и сайт пока разные аккаунты. Привяжи Telegram — профиль, покупки и разборы станут общими.</p>
+                  <p className="fine">Бот и сайт пока разные аккаунты. Привяжи Telegram — профиль, чат и разборы станут общими.</p>
                   <button className="btn" type="button" onClick={bindTelegram}>
                     Привязать Telegram
                   </button>
                 </>
               )}
               <a className="btn gold" href="/#quiz">Новый разбор</a>
-              <div className="lk-fields">
-                <div className="field">
-                  <label>Имя</label>
-                  <input
-                    className="inp"
-                    value={profile.name}
-                    onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <label>Дата рождения</label>
-                  <input
-                    className="inp"
-                    placeholder="дд.мм.гггг"
-                    value={profile.birth_date}
-                    onChange={(e) => setProfile({ ...profile, birth_date: e.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <label>Место рождения</label>
-                  <input
-                    className="inp"
-                    placeholder="город"
-                    value={profile.birth_city}
-                    onChange={(e) => setProfile({ ...profile, birth_city: e.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <label>Время рождения</label>
-                  <input
-                    className="inp"
-                    placeholder="если знаешь"
-                    value={profile.birth_time}
-                    onChange={(e) => setProfile({ ...profile, birth_time: e.target.value })}
-                  />
-                </div>
-                <button className="btn ghost" type="button" disabled={saving} onClick={saveProfile}>
-                  {saving ? "Сохраняю…" : "Сохранить профиль"}
-                </button>
+              <div className="lk-tabs">
+                <button className={tab === "profile" ? "on" : ""} type="button" onClick={() => goTab("profile")}>Профиль</button>
+                <button className={tab === "chat" ? "on" : ""} type="button" onClick={() => goTab("chat")}>Чат</button>
+                <button className={tab === "history" ? "on" : ""} type="button" onClick={() => goTab("history")}>Разборы</button>
               </div>
               <button
                 className="btn link"
@@ -246,91 +238,135 @@ export function Cabinet() {
             </aside>
 
             <div className="lk-main">
-              <section className="quiz-frame wide">
-                <div className="eyebrow">Чат</div>
-                <h2 className="h">{selected ? selected.mini?.title || selected.product_name : "Свободный чат"}</h2>
-                <p className="sub">
-                  {selected
-                    ? selected.source === "telegram"
-                      ? "Разбор из Telegram. Спрашивай про него — Лея видит и твой профиль."
-                      : "Спрашивай про этот разбор. Лея опирается на дату и место рождения из профиля."
-                    : me.vip
-                      ? "VIP: можно писать Лее без привязки к раскладу."
-                      : "Выбери оплаченный разбор в истории — или возьми VIP, чтобы болтать свободно."}
-                </p>
-                <div className="chat-log">
-                  {selected?.paid_text && (
-                    <div className="chat-bubble leia">
-                      <b>Разбор</b>
-                      <div className="stream">{selected.paid_text}</div>
-                    </div>
-                  )}
-                  {log.map((row, i) => (
-                    <div key={i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>{row.text}</div>
-                  ))}
-                  {!selected?.paid_text && !log.length && (
-                    <p className="chat-empty">Напиши Лее — или открой разбор слева в истории.</p>
-                  )}
-                </div>
-                <div className="chat-compose">
-                  <input
-                    className="inp"
-                    value={text}
-                    placeholder="Напиши Лее…"
-                    onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && send()}
-                  />
-                  <button className="btn" type="button" disabled={busy} onClick={send}>
-                    {busy ? "…" : "Отправить"}
-                  </button>
-                </div>
-                {ok && <p className="ok">{ok}</p>}
-                {err && <p className="err">{err}</p>}
-              </section>
-
-              <section className="quiz-frame wide" style={{ marginTop: 18 }}>
-                <div className="eyebrow">История</div>
-                <h2 className="h">Твои разборы</h2>
-                <p className="sub">С сайта и из Telegram — один список, если аккаунты привязаны.</p>
-                <div className="cards landing-cards">
-                  {(me.readings || []).map((r) => (
-                    <button
-                      key={r.token}
-                      className={`c ${readingToken === r.token ? "on" : ""}`}
-                      type="button"
-                      onClick={() => {
-                        setReadingToken(r.token);
-                        setLog([]);
-                      }}
-                    >
-                      <b>{r.mini?.title || r.product_name || r.card_id}</b>
-                      <span className="fine">
-                        {r.source === "telegram" ? "telegram" : r.paid ? "открыт" : "мини"}
-                      </span>
-                    </button>
-                  ))}
-                  {!me.readings?.length && (
-                    <p className="sub">Пока пусто — <a href="/#quiz">пройди квиз</a>.</p>
-                  )}
-                </div>
-              </section>
-
-              <section className="quiz-frame wide" style={{ marginTop: 18 }}>
-                <div className="eyebrow">Пакеты как в Telegram</div>
-                <h2 className="h">ЛЮБОВЬ+ и VIP на всё</h2>
-                <div className="pkg-grid">
-                  {(me.packages || []).map((pkg) => (
-                    <article key={pkg.id} className="tar">
-                      <h4>{pkg.emoji} {pkg.title}</h4>
-                      <div className="pr">{pkg.price_rub} ₽</div>
-                      <p className="sub">{pkg.pitch.replace(/\*\*/g, "")}</p>
-                      <button className="btn gold" type="button" disabled={paying} onClick={() => buy(pkg.id)}>
-                        {paying ? "Открываю оплату…" : "Оплатить"}
+              {tab === "profile" && (
+                <>
+                  <section className="quiz-frame wide">
+                    <div className="eyebrow">Личное</div>
+                    <h2 className="h">Профиль</h2>
+                    <p className="sub">Эти данные видит Лея в Telegram и на сайте.</p>
+                    <div className="lk-fields lk-fields-wide">
+                      <div className="field">
+                        <label>Имя</label>
+                        <input className="inp" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+                      </div>
+                      <div className="field">
+                        <label>Дата рождения</label>
+                        <input className="inp" placeholder="дд.мм.гггг" value={profile.birth_date} onChange={(e) => setProfile({ ...profile, birth_date: e.target.value })} />
+                      </div>
+                      <div className="field">
+                        <label>Место рождения</label>
+                        <input className="inp" placeholder="город" value={profile.birth_city} onChange={(e) => setProfile({ ...profile, birth_city: e.target.value })} />
+                      </div>
+                      <div className="field">
+                        <label>Время рождения</label>
+                        <input className="inp" placeholder="если знаешь" value={profile.birth_time} onChange={(e) => setProfile({ ...profile, birth_time: e.target.value })} />
+                      </div>
+                      <button className="btn ghost" type="button" disabled={saving} onClick={saveProfile}>
+                        {saving ? "Сохраняю…" : "Сохранить профиль"}
                       </button>
-                    </article>
-                  ))}
-                </div>
-              </section>
+                    </div>
+                    {ok && <p className="ok">{ok}</p>}
+                    {err && <p className="err">{err}</p>}
+                  </section>
+
+                  <section className="quiz-frame wide" style={{ marginTop: 18 }}>
+                    <div className="eyebrow">Оплата</div>
+                    <h2 className="h">Пакеты как в Telegram</h2>
+                    <div className="pkg-grid">
+                      {(me.packages || []).map((pkg) => (
+                        <article key={pkg.id} className="tar">
+                          <h4>{pkg.emoji} {pkg.title}</h4>
+                          <div className="pr">{pkg.price_rub} ₽</div>
+                          <p className="sub">{pkg.pitch.replace(/\*\*/g, "")}</p>
+                          <button className="btn gold" type="button" disabled={paying} onClick={() => buy(pkg.id)}>
+                            {paying ? "Открываю оплату…" : "Оплатить"}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                </>
+              )}
+
+              {tab === "chat" && (
+                <section className="quiz-frame wide">
+                  <div className="eyebrow">Чат</div>
+                  <h2 className="h">{selected ? selected.mini?.title || selected.product_name : "Диалог с Леей"}</h2>
+                  <p className="sub">
+                    {me.user.telegram_bound
+                      ? "Это тот же чат, что в Telegram: история и память общие."
+                      : me.vip
+                        ? "VIP: можно писать без привязки к раскладу."
+                        : "Выбери оплаченный разбор во вкладке «Разборы» — или привяжи Telegram."}
+                  </p>
+                  {selected && (
+                    <p className="fine" style={{ textAlign: "left", marginBottom: 8 }}>
+                      В контексте: {selected.mini?.title || selected.product_name}
+                      {" · "}
+                      <button type="button" className="nav-ghost" onClick={() => setReadingToken("")}>сбросить</button>
+                    </p>
+                  )}
+                  <div className="chat-log">
+                    {log.map((row, i) => (
+                      <div key={row.id || i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>{row.text}</div>
+                    ))}
+                    {busy && (
+                      <div className="chat-bubble leia typing" aria-live="polite">
+                        <span className="typing-label">Лея пишет</span>
+                        <span className="typing-dots"><span /><span /><span /></span>
+                      </div>
+                    )}
+                    {!log.length && !busy && (
+                      <p className="chat-empty">Напиши Лее — продолжим с того места, где остановились в Telegram.</p>
+                    )}
+                    <div ref={chatEnd} />
+                  </div>
+                  <div className="chat-compose">
+                    <input
+                      className="inp"
+                      value={text}
+                      disabled={busy}
+                      placeholder={busy ? "Лея ещё отвечает…" : "Напиши Лее…"}
+                      onChange={(e) => setText(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && !busy && send()}
+                    />
+                    <button className="btn" type="button" disabled={busy || !text.trim()} onClick={send}>
+                      {busy ? "Пишет…" : "Отправить"}
+                    </button>
+                  </div>
+                  {err && <p className="err">{err}</p>}
+                </section>
+              )}
+
+              {tab === "history" && (
+                <section className="quiz-frame wide">
+                  <div className="eyebrow">История</div>
+                  <h2 className="h">Твои разборы</h2>
+                  <p className="sub">С сайта и из Telegram — один список, если аккаунты привязаны.</p>
+                  <div className="cards landing-cards">
+                    {(me.readings || []).map((r) => (
+                      <button
+                        key={r.token}
+                        className={`c ${readingToken === r.token ? "on" : ""}`}
+                        type="button"
+                        onClick={() => {
+                          setReadingToken(r.token);
+                          goTab("chat");
+                        }}
+                      >
+                        <b>{r.mini?.title || r.product_name || r.card_id}</b>
+                        <span className="fine">
+                          {r.source === "telegram" ? "telegram" : r.paid ? "сайт · открыт" : "сайт · мини"}
+                          {r.mini?.lead ? ` · ${r.mini.lead}` : ""}
+                        </span>
+                      </button>
+                    ))}
+                    {!me.readings?.length && (
+                      <p className="sub">Пока пусто — <a href="/#quiz">пройди квиз</a> или сделай расклад в боте.</p>
+                    )}
+                  </div>
+                </section>
+              )}
             </div>
           </div>
         )}
