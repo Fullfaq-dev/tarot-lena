@@ -154,6 +154,38 @@ async def merge_site_and_telegram(session: AsyncSession, *, site: User, telegram
         else:
             ident.user_id = keep.id
 
+    from app.database.models import RelationshipEvent, RelationshipMention, RelationshipPerson
+
+    for person in list((await session.scalars(select(RelationshipPerson).where(RelationshipPerson.user_id == donor.id))).all()):
+        clash = await session.scalar(
+            select(RelationshipPerson).where(
+                RelationshipPerson.user_id == keep.id,
+                RelationshipPerson.normalized_name == person.normalized_name,
+            )
+        )
+        if clash:
+            if person.notes and not clash.notes:
+                clash.notes = person.notes
+            await session.execute(
+                update(RelationshipEvent)
+                .where(RelationshipEvent.person_id == person.id)
+                .values(person_id=clash.id, user_id=keep.id)
+            )
+            await session.execute(
+                update(RelationshipMention)
+                .where(RelationshipMention.person_id == person.id)
+                .values(person_id=clash.id, user_id=keep.id)
+            )
+            await session.delete(person)
+        else:
+            person.user_id = keep.id
+    await session.execute(
+        update(RelationshipEvent).where(RelationshipEvent.user_id == donor.id).values(user_id=keep.id)
+    )
+    await session.execute(
+        update(RelationshipMention).where(RelationshipMention.user_id == donor.id).values(user_id=keep.id)
+    )
+
     for row in list((await session.scalars(select(DailyPrediction).where(DailyPrediction.user_id == donor.id))).all()):
         clash = await session.scalar(
             select(DailyPrediction).where(

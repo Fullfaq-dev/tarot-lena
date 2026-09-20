@@ -14,7 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.database.models import (
+    Message,
+    MessageRole,
     Payment,
+    ProductUsage,
     SoulProfile,
     TarotCard,
     TarotReading,
@@ -373,6 +376,7 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
         "drawn": (reading.input_payload or {}).get("drawn") or [],
         "paid": paid,
         "source": "web",
+        "created_at": reading.created_at.isoformat() if reading.created_at else None,
         "expires_at": reading.expires_at.isoformat() if reading.expires_at else None,
     }
     if include_paid and paid:
@@ -644,6 +648,61 @@ async def checkout_package(session: AsyncSession, user: User, package_id: str) -
     )
 
 
+def _product_label(product_id: str) -> str:
+    from app.services.products.catalog import PRODUCTS
+
+    product = PRODUCTS.get(product_id)
+    if product:
+        return f"{product.emoji} {product.title}"
+    return product_id
+
+
+def _inject_system_addon(messages: list[dict], addon: str) -> list[dict]:
+    if not messages or messages[0].get("role") != "system":
+        return [{"role": "system", "content": [{"type": "text", "text": addon}]}] + messages
+    updated = list(messages)
+    first = dict(updated[0])
+    content = first.get("content") or []
+    if content and isinstance(content[0], dict):
+        text = content[0].get("text", "")
+        first["content"] = [{"type": "text", "text": f"{text}\n\n{addon}"}]
+    elif isinstance(content, str):
+        first["content"] = f"{content}\n\n{addon}"
+    updated[0] = first
+    return updated
+
+
+def serialize_chat_message(row: Message) -> dict:
+    meta = row.meta or {}
+    text = row.content or ""
+    if meta.get("source") == "product_reading":
+        title = meta.get("product_title") or "Разбор"
+        text = f"{title}\n\n{text}"
+    if len(text) > 4000:
+        text = text[:4000] + "…"
+    return {
+        "id": row.id,
+        "role": "user" if row.role == MessageRole.USER.value else "leia",
+        "text": text,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+async def load_chat_history(session: AsyncSession, user: User, *, limit: int = 80) -> list[dict]:
+    rows = list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.user_id == user.id)
+                .order_by(Message.created_at.desc())
+                .limit(limit)
+            )
+        ).all()
+    )
+    rows.reverse()
+    return [serialize_chat_message(row) for row in rows]
+
+
 async def cabinet_payload(session: AsyncSession, user: User) -> dict:
     from app.services.products.entitlements import EntitlementService
     from app.services.products.packages import PACKAGES
@@ -680,6 +739,7 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
                 "product_name": row.reading_type,
                 "paid": True,
                 "source": "telegram",
+                "created_at": row.created_at.isoformat() if row.created_at else None,
                 "mini": {
                     "title": row.reading_type,
                     "lead": (row.question or "")[:240],
@@ -687,6 +747,74 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
                 "paid_text": row.interpretation,
             }
         )
+    usage_rows = list(
+        (
+            await session.scalars(
+                select(ProductUsage)
+                .where(
+                    ProductUsage.user_id == user.id,
+                    ProductUsage.content_preview.isnot(None),
+                    ProductUsage.content_preview != "",
+                )
+                .order_by(ProductUsage.created_at.desc())
+                .limit(50)
+            )
+        ).all()
+    )
+    for row in usage_rows:
+        title = _product_label(row.product_id)
+        readings.append(
+            {
+                "token": f"pu:{row.id}",
+                "card_id": row.product_id,
+                "product_name": title,
+                "paid": row.level == "full",
+                "source": "telegram",
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "mini": {
+                    "title": title,
+                    "lead": "полная" if row.level == "full" else "мини",
+                },
+                "paid_text": row.content_preview,
+            }
+        )
+    seen_usage = {row.id for row in usage_rows}
+    product_msgs = list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.user_id == user.id, Message.role == MessageRole.ASSISTANT.value)
+                .order_by(Message.created_at.desc())
+                .limit(120)
+            )
+        ).all()
+    )
+    for msg in product_msgs:
+        meta = msg.meta or {}
+        if meta.get("source") != "product_reading":
+            continue
+        usage_id = str(meta.get("product_usage_id") or "")
+        if usage_id and usage_id in seen_usage:
+            continue
+        if usage_id:
+            seen_usage.add(usage_id)
+        title = meta.get("product_title") or _product_label(str(meta.get("product_id") or "telegram"))
+        readings.append(
+            {
+                "token": f"pu:{usage_id}" if usage_id else f"msg:{msg.id}",
+                "card_id": str(meta.get("product_id") or "telegram"),
+                "product_name": title,
+                "paid": meta.get("level") == "full",
+                "source": "telegram",
+                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                "mini": {
+                    "title": title,
+                    "lead": meta.get("level_label") or "",
+                },
+                "paid_text": msg.content,
+            }
+        )
+    readings.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     ent = EntitlementService()
     plan = await ent.active_plan_label(user.id)
     vip = await ent.has_vip(user.id)
@@ -704,6 +832,7 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
         "vip": vip,
         "love_plus": love_plus,
         "readings": readings,
+        "chat": await load_chat_history(session, user),
         "packages": [
             {
                 "id": pkg.id,
@@ -724,7 +853,9 @@ async def chat_reply(
     text: str,
     reading_token: str | None,
 ) -> dict:
-    from app.database.models import Message, MessageRole
+    from app.services.ai.context import ContextBuilder
+    from app.services.billing.service import BillingService
+    from app.services.memory.extractor import MemoryExtractor
     from app.services.products.entitlements import EntitlementService
 
     text = (text or "").strip()
@@ -732,8 +863,11 @@ async def chat_reply(
         raise ValueError("Напиши сообщение")
     if len(text) > 4000:
         raise ValueError("Слишком длинно")
+
     reading = None
     tg_reading = None
+    product_usage = None
+    product_snippet = None
     if reading_token:
         if reading_token.startswith("tg:"):
             tg_reading = await session.scalar(
@@ -744,61 +878,108 @@ async def chat_reply(
             )
             if tg_reading is None:
                 raise ValueError("Разбор не найден")
+        elif reading_token.startswith("pu:"):
+            product_usage = await session.scalar(
+                select(ProductUsage).where(
+                    ProductUsage.id == reading_token[3:],
+                    ProductUsage.user_id == user.id,
+                )
+            )
+            if product_usage is None:
+                for msg in (
+                    await session.scalars(
+                        select(Message)
+                        .where(Message.user_id == user.id)
+                        .order_by(Message.created_at.desc())
+                        .limit(120)
+                    )
+                ).all():
+                    if str((msg.meta or {}).get("product_usage_id") or "") == reading_token[3:]:
+                        meta = msg.meta or {}
+                        product_snippet = (
+                            str(meta.get("product_title") or _product_label(str(meta.get("product_id") or "telegram"))),
+                            msg.content or "",
+                        )
+                        break
+                if product_snippet is None:
+                    raise ValueError("Разбор не найден")
+        elif reading_token.startswith("msg:"):
+            product_msg = await session.scalar(
+                select(Message).where(Message.id == reading_token[4:], Message.user_id == user.id)
+            )
+            if product_msg is None:
+                raise ValueError("Разбор не найден")
+            meta = product_msg.meta or {}
+            product_snippet = (
+                str(meta.get("product_title") or _product_label(str(meta.get("product_id") or "telegram"))),
+                product_msg.content or "",
+            )
         else:
             reading = await session.scalar(select(WebReading).where(WebReading.token == reading_token))
             if reading is None:
                 raise ValueError("Разбор не найден")
+
     vip = await EntitlementService().has_vip(user.id)
-    paid = bool(reading and reading.status in {"paid", "ready"} and reading.paid_text) or bool(tg_reading)
-    if not vip and not paid:
-        raise ValueError("Чат по разбору — после оплаты. Свободный чат — с VIP.")
-    history = list(
-        (
-            await session.scalars(
-                select(Message)
-                .where(Message.user_id == user.id)
-                .order_by(Message.created_at.desc())
-                .limit(12)
-            )
-        ).all()
+    bound = bool(user.telegram_id and user.telegram_id > 0)
+    paid = bool(
+        (reading and reading.status in {"paid", "ready"} and reading.paid_text)
+        or tg_reading
+        or (product_usage and product_usage.content_preview)
+        or product_snippet
     )
-    history.reverse()
-    profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
-    system = (
-        "Ты Лея, ИИ-таролог, не живой человек. Пиши на «ты», коротко и по делу. "
-        "Не давай медсоветов, юридических гарантий и предсказаний смерти. "
-        "Если в профиле есть имя, дата и место рождения — считай их фактами и опирайся на них "
-        "в нумерологии, матрице и личных ответах. Не подставляй другие даты."
+    if not bound and not vip and not paid:
+        raise ValueError("Чат по разбору — после оплаты. Свободный чат — с VIP или после привязки Telegram.")
+
+    messages = await ContextBuilder().build(session, user, user_query=text)
+    messages = _inject_system_addon(
+        messages,
+        "Telegram и сайт — один человек и один диалог. Продолжай переписку, не начинай сначала. "
+        "Дата, место рождения и память уже в профиле — опирайся на них.",
     )
-    if profile:
-        system += (
-            f"\nПрофиль: имя {profile.name or '—'}, "
-            f"дата рождения {_fmt_birth(profile.birth_date) or '—'}, "
-            f"место рождения {profile.birth_city or '—'}, "
-            f"время рождения {profile.birth_time or '—'}."
-        )
+    addon_parts = []
     if reading:
-        system += (
-            f"\nКонтекст разбора «{reading.card_id}». Мини: {json.dumps(reading.mini, ensure_ascii=False)[:2500]}"
+        addon_parts.append(
+            f"Открыт разбор сайта «{reading.card_id}». Мини: {json.dumps(reading.mini, ensure_ascii=False)[:2500]}"
         )
-        if paid:
-            system += f"\nПолный текст:\n{(reading.paid_text or '')[:5000]}"
+        if reading.paid_text:
+            addon_parts.append(f"Полный текст:\n{(reading.paid_text or '')[:5000]}")
     if tg_reading:
-        system += (
-            f"\nКонтекст разбора из Telegram «{tg_reading.reading_type}». "
-            f"Вопрос: {(tg_reading.question or '')[:800]}\n"
-            f"Текст:\n{(tg_reading.interpretation or '')[:5000]}"
+        addon_parts.append(
+            f"Открыт разбор из Telegram «{tg_reading.reading_type}». "
+            f"Вопрос: {(tg_reading.question or '')[:800]}\nТекст:\n{(tg_reading.interpretation or '')[:5000]}"
         )
-    messages = [{"role": "system", "content": system}]
-    for row in history:
-        if (row.meta or {}).get("reading_token") not in {None, reading_token}:
-            continue
-        messages.append({"role": "user" if row.role == MessageRole.USER.value else "assistant", "content": row.content})
-    messages.append({"role": "user", "content": text})
+    if product_usage:
+        addon_parts.append(
+            f"Открыт разбор из Telegram «{_product_label(product_usage.product_id)}» "
+            f"({'полная' if product_usage.level == 'full' else 'мини'}).\n"
+            f"{(product_usage.content_preview or '')[:5000]}"
+        )
+    if product_snippet:
+        addon_parts.append(f"Открыт разбор из Telegram «{product_snippet[0]}».\n{product_snippet[1][:5000]}")
+    if addon_parts:
+        messages = _inject_system_addon(messages, "\n".join(addon_parts))
+    messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
+
+    billing = BillingService()
+    billing_mode = "web"
+    if bound or vip:
+        allowed, reason, billing_mode = await billing.ensure_can_use_chat(
+            session, user, context_messages=messages
+        )
+        if not allowed and not vip and not paid:
+            raise ValueError(reason)
+        if allowed:
+            billing_mode = await billing.reserve_chat_slot(session, user, billing_mode)
+
     reply = await KieClient().chat_completion(messages, reasoning_effort="low")
-    meta = {"channel": "web", "reading_token": reading_token}
+    meta = {"channel": "web", "reading_token": reading_token, "billing_mode": billing_mode}
     session.add(Message(user_id=user.id, role=MessageRole.USER.value, content=text, meta=meta))
     session.add(Message(user_id=user.id, role=MessageRole.ASSISTANT.value, content=reply, meta=meta))
     await session.flush()
-    return {"reply": reply}
+    try:
+        await MemoryExtractor().extract_from_dialog(session, user, text, reply)
+    except Exception:
+        logger.exception("web chat memory extract failed")
+    await session.flush()
+    return {"reply": reply, "chat": await load_chat_history(session, user)}
 
