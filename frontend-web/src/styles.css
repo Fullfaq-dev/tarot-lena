@@ -362,14 +362,14 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .pkg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .c.on { border-color: var(--gold); background: rgba(255, 217, 146, .12); }
 @media (max-width: 980px) {
-  .lk-grid, .pkg-grid { grid-template-columns: 1fr; }
-  .chat-compose { grid-template-columns: 1fr; }
-}
+  .hero, .feature-grid, .flow, .quiz-layout { grid-template-columns: 1fr; }
   .quiz-aside { position: static; display: flex; gap: 16px; align-items: center; }
   .quiz-aside img { margin: 0; }
   .landing-cards { grid-template-columns: 1fr 1fr; }
   .topnav { display: none; }
   .trust-row { grid-template-columns: 1fr; }
+  .lk-grid, .pkg-grid { grid-template-columns: 1fr; }
+  .chat-compose { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .shell { width: min(100% - 24px, 1180px); padding-top: 16px; }
