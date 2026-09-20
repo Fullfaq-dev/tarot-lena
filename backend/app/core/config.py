@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     yandex_oauth_client_secret: str = Field(default="", alias="YANDEX_OAUTH_CLIENT_SECRET")
     vk_oauth_client_id: str = Field(default="", alias="VK_OAUTH_CLIENT_ID")
     vk_oauth_client_secret: str = Field(default="", alias="VK_OAUTH_CLIENT_SECRET")
+    vk_oauth_service_token: str = Field(default="", alias="VK_OAUTH_SERVICE_TOKEN")
 
     @property
     def platega_configured(self) -> bool:
