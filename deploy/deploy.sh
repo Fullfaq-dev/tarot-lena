@@ -3,12 +3,15 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/tarot-lena}"
 COMPOSE_FILE="docker-compose.prod.yml"
-VPS_IP="${VPS_IP:-43.165.5.18}"
+VPS_IP="${VPS_IP:-85.234.106.108}"
 HTTP_PORT="${HTTP_PORT:-80}"
+DOMAIN="${DOMAIN:-arcaneai.online}"
 
 cd "$APP_DIR"
 
-if [ "$HTTP_PORT" = "80" ]; then
+if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+  PUBLIC_URL="https://${DOMAIN}"
+elif [ "$HTTP_PORT" = "80" ]; then
   PUBLIC_URL="http://${VPS_IP}"
 else
   PUBLIC_URL="http://${VPS_IP}:${HTTP_PORT}"
