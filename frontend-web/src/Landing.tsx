@@ -152,7 +152,9 @@ export function Landing<T extends CardLite>({ cfg, tab, setTab, visible, onPick 
       </section>
 
       <footer className="landing-footer">
-        © Лея · таро и нумерология · <a href={cfg.legal_url}>Документы</a>
+        © Лея · таро и нумерология · <a href="/lk">Кабинет</a>
+        {" · "}
+        <a href={cfg.legal_url}>Документы</a>
         {" · "}
         <a href={`https://t.me/${cfg.bot_username}`}>Поддержка</a>
       </footer>
