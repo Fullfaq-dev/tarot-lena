@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     smtp_from: str = Field(default="", alias="SMTP_FROM")
     telegram_bot_username: str = Field(default="astro_leia_bot", alias="TELEGRAM_BOT_USERNAME")
 
+    yandex_oauth_client_id: str = Field(default="", alias="YANDEX_OAUTH_CLIENT_ID")
+    yandex_oauth_client_secret: str = Field(default="", alias="YANDEX_OAUTH_CLIENT_SECRET")
+    vk_oauth_client_id: str = Field(default="", alias="VK_OAUTH_CLIENT_ID")
+    vk_oauth_client_secret: str = Field(default="", alias="VK_OAUTH_CLIENT_SECRET")
+
     @property
     def platega_configured(self) -> bool:
         return bool(self.platega_merchant_id and self.platega_api_key)

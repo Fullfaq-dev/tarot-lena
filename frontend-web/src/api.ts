@@ -44,7 +44,8 @@ export function track(name: string, extra?: Record<string, string>) {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
   if (!res.ok) {
     let detail = await res.text();
@@ -57,4 +58,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(detail || "Ошибка");
   }
   return res.json();
+}
+
+export function oauthStart(provider: "yandex" | "vk", next = "/lk"): string {
+  const params = new URLSearchParams({ guest_id: guestId(), next });
+  return `/api/web/auth/${provider}?${params.toString()}`;
 }

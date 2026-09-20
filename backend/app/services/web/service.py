@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import secrets
 from datetime import UTC, date, datetime, timedelta
@@ -8,6 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -16,6 +18,7 @@ from app.database.models import (
     TarotCard,
     User,
     WebCardOverride,
+    WebIdentity,
     WebMatrixCache,
     WebReading,
     WebSession,
@@ -98,9 +101,15 @@ async def ensure_guest_user(session: AsyncSession, web: WebSession) -> User:
     tid = guest_telegram_id(web.guest_id)
     user = await session.scalar(select(User).where(User.telegram_id == tid))
     if user is None:
-        user = User(telegram_id=tid, first_name="Гость сайта", language_code="ru")
-        session.add(user)
-        await session.flush()
+        try:
+            async with session.begin_nested():
+                user = User(telegram_id=tid, first_name="Гость сайта", language_code="ru")
+                session.add(user)
+                await session.flush()
+        except IntegrityError:
+            user = await session.scalar(select(User).where(User.telegram_id == tid))
+            if user is None:
+                raise
     web.user_id = user.id
     return user
 
@@ -307,7 +316,9 @@ async def checkout(
     await session.flush()
     reading.payment_id = payment.id
     settings = get_settings()
-    if settings.payments_demo_mode or not settings.robokassa_configured:
+    if not settings.robokassa_configured:
+        if not settings.payments_demo_mode:
+            raise ValueError("Оплата временно недоступна")
         payment.provider = "demo"
         payment.provider_payment_id = f"demo_{payment.id}"
         from app.services.billing.service import BillingService
@@ -394,3 +405,149 @@ async def save_contact(
         from app.services.web.mailer import send_reading_link
 
         send_reading_link(web.email, reading.token)
+
+
+async def checkout_package(session: AsyncSession, user: User, package_id: str) -> dict:
+    from app.services.products.packages import PACKAGES
+    from app.services.billing.service import BillingService
+
+    pkg = PACKAGES.get(package_id)
+    if pkg is None:
+        raise ValueError("Нет такого пакета")
+    payment = Payment(
+        user_id=user.id,
+        provider="robokassa",
+        purpose=pkg.purpose,
+        amount_rub=pkg.price_rub,
+        status="pending",
+        payload={"package_id": pkg.id, "title": pkg.title},
+    )
+    session.add(payment)
+    await session.flush()
+    settings = get_settings()
+    if not settings.robokassa_configured:
+        if not settings.payments_demo_mode:
+            raise ValueError("Оплата временно недоступна")
+        payment.provider = "demo"
+        payment.provider_payment_id = f"demo_{payment.id}"
+        await BillingService().complete_payment(session, payment)
+        return {"ok": True, "demo": True}
+    inv_id = await next_invoice_id()
+    url = build_payment_url(
+        payment_id=str(payment.id),
+        inv_id=inv_id,
+        amount_rub=pkg.price_rub,
+        description=f"Лея · {pkg.title}"[:100],
+        success_url=f"{settings.public_base_url.rstrip('/')}/lk",
+        fail_url=f"{settings.public_base_url.rstrip('/')}/lk?pay=fail",
+    )
+    payment.provider_payment_id = str(inv_id)
+    payload = dict(payment.payload or {})
+    payload["payment_url"] = url
+    payload["inv_id"] = str(inv_id)
+    payment.payload = payload
+    return {"ok": True, "payment_url": url}
+
+
+async def cabinet_payload(session: AsyncSession, user: User) -> dict:
+    from app.services.products.entitlements import EntitlementService
+    from app.services.products.packages import PACKAGES
+
+    ident = await session.scalar(select(WebIdentity).where(WebIdentity.user_id == user.id))
+    webs = list((await session.scalars(select(WebSession).where(WebSession.user_id == user.id))).all())
+    web_ids = [row.id for row in webs]
+    readings = []
+    if web_ids:
+        rows = (
+            await session.scalars(
+                select(WebReading)
+                .where(WebReading.session_id.in_(web_ids))
+                .order_by(WebReading.created_at.desc())
+            )
+        ).all()
+        readings = [public_reading(row, include_paid=row.status in {"paid", "ready"}) for row in rows]
+    ent = EntitlementService()
+    plan = await ent.active_plan_label(user.id)
+    vip = await ent.has_vip(user.id)
+    love_plus = await ent.has_love_plus(user.id)
+    return {
+        "user": {
+            "id": user.id,
+            "name": (ident.name if ident else None) or user.first_name,
+            "email": ident.email if ident else None,
+        },
+        "plan": plan,
+        "vip": vip,
+        "love_plus": love_plus,
+        "readings": readings,
+        "packages": [
+            {
+                "id": pkg.id,
+                "title": pkg.title,
+                "emoji": pkg.emoji,
+                "price_rub": int(pkg.price_rub),
+                "pitch": pkg.pitch,
+            }
+            for pkg in PACKAGES.values()
+        ],
+    }
+
+
+async def chat_reply(
+    session: AsyncSession,
+    user: User,
+    *,
+    text: str,
+    reading_token: str | None,
+) -> dict:
+    from app.database.models import Message, MessageRole
+    from app.services.products.entitlements import EntitlementService
+
+    text = (text or "").strip()
+    if len(text) < 2:
+        raise ValueError("Напиши сообщение")
+    if len(text) > 4000:
+        raise ValueError("Слишком длинно")
+    reading = None
+    if reading_token:
+        reading = await session.scalar(select(WebReading).where(WebReading.token == reading_token))
+        if reading is None:
+            raise ValueError("Разбор не найден")
+    vip = await EntitlementService().has_vip(user.id)
+    paid = bool(reading and reading.status in {"paid", "ready"} and reading.paid_text)
+    if not vip and not paid:
+        raise ValueError("Чат по разбору — после оплаты. Свободный чат — с VIP.")
+    history = list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.user_id == user.id)
+                .order_by(Message.created_at.desc())
+                .limit(12)
+            )
+        ).all()
+    )
+    history.reverse()
+    system = (
+        "Ты Лея, ИИ-таролог, не живой человек. Пиши на «ты», коротко и по делу. "
+        "Не давай медсоветов, юридических гарантий и предсказаний смерти."
+    )
+    if reading:
+        system += (
+            f"\nКонтекст разбора «{reading.card_id}». Мини: {json.dumps(reading.mini, ensure_ascii=False)[:2500]}"
+        )
+        if paid:
+            system += f"\nПолный текст:\n{(reading.paid_text or '')[:5000]}"
+    messages = [{"role": "system", "content": system}]
+    for row in history:
+        if (row.meta or {}).get("reading_token") not in {None, reading_token}:
+            continue
+        messages.append({"role": "user" if row.role == MessageRole.USER.value else "assistant", "content": row.content})
+    messages.append({"role": "user", "content": text})
+    reply = await KieClient().chat_completion(messages, reasoning_effort="low")
+    meta = {"channel": "web", "reading_token": reading_token}
+    session.add(Message(user_id=user.id, role=MessageRole.USER.value, content=text, meta=meta))
+    session.add(Message(user_id=user.id, role=MessageRole.ASSISTANT.value, content=reply, meta=meta))
+    await session.flush()
+    return {"reply": reply}
+
