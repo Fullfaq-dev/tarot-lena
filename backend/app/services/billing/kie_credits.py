@@ -35,7 +35,8 @@ async def fetch_kie_credits() -> tuple[dict[str, Any], str | None]:
     payload: dict[str, Any] = {
         "configured": bool(settings.kie_api_key and settings.kie_api_key != "replace-me"),
         "model": settings.kie_chat_model,
-        "fallback_model": getattr(settings, "kie_chat_fallback_model", "") or "",
+        "fallback_provider": "302.ai",
+        "fallback_model": settings.ai302_chat_model,
         "credits": None,
     }
     if not payload["configured"]:

@@ -34,11 +34,11 @@ class Settings(BaseSettings):
     kie_input_credits_per_1m: float = 87.5
     kie_output_credits_per_1m: float = 700
     kie_chat_model: str = "gpt-5-6-luna"
-    kie_chat_fallback_model: str = "gpt-5-2"
 
     ai302_api_key: str = "replace-me"
     ai302_base_url: str = "https://api.302.ai"
     ai302_stt_model: str = "whisper-1"
+    ai302_chat_model: str = "gpt-5.6-luna-pro"
 
     elevenlabs_api_key: str = "replace-me"
     elevenlabs_tts_model: str = "eleven_turbo_v2_5"
@@ -69,6 +69,14 @@ class Settings(BaseSettings):
     robokassa_password2: str = Field(default="", alias="ROBOKASSA_PASSWORD2")
     robokassa_is_test: bool = Field(default=True, alias="ROBOKASSA_IS_TEST")
     robokassa_hash: str = Field(default="md5", alias="ROBOKASSA_HASH")
+
+    yandex_metrika_id: str = Field(default="110607194", alias="YANDEX_METRIKA_ID")
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str = Field(default="", alias="SMTP_USER")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="", alias="SMTP_FROM")
+    telegram_bot_username: str = Field(default="astro_leia_bot", alias="TELEGRAM_BOT_USERNAME")
 
     @property
     def platega_configured(self) -> bool:

@@ -283,10 +283,10 @@ class OnboardingService:
 
         settings = await session.scalar(select(UserSettings).where(UserSettings.user_id == user.id))
         if settings:
-            from datetime import timedelta
+            from app.services.broadcasts.leia import free_morning_trial_ends_on
 
             today = date.today()
             settings.morning_digest_enabled = True
             settings.weekly_horoscope_enabled = True
             settings.daily_card_enabled = True
-            settings.free_morning_week_ends_at = today + timedelta(days=7)
+            settings.free_morning_week_ends_at = free_morning_trial_ends_on(today)

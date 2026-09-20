@@ -1,6 +1,7 @@
 import json
 import logging
 from collections.abc import AsyncIterator
+from typing import Any
 
 import asyncio
 
@@ -139,10 +140,42 @@ def _extract_content(data: dict) -> str:
     return (content or "").strip() if isinstance(content, str) else ""
 
 
+def _is_retryable(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(
+        x in msg
+        for x in (
+            "server exception",
+            "try again",
+            "timeout",
+            "503",
+            "502",
+            "пусто",
+            "empty",
+        )
+    )
+
+
+def _should_skip_kie_retry(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(
+        x in msg
+        for x in (
+            "credit",
+            "insufficient",
+            "quota",
+            "balance",
+            "401",
+            "unauthorized",
+            "invalid api key",
+        )
+    )
+
+
 class KieClient:
     def __init__(self) -> None:
         self.settings = get_settings()
-        self.last_usage: dict[str, int] | None = None
+        self.last_usage: dict[str, Any] | None = None
 
     @property
     def headers(self) -> dict[str, str]:
@@ -157,20 +190,31 @@ class KieClient:
             return f"{self.settings.kie_base_url.rstrip('/')}/codex/v1/responses"
         return f"{self.settings.kie_base_url.rstrip('/')}/{chosen}/v1/chat/completions"
 
-    def _chat_models(self) -> list[str]:
-        primary = (self.settings.kie_chat_model or "gpt-5-6-luna").strip()
-        fallback = (getattr(self.settings, "kie_chat_fallback_model", "") or "").strip()
-        models = [primary]
-        if fallback and fallback != primary:
-            models.append(fallback)
-        return models
+    def _chat_model(self) -> str:
+        return (self.settings.kie_chat_model or "gpt-5-6-luna").strip()
+
+    def _kie_configured(self) -> bool:
+        key = (self.settings.kie_api_key or "").strip()
+        return bool(key) and key != "replace-me"
+
+    def _302_configured(self) -> bool:
+        key = (self.settings.ai302_api_key or "").strip().strip('"').strip("'")
+        return bool(key) and key != "replace-me"
+
+    def _302_model(self) -> str:
+        return (self.settings.ai302_chat_model or "gpt-5.6-luna-pro").strip()
+
+    def _remember_usage(self, data: dict, *, model: str, provider: str) -> None:
+        usage = data.get("usage") or {}
+        self.last_usage = {
+            "input_tokens": int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
+            "output_tokens": int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
+            "model": model,
+            "provider": provider,
+        }
 
     async def stream_chat(self, messages: list[dict], reasoning_effort: str = "low") -> AsyncIterator[str]:
         self.last_usage = None
-        if self.settings.kie_api_key == "replace-me":
-            yield self._local_fallback(messages)
-            return
-
         text = await self.chat_completion(messages, reasoning_effort=reasoning_effort)
         if text:
             yield text
@@ -217,14 +261,40 @@ class KieClient:
             err = data["error"]
             raise ValueError(err.get("message") or str(err))
 
-        usage = data.get("usage") or {}
-        self.last_usage = {
-            "input_tokens": int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
-            "output_tokens": int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
-        }
+        self._remember_usage(data, model=model, provider="kie")
         text = _extract_responses_text(data) if _uses_responses_api(model) else _extract_content(data)
         if not text:
             raise ValueError(data.get("msg") or "KIE вернул пустой ответ")
+        return text
+
+    async def _chat_once_302(self, messages: list[dict]) -> str:
+        model = self._302_model()
+        api_key = (self.settings.ai302_api_key or "").strip().strip('"').strip("'")
+        payload = {
+            "model": model,
+            "messages": _normalize_messages(messages),
+            "stream": False,
+        }
+        client = get_async_client()
+        response = await client.post(
+            f"{self.settings.ai302_base_url.rstrip('/')}/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json=payload,
+            timeout=75,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data.get("error"), dict):
+            err = data["error"]
+            raise ValueError(err.get("message") or str(err))
+        self._remember_usage(data, model=model, provider="302")
+        text = _extract_content(data)
+        if not text:
+            raise ValueError(data.get("msg") or "302.AI вернул пустой ответ")
         return text
 
     async def chat_completion(
@@ -234,47 +304,52 @@ class KieClient:
         reasoning_effort: str = "low",
     ) -> str:
         self.last_usage = None
-        if self.settings.kie_api_key == "replace-me":
-            return self._local_fallback(messages)
-
         last_error: Exception | None = None
-        for model in self._chat_models():
+
+        if self._kie_configured():
+            model = self._chat_model()
             for attempt in range(2):
                 try:
-                    text = await self._chat_once(
+                    return await self._chat_once(
                         model, messages, reasoning_effort=reasoning_effort
                     )
-                    if model != self.settings.kie_chat_model:
-                        logger.warning("KIE fallback model used: %s", model)
-                    return text
                 except Exception as exc:
                     last_error = exc
-                    msg = str(exc).lower()
-                    retryable = any(
-                        x in msg
-                        for x in (
-                            "server exception",
-                            "try again",
-                            "timeout",
-                            "503",
-                            "502",
-                            "пусто",
-                            "empty",
-                        )
-                    )
                     logger.warning(
                         "KIE chat failed model=%s attempt=%s: %s",
                         model,
                         attempt + 1,
                         exc,
                     )
-                    if attempt == 0 and retryable:
+                    if _should_skip_kie_retry(exc):
+                        break
+                    if attempt == 0 and _is_retryable(exc):
                         await asyncio.sleep(1.0)
                         continue
                     break
+
+        if self._302_configured():
+            for attempt in range(2):
+                try:
+                    text = await self._chat_once_302(messages)
+                    logger.warning("KIE fallback used: 302.ai %s", self._302_model())
+                    return text
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning(
+                        "302.AI chat failed model=%s attempt=%s: %s",
+                        self._302_model(),
+                        attempt + 1,
+                        exc,
+                    )
+                    if attempt == 0 and _is_retryable(exc):
+                        await asyncio.sleep(1.0)
+                        continue
+                    break
+
         if last_error:
             raise last_error
-        return ""
+        return self._local_fallback(messages)
 
     async def get_task_record(self, task_id: str) -> dict:
         if self.settings.kie_api_key == "replace-me":

@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 MORNING_HOUR = 9
 EVENING_HOUR = 20
 WEEKLY_WEEKDAY = 0  # Monday
+# Inclusive calendar days after onboarding, including the signup day.
+FREE_MORNING_TRIAL_DAYS = 3
 BATCH = 20
 FUNNEL_DAY_MIN = 2
 FUNNEL_DAY_MAX = 3
@@ -112,10 +114,15 @@ async def _user_active_since(
     return False
 
 
+def free_morning_trial_ends_on(started: date) -> date:
+    """Last calendar day with free AI morning. Signup day counts as day 1."""
+    return started + timedelta(days=FREE_MORNING_TRIAL_DAYS - 1)
+
+
 def _morning_trial_active(settings: UserSettings, today: date) -> bool:
     ends = settings.free_morning_week_ends_at
     if ends is None:
-        return True
+        return False
     return today <= ends
 
 

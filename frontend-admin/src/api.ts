@@ -78,6 +78,7 @@ export type PlategaBalance = {
 export type KieCredits = {
   configured: boolean;
   model: string;
+  fallback_provider?: string;
   fallback_model?: string;
   credits: number | null;
 };
@@ -174,6 +175,13 @@ export const api = {
     });
     return handleResponse(res);
   },
+  webCards: () => get<{ cards: Record<string, unknown>[] }>("/web/cards"),
+  saveWebCard: (cardId: string, payload: Record<string, unknown>) =>
+    fetch(`${BASE}/web/cards/${cardId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ card_id: cardId, payload }),
+    }).then((res) => handleResponse(res)),
 };
 
 export type UserRow = {

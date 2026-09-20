@@ -751,6 +751,27 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
         text, user_id, is_new = await service.start_or_resume(telegram_user=message.from_user)
         onboarded = await service.is_onboarded(message.from_user)
 
+        if command.args and command.args.startswith("web_"):
+            token = command.args.removeprefix("web_")
+            try:
+                from app.database.models import WebReading, WebSession
+                from app.database.session import AsyncSessionLocal
+
+                async with AsyncSessionLocal() as db:
+                    reading = await db.scalar(select(WebReading).where(WebReading.token == token))
+                    if reading:
+                        web = await db.scalar(select(WebSession).where(WebSession.id == reading.session_id))
+                        if web and user_id:
+                            web.user_id = user_id
+                            await db.commit()
+                        body = reading.paid_text or (reading.mini or {}).get("mirror") or "Разбор с сайта сохранён."
+                        await message.answer(
+                            "Это разбор с сайта Леи.\n\n" + str(body)[:3500],
+                            parse_mode=None,
+                        )
+            except Exception:
+                logger.exception("web reading start failed")
+
         referrer_name: str | None = None
         if is_new and command.args and message.from_user:
             try:

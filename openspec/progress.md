@@ -56,4 +56,4 @@
 
 **Деплой:** push в `Fullfaq-dev/tarot-lena` → rsync/`deploy/deploy.sh` на VPS (`SKIP_GIT_PULL=1` при rsync).
 
-**Оплата:** Robokassa live (`PAYMENTS_DEMO_MODE=0`, `ROBOKASSA_IS_TEST=0`). ResultURL — `http://85.234.106.108/callbacks/robokassa`.
+- [Completed] Сайт-квиз по ТЗ: `frontend-web`, `/api/web`, Robokassa, мини-шаблоны, апселл/безлимит 590, бот `web_<token>`, админка карточек, кэш матрицы, Метрика 110607194.

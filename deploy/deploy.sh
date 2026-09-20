@@ -37,7 +37,8 @@ ensure_env PLATEGA_PAYMENT_METHOD "0"
 ensure_env TELEGRAM_ADMIN_IDS "267409502,7670490295"
 ensure_env OWNER_TELEGRAM_ID "7670490295"
 ensure_env TELEGRAM_USE_POLLING "1"
-ensure_env ROBOKASSA_HASH "md5"
+ensure_env TELEGRAM_BOT_USERNAME "astro_leia_bot"
+ensure_env YANDEX_METRIKA_ID "110607194"
 # Keep existing ROBOKASSA_* / PAYMENTS_DEMO_MODE if already set on the server.
 if ! grep -q "^PAYMENTS_DEMO_MODE=" .env 2>/dev/null; then
   ensure_env PAYMENTS_DEMO_MODE "1"
@@ -83,6 +84,14 @@ else
   echo "WARN: frontend-admin/dist/index.html missing; upload admin build in CI before deploy"
 fi
 
+set +e
+docker compose -f "$COMPOSE_FILE" build --pull=false web
+web_build_rc=$?
+set -e
+if [ "$web_build_rc" -ne 0 ]; then
+  echo "WARN: web quiz build failed"
+fi
+
 build_ok=0
 set +e
 docker compose -f "$COMPOSE_FILE" build --pull=false api worker bot
@@ -113,7 +122,7 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   fi
   sleep 2
 done
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin nginx
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin web nginx
 
 docker image prune -f
 

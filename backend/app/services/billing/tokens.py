@@ -3,7 +3,7 @@ from decimal import Decimal
 from app.core.config import get_settings
 from app.services.billing.limits import USD_TO_RUB
 
-# KIE gpt-5-2: 87.5 cr/1M input, 700 cr/1M output
+# Оценка в админке: внутренний курс кредитов (исторически gpt-5-2). Luna в кабинете KIE может быть дороже.
 # Себестоимость: 1 credit = $0.005 (kie_credit_usd)
 # Списание с пользователя: credits × $0.007 × markup → ₽
 

@@ -78,6 +78,8 @@ class BillingService:
         *,
         subscription: Subscription | None = None,
     ) -> dict[str, int | str] | None:
+        if int(user.telegram_id or 0) <= 0:
+            return None
         lang = await self._user_lang(session, user.id)
         if payment.purpose == "topup":
             text = t(
@@ -1142,16 +1144,37 @@ class BillingService:
                     )
                     payload["fulfill_empty"] = True
                     payment.payload = payload
+        elif payment.purpose in {"web_reading", "web_unlimited"}:
+            from app.database.models import WebReading, WebSession
+            from app.services.web.service import fulfill_paid
+
+            payload = dict(payment.payload or {})
+            reading = None
+            token = payload.get("token")
+            reading_id = payload.get("reading_id")
+            if reading_id:
+                reading = await session.scalar(select(WebReading).where(WebReading.id == reading_id))
+            if reading is None and token:
+                reading = await session.scalar(select(WebReading).where(WebReading.token == token))
+            if reading:
+                await fulfill_paid(session, reading)
+                if payment.purpose == "web_unlimited":
+                    web = await session.scalar(
+                        select(WebSession).where(WebSession.id == reading.session_id)
+                    )
+                    if web:
+                        web.unlimited_until = datetime.now(timezone.utc) + timedelta(days=30)
         else:
             raise ValueError(f"Неизвестное назначение платежа: {payment.purpose}")
 
-        from app.services.referrals.service import ReferralService
+        if user.telegram_id and user.telegram_id > 0:
+            from app.services.referrals.service import ReferralService
 
-        await ReferralService().accrue_reward(session, user.id, payment.amount_rub)
+            await ReferralService().accrue_reward(session, user.id, payment.amount_rub)
 
-        from app.services.referrals.invite import schedule_friend_invite
+            from app.services.referrals.invite import schedule_friend_invite
 
-        await schedule_friend_invite(session, user, payment)
+            await schedule_friend_invite(session, user, payment)
 
         payment.status = "completed"
         if admin_comment.strip():

@@ -79,6 +79,8 @@ def build_payment_url(
     inv_id: int,
     amount_rub: Decimal,
     description: str,
+    success_url: str | None = None,
+    fail_url: str | None = None,
 ) -> str:
     settings = get_settings()
     if not settings.robokassa_configured:
@@ -104,6 +106,10 @@ def build_payment_url(
     }
     if settings.robokassa_is_test:
         params["IsTest"] = "1"
+    if success_url:
+        params["SuccessURL"] = success_url
+    if fail_url:
+        params["FailURL"] = fail_url
     return f"{ROBOKASSA_INDEX}?{urlencode(params)}"
 
 
