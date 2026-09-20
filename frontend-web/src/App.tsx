@@ -287,16 +287,19 @@ export function App() {
             <span className="brand-mark"><img src="/avatar.png" alt="" /></span>
             <span>Лея</span>
           </button>
-          {showLanding ? (
-            <nav className="topnav">
-              <a href="#how">Как это работает</a>
-              <a href="#quiz">Разбор</a>
-              <a href="/lk">Кабинет</a>
-              <a href={cfg.legal_url}>Документы</a>
-            </nav>
-          ) : (
-            <button className="nav-ghost" type="button" onClick={goHome}>На главную</button>
-          )}
+          <div className="topbar-right">
+            {showLanding && (
+              <nav className="topnav">
+                <a href="#how">Как это работает</a>
+                <a href="#quiz">Разбор</a>
+                <a href={cfg.legal_url}>Документы</a>
+              </nav>
+            )}
+            {!showLanding && (
+              <button className="nav-ghost" type="button" onClick={goHome}>На главную</button>
+            )}
+            <a className="nav-lk" href="/lk">Кабинет</a>
+          </div>
         </header>
 
         {showLanding && (
