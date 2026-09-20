@@ -485,3 +485,11 @@ class WebIdentity(UUIDMixin, TimestampMixin, Base):
     email: Mapped[str | None] = mapped_column(String(255))
     name: Mapped[str | None] = mapped_column(String(255))
 
+
+class WebMatrixCache(UUIDMixin, TimestampMixin, Base):
+    __tablename__ = "web_matrix_cache"
+    __table_args__ = (UniqueConstraint("cache_key", name="uq_web_matrix_cache_key"),)
+
+    cache_key: Mapped[str] = mapped_column(String(255))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
