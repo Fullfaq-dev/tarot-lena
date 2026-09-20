@@ -173,6 +173,8 @@ class ContextBuilder:
         history = list(reversed(list(messages)))
         chat_messages: list[dict] = []
         for index, msg in enumerate(history):
+            if (msg.meta or {}).get("source") == "product_reading":
+                continue
             is_recent = index >= len(history) - 2
             limit = HISTORY_CHAR_LIMIT_RECENT if is_recent else HISTORY_CHAR_LIMIT
             origin = (msg.meta or {}).get("channel")

@@ -209,6 +209,7 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
   background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 20px;
   padding: 20px 16px; cursor: pointer; text-align: left; font-family: inherit; color: inherit;
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  text-decoration: none; display: block;
 }
 .c:hover { transform: translateY(-4px); border-color: rgba(255, 217, 146, 0.55); background: rgba(255, 255, 255, 0.1); }
 .c .ic { font-size: 20px; margin-bottom: 10px; display: block; color: var(--gold); }
@@ -369,7 +370,19 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .lk-aside > p { color: var(--soft); font-size: 0.95rem; line-height: 1.5; margin: 8px 0 0; }
 .lk-aside .fine { text-align: left; }
 .lk-aside .eyebrow { margin: 12px 0; }
-.lk-fields { margin-top: 16px; }
+.lk-new-readings { margin: 0 0 22px; }
+.lk-new-readings .cards { margin-top: 12px; }
+.lk-readings { display: flex; flex-direction: column; gap: 10px; }
+.lk-reading {
+  border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.04); overflow: hidden;
+}
+.lk-reading.on { border-color: rgba(255, 217, 146, .45); }
+.lk-reading-head {
+  width: 100%; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+  text-align: left; background: none; border: none; color: inherit; cursor: pointer; font: inherit;
+}
+.lk-reading-head b { font-family: "Cormorant Garamond", Lora, serif; font-size: 1.2rem; }
+.lk-reading-body { padding: 0 16px 16px; white-space: pre-wrap; }
 .lk-fields-wide { max-width: 520px; }
 .lk-tabs {
   display: flex; flex-direction: column; gap: 6px; margin: 16px 0 8px;

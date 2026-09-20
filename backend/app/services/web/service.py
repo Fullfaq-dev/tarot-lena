@@ -700,7 +700,12 @@ async def load_chat_history(session: AsyncSession, user: User, *, limit: int = 8
         ).all()
     )
     rows.reverse()
-    return [serialize_chat_message(row) for row in rows]
+    out = []
+    for row in rows:
+        if (row.meta or {}).get("source") == "product_reading":
+            continue
+        out.append(serialize_chat_message(row))
+    return out
 
 
 async def cabinet_payload(session: AsyncSession, user: User) -> dict:
@@ -720,7 +725,12 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
                 .order_by(WebReading.created_at.desc())
             )
         ).all()
-        readings = [public_reading(row, include_paid=row.status in {"paid", "ready"}) for row in rows]
+        readings = []
+        for row in rows:
+            item = public_reading(row, include_paid=True)
+            if not item.get("paid_text"):
+                item["paid_text"] = _free_full_text(row.mini or {})
+            readings.append(item)
     tg_rows = list(
         (
             await session.scalars(
