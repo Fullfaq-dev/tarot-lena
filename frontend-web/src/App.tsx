@@ -68,6 +68,7 @@ export function App() {
   const [priv, setPriv] = useState(false);
   const [recur, setRecur] = useState(false);
   const [stream, setStream] = useState("");
+  const [paying, setPaying] = useState(false);
 
   const showLanding = screen === 1 && !tokenFromPath;
 
@@ -187,8 +188,9 @@ export function App() {
   }
 
   async function pay() {
-    if (!reading) return;
+    if (!reading || paying) return;
     setErr("");
+    setPaying(true);
     track("checkout_start");
     try {
       const r = await api<{ payment_url?: string; demo?: boolean; token: string }>(
@@ -206,15 +208,18 @@ export function App() {
       setScreen(8);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Оплата не прошла");
+    } finally {
+      setPaying(false);
     }
   }
 
   async function buy(kind: "upsell" | "unlimited") {
-    if (!reading) return;
+    if (!reading || paying) return;
     if (kind === "unlimited" && !recur) {
       setErr("Нужна галочка согласия на подписку");
       return;
     }
+    setPaying(true);
     try {
       const r = await api<{ payment_url?: string; token: string }>(
         `/api/web/readings/${reading.token}/checkout`,
@@ -223,14 +228,17 @@ export function App() {
           body: JSON.stringify({ tariff: kind, recur_consent: recur }),
         },
       );
-      if (r.payment_url) window.location.href = r.payment_url;
-      else {
-        if (kind === "unlimited") track("subscribe");
-        else track("upsell_purchase");
-        setScreen(kind === "upsell" ? 10 : 11);
+      if (r.payment_url) {
+        window.location.href = r.payment_url;
+        return;
       }
+      if (kind === "unlimited") track("subscribe");
+      else track("upsell_purchase");
+      setScreen(kind === "upsell" ? 10 : 11);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Не получилось");
+    } finally {
+      setPaying(false);
     }
   }
 
@@ -439,7 +447,9 @@ export function App() {
                       <div className="pr">{bundle} ₽ <s>{price + 590} ₽</s></div>
                     </div>
                     <div className="pay"><span className="on">СБП</span><span>Карта</span></div>
-                    <button className="btn gold" onClick={pay}>Оплатить {tariff === "bundle" ? bundle : price} ₽</button>
+                    <button className="btn gold" disabled={paying} onClick={pay}>
+                      {paying ? "Открываю оплату…" : `Оплатить ${tariff === "bundle" ? bundle : price} ₽`}
+                    </button>
                     {err && <p className="err">{err}</p>}
                     <p className="fine">Без подписок и автосписаний. Это разовый разбор с сайта.</p>
                     <a className="btn ghost" href={`/lk?reading=${reading.token}`}>Сначала войти в кабинет</a>
@@ -467,7 +477,9 @@ export function App() {
                       <h4>{reading.branch === "taro" ? "Матрица судьбы" : "Расклад на месяц"}</h4>
                       <div className="pr">{reading.branch === "taro" ? "690" : "390"} ₽</div>
                     </div>
-                    <button className="btn gold" onClick={() => buy("upsell")}>Посчитать</button>
+                    <button className="btn gold" disabled={paying} onClick={() => buy("upsell")}>
+                      {paying ? "Открываю оплату…" : "Посчитать"}
+                    </button>
                     <button className="btn link" onClick={() => setScreen(10)}>Не сейчас</button>
                   </>
                 )}
@@ -485,7 +497,9 @@ export function App() {
                       <i />
                       <span>Согласна на списание 590 ₽ раз в 30 дней. Отмена в один клик через поддержку.</span>
                     </label>
-                    <button className="btn gold" onClick={() => buy("unlimited")}>Подключить безлимит</button>
+                    <button className="btn gold" disabled={paying} onClick={() => buy("unlimited")}>
+                      {paying ? "Открываю оплату…" : "Подключить безлимит"}
+                    </button>
                     <button className="btn link" onClick={() => setScreen(11)}>Пока без подписки</button>
                     {err && <p className="err">{err}</p>}
                   </>
