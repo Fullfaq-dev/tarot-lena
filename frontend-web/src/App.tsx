@@ -79,6 +79,15 @@ export function App() {
       method: "POST",
       body: JSON.stringify({ guest_id: guestId(), utm: utm() }),
     }).catch(() => undefined);
+    api<{ profile?: { birth_date?: string; birth_city?: string; birth_time?: string } }>("/api/web/me")
+      .then((d) => {
+        const p = d.profile;
+        if (!p) return;
+        if (p.birth_date) setBirth((v) => v || p.birth_date || "");
+        if (p.birth_city) setCity((v) => v || p.birth_city || "");
+        if (p.birth_time) setTime((v) => v || p.birth_time || "");
+      })
+      .catch(() => undefined);
     if (tokenFromPath) {
       api<Reading>(`/api/web/readings/${tokenFromPath}`)
         .then((r) => {
@@ -373,6 +382,7 @@ export function App() {
                         <div className="eyebrow">Две даты</div>
                         <div className="q">Совместимость считается по двум датам рождения</div>
                         <div className="field"><label>Твоя дата</label><input className="inp" placeholder="дд.мм.гггг" value={birth} onChange={(e) => setBirth(e.target.value)} /></div>
+                        <div className="field"><label>Город рождения</label><input className="inp" placeholder="не обязательно" value={city} onChange={(e) => setCity(e.target.value)} /></div>
                         <div className="field"><label>Его дата</label><input className="inp" placeholder="дд.мм.гггг" value={partner} onChange={(e) => setPartner(e.target.value)} /></div>
                         <button className="btn" disabled={!birth || !partner} onClick={() => { track("date_entered"); calculate(); }}>Посчитать совместимость</button>
                       </>

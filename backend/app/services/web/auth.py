@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.http import get_async_client
-from app.database.models import User, WebIdentity, WebReading, WebSession
+from app.database.models import SoulProfile, User, WebIdentity, WebReading, WebSession
 from app.services.web.service import ensure_session, guest_telegram_id
 
 COOKIE = "leia_sid"
@@ -119,7 +119,7 @@ async def start_url(provider: str, *, guest_id: str, next_path: str) -> str:
                 "response_type": "code",
                 "client_id": settings.yandex_oauth_client_id,
                 "redirect_uri": _redirect_uri("yandex"),
-                "scope": "login:info login:email",
+                "scope": "login:info login:email login:birthday",
                 "state": state,
             }
         )
@@ -168,7 +168,7 @@ async def consume_oauth_state(state: str) -> dict:
     return parse_state(state)
 
 
-async def _yandex_profile(code: str) -> tuple[str, str | None, str | None]:
+async def _yandex_profile(code: str) -> tuple[str, str | None, str | None, str | None]:
     settings = get_settings()
     client = get_async_client()
     try:
@@ -198,7 +198,7 @@ async def _yandex_profile(code: str) -> tuple[str, str | None, str | None]:
         raise HTTPException(400, "Яндекс не вернул профиль")
     email = body.get("default_email") or (body.get("emails") or [None])[0]
     name = body.get("display_name") or body.get("real_name") or body.get("login")
-    return subject, email, name
+    return subject, email, name, body.get("birthday")
 
 
 async def _vk_profile(
@@ -207,7 +207,7 @@ async def _vk_profile(
     device_id: str,
     code_verifier: str,
     state: str,
-) -> tuple[str, str | None, str | None]:
+) -> tuple[str, str | None, str | None, str | None]:
     settings = get_settings()
     client = get_async_client()
     payload = {
@@ -231,6 +231,7 @@ async def _vk_profile(
     access = body.get("access_token")
     email = None
     name = None
+    birthday = None
     if access:
         info = await client.post(
             "https://id.vk.ru/oauth2/user_info",
@@ -240,9 +241,10 @@ async def _vk_profile(
         subject = str(user.get("user_id") or subject)
         email = user.get("email")
         name = " ".join(p for p in [user.get("first_name"), user.get("last_name")] if p) or None
+        birthday = user.get("birthday")
     if not subject:
         raise HTTPException(400, "VK не вернул профиль")
-    return subject, email, name
+    return subject, email, name, birthday
 
 
 async def upsert_oauth_user(
@@ -253,6 +255,7 @@ async def upsert_oauth_user(
     email: str | None,
     name: str | None,
     guest_id: str,
+    birth: str | None = None,
 ) -> User:
     ident = await session.scalar(
         select(WebIdentity).where(WebIdentity.provider == provider, WebIdentity.subject == subject)
@@ -282,8 +285,24 @@ async def upsert_oauth_user(
         )
         session.add(ident)
     web = await ensure_session(session, guest_id)
+    prev_id = web.user_id
     web.user_id = user.id
     if email:
         web.email = email
+    from app.services.web.service import upsert_soul_profile
+
+    if prev_id and prev_id != user.id:
+        old = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == prev_id))
+        if old:
+            await upsert_soul_profile(
+                session,
+                user,
+                name=old.name,
+                birth=old.birth_date,
+                birth_city=old.birth_city,
+                birth_time=old.birth_time,
+                overwrite=False,
+            )
+    await upsert_soul_profile(session, user, name=name, birth=birth, overwrite=False)
     await session.flush()
     return user

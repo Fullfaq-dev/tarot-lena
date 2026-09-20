@@ -94,7 +94,24 @@ async def merge_site_and_telegram(session: AsyncSession, *, site: User, telegram
     for model in (UserSettings, SoulProfile):
         keep_row = await session.scalar(select(model).where(model.user_id == keep.id))
         donor_row = await session.scalar(select(model).where(model.user_id == donor.id))
-        if donor_row and keep_row:
+        if model is SoulProfile and donor_row and keep_row:
+            for field in (
+                "name",
+                "birth_date",
+                "birth_time",
+                "birth_city",
+                "gender",
+                "relationship_status",
+                "has_children",
+                "profession",
+                "six_month_goal",
+                "main_concern",
+                "belief_system",
+            ):
+                if not getattr(keep_row, field) and getattr(donor_row, field):
+                    setattr(keep_row, field, getattr(donor_row, field))
+            await session.delete(donor_row)
+        elif donor_row and keep_row:
             await session.delete(donor_row)
         elif donor_row:
             donor_row.user_id = keep.id
