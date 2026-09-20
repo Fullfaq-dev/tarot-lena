@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.admin_api.router import router as admin_router
 from app.admin_api.auth_router import router as admin_auth_router
 from app.admin_api.auth import ensure_bootstrap_admin
+from app.api.health import router as health_router
 from app.api.web import router as web_router
 from app.api.landing_analytics import router as landing_analytics_router
 from app.api.kie_callbacks import router as kie_callbacks_router
