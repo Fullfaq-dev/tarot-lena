@@ -797,7 +797,30 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
                 logger.exception("web reading start failed")
 
         referrer_name: str | None = None
-        if is_new and command.args and message.from_user and not command.args.startswith(("bind_", "web_")):
+        if command.args and command.args.startswith("login_"):
+            login_token = command.args.removeprefix("login_")
+            try:
+                from app.database.models import User
+                from app.database.session import AsyncSessionLocal
+                from app.services.web.telegram_bind import consume_login_token
+
+                async with AsyncSessionLocal() as db:
+                    tg_user = await db.scalar(select(User).where(User.id == user_id))
+                    if tg_user is None:
+                        raise ValueError("Сначала напиши боту /start")
+                    back = await consume_login_token(db, login_token, tg_user)
+                    await db.commit()
+                await message.answer(
+                    "Вход на сайт подтверждён. Вернись в кабинет по ссылке:\n" + back,
+                    parse_mode=None,
+                )
+            except ValueError as exc:
+                await message.answer(str(exc), parse_mode=None)
+            except Exception:
+                logger.exception("telegram login start failed")
+                await message.answer("Не получилось войти. Нажми кнопку на сайте ещё раз.", parse_mode=None)
+
+        if is_new and command.args and message.from_user and not command.args.startswith(("bind_", "web_", "login_")):
             try:
                 referrer_name = await ReferralService().attach_from_start_code(
                     message.from_user.id,

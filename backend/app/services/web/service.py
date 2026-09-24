@@ -841,9 +841,7 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
         body = item.get("paid_text") or (item.get("mini") or {}).get("lead") or ""
         item["html"] = leia_markdown_to_web_html(body)
     ent = EntitlementService()
-    plan = await ent.active_plan_label(user.id)
-    vip = await ent.has_vip(user.id)
-    love_plus = await ent.has_love_plus(user.id)
+    snap = await ent.cabinet_snapshot(user.id)
     return {
         "user": {
             "id": user.id,
@@ -853,9 +851,11 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
             "telegram_username": user.username,
         },
         "profile": serialize_profile(profile, user, ident),
-        "plan": plan,
-        "vip": vip,
-        "love_plus": love_plus,
+        "plan": snap["plan"],
+        "vip": snap["vip"],
+        "love_plus": snap["love_plus"],
+        "subscription": snap["subscription"],
+        "active_packages": snap["active_packages"],
         "readings": readings,
         "chat": await load_chat_history(session, user),
         "packages": [

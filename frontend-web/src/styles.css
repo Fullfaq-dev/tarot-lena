@@ -399,20 +399,13 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .lk-auth .fine { margin: 0; }
 .tg-login {
   position: relative; display: flex; align-items: center; justify-content: center;
-  width: 100%; min-height: 54px; border-radius: 999px; overflow: hidden;
-  background: #2AABEE; color: #fff; isolation: isolate;
+  width: 100%; min-height: 54px; border: none; border-radius: 999px; overflow: hidden;
+  background: #2AABEE; color: #fff; cursor: pointer; font: inherit;
 }
+.tg-login:disabled { opacity: 0.42; cursor: default; }
 .tg-login-face {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  font: 600 15px Inter, sans-serif; pointer-events: none; z-index: 1;
-}
-.tg-login-hit {
-  position: absolute; inset: 0; z-index: 2; opacity: 0; overflow: hidden; cursor: pointer;
-}
-.tg-login-hit iframe {
-  position: absolute; left: 0; top: 50%; width: 480px !important; height: 54px !important;
-  transform: translateY(-50%) scale(5); transform-origin: left center; border: 0;
-  color-scheme: light; background: #2AABEE;
+  font: 600 15px Inter, sans-serif;
 }
 .lk-aside {
   padding: 22px; border: 1px solid var(--line); border-radius: 28px;
@@ -438,7 +431,13 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 }
 .lk-reading-head b { font-family: "Cormorant Garamond", Lora, serif; font-size: 1.2rem; }
 .lk-reading-body { padding: 0 16px 16px; }
-.lk-fields-wide { max-width: 520px; }
+.lk-status { margin-top: 18px; }
+.lk-active { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lk-active li {
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: #fbf7f2;
+}
+.lk-active b { display: block; font-size: 0.95rem; margin-bottom: 4px; }
+.lk-active span { color: var(--soft); font-size: 0.9rem; }
 .lk-tabs {
   display: flex; flex-direction: column; gap: 6px; margin: 16px 0 8px;
 }
