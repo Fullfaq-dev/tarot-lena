@@ -69,15 +69,19 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 
 .shell { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 72px; position: relative; z-index: 1; }
 .topbar {
-  display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 28px;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 28px;
 }
+.topbar-landing {
+  flex-direction: column; justify-content: center; text-align: center;
+}
+.topbar-compact .topbar-right { width: auto; margin-left: auto; justify-content: flex-end; }
 .brand {
   display: inline-flex; align-items: center; gap: 12px; font-weight: 800;
   letter-spacing: 0.06em; text-transform: uppercase; color: inherit; text-decoration: none; cursor: pointer;
   background: none; border: none; font: inherit; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
 }
 .brand-mark {
-  width: 42px; height: 42px; border-radius: 999px; overflow: hidden;
+  width: 42px; height: 42px; border-radius: 999px; overflow: hidden; flex: 0 0 42px;
   border: 1px solid var(--line);
   box-shadow: 0 0 35px rgba(215, 168, 93, 0.28);
 }
@@ -88,7 +92,8 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
   box-shadow: 0 12px 32px rgba(60, 40, 90, 0.16);
 }
 .topnav { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 16px 22px; color: var(--soft); font-size: 0.92rem; }
-.topbar-right { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px 16px; width: 100%; }
+.topbar-right { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px 16px; }
+.topbar-landing .topbar-right { width: 100%; flex-wrap: nowrap; }
 .nav-lk {
   display: inline-flex; align-items: center; justify-content: center;
   min-height: 40px; padding: 0 16px; border-radius: 999px;
@@ -105,8 +110,8 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
   gap: 52px; align-items: center; padding: 12px 0 72px;
 }
 .eyebrow {
-  display: inline-flex; gap: 8px; align-items: center; margin: 0 0 20px; padding: 8px 12px;
-  border: 1px solid var(--line); border-radius: 999px; background: rgba(255, 255, 255, 0.055);
+  display: inline-flex; gap: 8px; align-items: center; margin: 0 0 16px; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: #fff;
   color: var(--gold); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
 }
 .hero h1 {
@@ -173,33 +178,8 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .entry { padding-top: 8px; }
 .seo-landing { max-width: 720px; margin: 0 auto 24px; }
 .seo-landing ul { padding-left: 1.2em; }
-.section-title p { margin: 0; color: var(--soft); font-size: 1.08rem; }
-.guide { text-align: left; }
-.guide-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.guide-head h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 4vw, 2.6rem); }
-.guide-head p, .guide-body p { margin: 0; color: var(--soft); line-height: 1.5; }
-.guide-x {
-  width: 36px; height: 36px; border: none; border-radius: 50%; cursor: pointer;
-  background: #efe8df; color: var(--ink); font-size: 22px; line-height: 1;
-}
-.guide-dots { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
-.guide-dots button {
-  border: 1px solid var(--line); background: #fff; color: var(--soft);
-  border-radius: 999px; padding: 8px 12px; font: 600 13px Inter, sans-serif; cursor: pointer;
-}
-.guide-dots button.on { background: #efe6fb; color: var(--accent); border-color: transparent; }
-.guide-body { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 22px; align-items: start; }
-.guide-body h2 { margin: 0 0 8px; font-size: 1.6rem; }
-.guide-nav { display: flex; gap: 10px; margin-top: 18px; }
-.guide-nav .btn { width: auto; min-width: 120px; margin: 0; }
-.guide-stage {
-  display: flex; flex-direction: column; gap: 8px; padding: 16px;
-  border-radius: 24px; background: #fbf7f2; border: 1px solid var(--line);
-}
-.guide-q { font-family: Lora, "Cormorant Garamond", Georgia, serif; font-size: 1.25rem; color: var(--ink); }
-.guide-mini b { display: block; margin-bottom: 8px; font-family: Lora, Georgia, serif; font-size: 1.25rem; }
-.guide-links { margin-top: 18px; }
-.guide-modal { width: min(920px, 100%); max-height: min(92vh, 860px); overflow: auto; }
+.section-title p { margin: 0 0 10px; color: var(--soft); font-size: 1.08rem; line-height: 1.5; }
+.section-title p:last-child { margin-bottom: 0; }
 .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; counter-reset: step; }
 .flow-card {
   padding: 22px; border: 1px solid var(--line); border-radius: 24px; background: rgba(255, 255, 255, 0.055);
@@ -249,10 +229,10 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
   background: #fff; border: 1px solid var(--line); border-radius: 20px;
   padding: 20px 16px; cursor: pointer; text-align: left; font-family: inherit; color: inherit;
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-  text-decoration: none; display: block;
+  text-decoration: none; display: flex; flex-direction: column; min-height: 104px;
 }
 .c:hover { transform: translateY(-4px); border-color: rgba(107, 69, 184, 0.35); background: #fff; }
-.c .ic { font-size: 20px; margin-bottom: 10px; display: block; color: var(--gold); }
+.c .ic { font-size: 20px; margin-bottom: 8px; display: block; color: var(--gold); }
 .c b { display: block; font-family: "Cormorant Garamond", Lora, serif; font-size: 1.2rem; line-height: 1.25; font-weight: 600; }
 
 .quiz-focus { padding-top: 8px; }
@@ -268,7 +248,7 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 }
 .quiz-aside p { color: var(--soft); font-size: 0.95rem; line-height: 1.5; margin: 8px 0 0; }
 .quiz-frame {
-  max-width: 680px; padding: 32px 34px 40px; border: 1px solid var(--line); border-radius: 32px;
+  max-width: 680px; width: 100%; padding: 32px 34px 40px; border: 1px solid var(--line); border-radius: 32px;
   background: #fff;
   box-shadow: var(--shadow);
 }
@@ -360,7 +340,7 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .btn[disabled] { opacity: 0.42; }
 .fine { font-size: 12px; color: var(--muted); text-align: center; }
 .c .fine { text-align: left; display: block; margin-top: 6px; }
-.err { color: #ff8d85; font-size: 13px; }
+.err { color: #c4443c; font-size: 13px; }
 .stream { font-size: 16px; color: var(--soft); line-height: 1.65; white-space: pre-wrap; }
 .cursor { display: inline-block; width: 7px; height: 14px; background: var(--gold); animation: blink 0.7s steps(1) infinite; }
 .chk { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--soft); margin: 12px 0; cursor: pointer; }
@@ -392,15 +372,48 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 50% { opacity: 0; } }
 
+.lk-shell { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+.lk-shell.guest { padding-top: 18px; padding-bottom: 28px; }
+.lk-shell.guest .lk-topbar { align-self: stretch; }
+@media (min-width: 641px) {
+  .lk-shell.guest .lk-login { margin-top: auto; }
+}
+.lk-topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; margin-bottom: 20px; flex: 0 0 auto;
+}
+.lk-topbar .brand { font-size: 0.92rem; }
 .lk-grid {
   display: grid; grid-template-columns: minmax(0, 280px) minmax(0, 1fr); gap: 24px; align-items: start;
 }
 .lk-grid > * { min-width: 0; }
 .lk-nav { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
-.lk-login { max-width: 420px; }
-.tg-login { display: flex; justify-content: flex-start; min-height: 44px; margin: 0 0 8px; }
-.tg-login iframe { max-width: 100%; }
-.lk-login .btn { max-width: 360px; }
+.lk-login {
+  width: min(400px, 100%); max-width: 400px; margin: 0 auto auto; align-self: center;
+  padding: 28px 24px 32px; box-sizing: border-box;
+}
+.lk-login .h { text-wrap: balance; }
+.lk-login .sub { margin-bottom: 20px; }
+.lk-auth { display: flex; flex-direction: column; gap: 10px; }
+.lk-auth .btn, .lk-auth .tg-login { width: 100%; max-width: none; margin: 0; }
+.lk-auth .fine { margin: 0; }
+.tg-login {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 54px; border-radius: 999px; overflow: hidden;
+  background: #2AABEE; color: #fff; isolation: isolate;
+}
+.tg-login-face {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: 600 15px Inter, sans-serif; pointer-events: none; z-index: 1;
+}
+.tg-login-hit {
+  position: absolute; inset: 0; z-index: 2; opacity: 0; overflow: hidden; cursor: pointer;
+}
+.tg-login-hit iframe {
+  position: absolute; left: 0; top: 50%; width: 480px !important; height: 54px !important;
+  transform: translateY(-50%) scale(5); transform-origin: left center; border: 0;
+  color-scheme: light; background: #2AABEE;
+}
 .lk-aside {
   padding: 22px; border: 1px solid var(--line); border-radius: 28px;
   background: #fff; text-align: left;
@@ -416,7 +429,7 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .lk-new-readings .cards { margin-top: 12px; }
 .lk-readings { display: flex; flex-direction: column; gap: 10px; }
 .lk-reading {
-  border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.04); overflow: hidden;
+  border: 1px solid var(--line); border-radius: 18px; background: #fff; overflow: hidden;
 }
 .lk-reading.on { border-color: rgba(255, 217, 146, .45); }
 .lk-reading-head {
@@ -431,14 +444,14 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 }
 .lk-tabs button {
   width: 100%; padding: 11px 14px; border: 1px solid var(--line); border-radius: 999px;
-  background: rgba(255,255,255,.05); color: var(--soft); font: 600 14px Inter, sans-serif; cursor: pointer; text-align: left;
+  background: #fff; color: var(--soft); font: 600 14px Inter, sans-serif; cursor: pointer; text-align: left;
 }
 .lk-tabs button.on { border-color: var(--gold); color: var(--gold); background: rgba(255, 217, 146, .12); }
 .lk-main { display: flex; flex-direction: column; min-width: 0; }
-.ok { color: #9be7c0; font-size: 13px; }
+.ok { color: #2f9d6a; font-size: 13px; }
 .chat-log {
   min-height: 220px; max-height: min(62vh, 560px); overflow: auto; display: flex; flex-direction: column; gap: 10px;
-  margin: 12px 0 16px; padding: 12px; border-radius: 18px; background: rgba(255,255,255,.04);
+  margin: 12px 0 16px; padding: 12px; border-radius: 18px; background: #fbf7f2;
 }
 .chat-empty { margin: auto; color: var(--muted); font-size: 14px; text-align: center; padding: 24px 8px; }
 .chat-bubble { padding: 12px 14px; border-radius: 16px; font-size: 14.5px; line-height: 1.5; }
@@ -474,7 +487,7 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .pkg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .c.on { border-color: var(--gold); background: rgba(255, 217, 146, .12); }
 @media (max-width: 980px) {
-  .hero, .feature-grid, .flow, .quiz-layout, .guide-body { grid-template-columns: 1fr; }
+  .hero, .feature-grid, .flow, .quiz-layout { grid-template-columns: 1fr; }
   .quiz-aside { position: static; display: flex; gap: 16px; align-items: center; }
   .quiz-aside img { margin: 0; }
   .landing-cards { grid-template-columns: 1fr 1fr; }
@@ -487,28 +500,34 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
   .chat-compose .btn { width: 100%; min-width: 0; }
 }
 @media (max-width: 640px) {
-  .shell { width: min(100% - 24px, 1180px); padding-top: 16px; }
+  .shell { width: min(100% - 24px, 1180px); padding: 16px 0 48px; }
   .hero { padding-bottom: 36px; gap: 28px; }
   .hero h1 { font-size: clamp(2.4rem, 13vw, 3.4rem); }
   .portal-card { min-height: 420px; border-radius: 28px; }
   .floating-note { max-width: 46%; font-size: 0.78rem; }
   .cta-primary, .cta-secondary { width: 100%; }
   .sparkles, .orb { display: none; }
-  .brand-logo { width: min(168px, 52vw); }
-  .topnav { gap: 8px 14px; font-size: 0.86rem; width: 100%; }
+  .brand-logo { width: min(148px, 44vw); }
+  .topbar { margin-bottom: 18px; }
+  .topbar-compact { flex-wrap: nowrap; gap: 8px; }
+  .topbar-compact .topbar-right { width: auto; margin-left: auto; justify-content: flex-end; }
+  .topnav { gap: 8px 14px; font-size: 0.86rem; }
   .nav-lk { min-height: 36px; padding: 0 14px; }
-  .section-title { margin-bottom: 20px; }
+  .section-title { margin-bottom: 18px; }
   .section-title h1, .section-title h2 { font-size: clamp(1.7rem, 8vw, 2.3rem); }
   .section-title p { font-size: 0.98rem; }
-  .landing-cards { grid-template-columns: 1fr; gap: 12px; }
-  .c { padding: 16px 14px; }
+  .quiz-intro { padding: 16px 14px; border-radius: 22px; }
+  .landing-cards { grid-template-columns: 1fr; gap: 10px; }
+  .c { padding: 16px 14px; min-height: 0; }
   .tabs { width: 100%; max-width: none; }
   .cards { grid-template-columns: 1fr; }
   .quiz-layout { gap: 16px; }
   .arc { overflow: hidden; }
   .quiz-frame { padding: 22px 16px 28px; border-radius: 22px; }
-  .section { padding: 24px 0 40px; }
+  .section { padding: 16px 0 36px; }
   .modal { align-items: flex-end; padding: 0; }
   .mc { width: 100%; border-radius: 26px 26px 0 0; }
   .lk-aside { padding: 18px; }
+  .lk-login { padding: 22px 16px 24px; width: 100%; max-width: none; }
+  .lk-topbar { margin-bottom: 12px; }
 }

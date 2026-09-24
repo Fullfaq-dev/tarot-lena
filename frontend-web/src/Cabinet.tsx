@@ -54,7 +54,7 @@ type Me = {
 
 const emptyProfile: Profile = { name: "", birth_date: "", birth_city: "", birth_time: "" };
 
-function TelegramLogin({ username }: { username: string }) {
+function TelegramLogin({ username, label = "Войти через Telegram" }: { username: string; label?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const node = ref.current;
@@ -73,7 +73,20 @@ function TelegramLogin({ username }: { username: string }) {
     node.appendChild(script);
     return () => node.replaceChildren();
   }, [username]);
-  return <div className="tg-login" ref={ref} />;
+  return (
+    <div className="tg-login">
+      <span className="tg-login-face" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path
+            fill="currentColor"
+            d="M21.5 3.3c.3-.9-.3-1.4-1.1-1.1L2.6 9.4c-.9.3-.9.8-.2 1l4.6 1.4 10.7-6.6c.5-.3.9-.1.5.2l-8.6 7.8-.3 4.6c.4 0 .7-.2.9-.4l2.2-2.1 4.5 3.3c.8.5 1.4.2 1.6-.7z"
+          />
+        </svg>
+        {label}
+      </span>
+      <div className="tg-login-hit" ref={ref} />
+    </div>
+  );
 }
 
 function formatWhen(iso?: string) {
@@ -221,16 +234,13 @@ export function Cabinet() {
   return (
     <div className="site">
       <div className="sparkles" aria-hidden="true"><span /><span /><span /><span /><span /><span /></div>
-      <div className="shell">
-        <header className="topbar">
+      <div className={`shell lk-shell${me?.user ? "" : " guest"}`}>
+        <header className="lk-topbar">
           <a className="brand" href="/">
-            <span className="brand-mark"><img src="/avatar.png" alt="" /></span>
+            <span className="brand-mark"><img src="/logo.jpg" alt="" /></span>
             <span>Лея</span>
           </a>
-          <nav className="lk-nav">
-            <a className="nav-ghost" href="/">Разбор</a>
-            <a className="nav-ghost" href="/">На сайт</a>
-          </nav>
+          <a className="nav-ghost" href="/">На сайт</a>
         </header>
 
         {!me?.user && (
@@ -238,18 +248,20 @@ export function Cabinet() {
             <div className="eyebrow">Личный кабинет</div>
             <h2 className="h">Войди, чтобы сохранить разборы и открыть чат</h2>
             <p className="sub">Яндекс, VK или Telegram. ФИО и дата рождения подтянутся в профиль, если их отдал провайдер.</p>
-            {oauth.telegram && me?.bot_username ? <TelegramLogin username={me.bot_username} /> : null}
-            {oauth.yandex ? (
-              <a className="btn" href={oauthStart("yandex", window.location.pathname + window.location.search)}>Войти через Яндекс</a>
-            ) : (
-              <p className="fine">Яндекс OAuth ещё не подключён</p>
-            )}
-            {oauth.vk ? (
-              <a className="btn ghost" href={oauthStart("vk", window.location.pathname + window.location.search)}>Войти через VK</a>
-            ) : (
-              <p className="fine">VK OAuth ещё не подключён</p>
-            )}
-            <a className="btn gold" href="/">Сначала пройти разбор</a>
+            <div className="lk-auth">
+              {oauth.telegram && me?.bot_username ? <TelegramLogin username={me.bot_username} /> : null}
+              {oauth.yandex ? (
+                <a className="btn" href={oauthStart("yandex", window.location.pathname + window.location.search)}>Войти через Яндекс</a>
+              ) : (
+                <p className="fine">Яндекс OAuth ещё не подключён</p>
+              )}
+              {oauth.vk ? (
+                <a className="btn ghost" href={oauthStart("vk", window.location.pathname + window.location.search)}>Войти через VK</a>
+              ) : (
+                <p className="fine">VK OAuth ещё не подключён</p>
+              )}
+              <a className="btn gold" href="/">Сначала пройти разбор</a>
+            </div>
             {err && <p className="err">{err}</p>}
           </section>
         )}
