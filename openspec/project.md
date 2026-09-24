@@ -5,7 +5,7 @@
 ## Stack
 
 - Backend: Python 3.12, FastAPI, aiogram 3, SQLAlchemy async, asyncpg, Alembic, Redis FSM storage.
-- AI: KIE.ai, модель **GPT-5.6 Luna** (`gpt-5-6-luna`, `/codex/v1/responses`). Fallback: **302.ai** `gpt-5.6-luna-pro` (`/v1/chat/completions`).
+- AI: официальный OpenAI. Чат **GPT-6 Luna** (`gpt-6-luna`, `/v1/responses`), картинки `gpt-image-2`, голос `gpt-4o-mini-tts` / `gpt-transcribe`.
 - Payments: **Robokassa** (MD5, ResultURL) — фиксированные продукты и подписки; `PAYMENTS_DEMO_MODE` пока нет ключей. Platega — legacy в коде.
 - Frontend: квиз-сайт `frontend-web/` (Vite/React) вместо лендинга, legal в `site/legal.html`, admin SPA `frontend-admin`.
 - Production: Docker Compose на **новом VPS** (`/opt/tarot-lena`), nginx + SSL.

@@ -43,6 +43,12 @@ ensure_env OWNER_TELEGRAM_ID "7670490295"
 ensure_env TELEGRAM_USE_POLLING "1"
 ensure_env TELEGRAM_BOT_USERNAME "astro_leia_bot"
 ensure_env YANDEX_METRIKA_ID "110607194"
+ensure_env OPENAI_BASE_URL "https://api.openai.com/v1"
+ensure_env OPENAI_CHAT_MODEL "gpt-6-luna"
+ensure_env OPENAI_STT_MODEL "gpt-transcribe"
+ensure_env OPENAI_TTS_MODEL "gpt-4o-mini-tts"
+ensure_env OPENAI_TTS_VOICE "nova"
+ensure_env OPENAI_IMAGE_MODEL "gpt-image-2"
 # Keep existing ROBOKASSA_* / PAYMENTS_DEMO_MODE if already set on the server.
 if ! grep -q "^PAYMENTS_DEMO_MODE=" .env 2>/dev/null; then
   ensure_env PAYMENTS_DEMO_MODE "1"

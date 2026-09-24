@@ -3,6 +3,7 @@ import json
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from aiogram import Bot
 from aiogram.types import User as TelegramUser
@@ -15,10 +16,10 @@ from app.database.models import Message, MessageRole, SoulProfile, User, UserSet
 from app.database.session import AsyncSessionLocal
 from app.services.ai.context import ContextBuilder
 from app.services.ai.kie_client import KieClient
+from app.services.ai.openai_media import edit_image, file_to_data_url
 from app.services.billing.service import BillingService
 from app.services.media.service import MediaJobService
 from app.services.media.telegram_photo import store_telegram_photo
-from app.services.media.kie_upload import KieFileUpload
 
 _VISION_MODE_LABEL_KEYS = {
     "aura": "spend_aura",
@@ -55,7 +56,6 @@ class VisionService:
         self.jobs = MediaJobService()
         self.billing = BillingService()
         self.context_builder = ContextBuilder()
-        self.kie_upload = KieFileUpload()
 
     @staticmethod
     async def _lang_for_user(session, user: User) -> str:
@@ -94,13 +94,7 @@ class VisionService:
             lang = await self._lang_for_user(session, user)
 
             stored = await store_telegram_photo(bot, file_id)
-            image_url = await self.kie_upload.ensure_kie_url(
-                local_path=stored.path,
-                source_url=stored.public_url,
-                upload_path="vision",
-                file_name=stored.path.name,
-                kind="image",
-            )
+            image_url = file_to_data_url(stored.path)
 
             if mode == "custom":
                 question = custom_text.strip() or t("vision_custom_default_question", lang)
@@ -145,7 +139,6 @@ class VisionService:
                     "vision_mode": mode,
                     "has_image": True,
                     "source_image_url": stored.public_url,
-                    "kie_image_url": image_url,
                 },
             )
             profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
@@ -186,7 +179,7 @@ class VisionService:
                 await on_analysis_complete(interpretation)
             infographic_urls = await self._generate_infographic(
                 user_id=user.id,
-                source_image_url=image_url,
+                source_image_path=stored.path,
                 mode=mode,
                 parsed=parsed,
                 subject_gender=subject_gender,
@@ -394,79 +387,33 @@ class VisionService:
         self,
         *,
         user_id: str,
-        source_image_url: str,
+        source_image_path: Path,
         mode: str,
         parsed: dict,
         subject_gender: str | None = None,
         lang: str = "ru",
     ) -> list[str]:
-        settings = get_settings()
         prompt = self._build_image_prompt(mode, parsed, subject_gender=subject_gender, lang=lang)
-        payload = {
-            "prompt": prompt,
-            "input_urls": [source_image_url],
-            "aspect_ratio": "4:5",
-            "resolution": "1K",
-            "nsfw_checker": False,
-        }
         last_error: Exception | None = None
         for attempt in range(2):
             try:
-                response = await self.kie.create_media_task(
-                    "gpt-image-2-image-to-image",
-                    payload,
-                    callback_url=f"{settings.public_base_url.rstrip('/')}/callbacks/kie",
-                )
-                task_id = KieClient.task_id_from_response(response)
-                if not task_id:
-                    raise ValueError(t("vision_task_create_failed", lang))
-
+                urls = await edit_image(source_image_path, prompt=prompt, size="1024x1536")
                 await self.jobs.create_job(
                     f"{mode}_infographic",
-                    {**payload, "provider_task_id": task_id},
+                    {
+                        "engine": "openai",
+                        "model": get_settings().openai_image_model,
+                        "prompt": prompt[:500],
+                        "result_urls": urls,
+                    },
                     user_id=user_id,
                 )
-                return await self._wait_for_result_urls(task_id, lang=lang)
+                return urls
             except Exception as exc:
                 last_error = exc
                 if attempt == 0:
                     await asyncio.sleep(2.0)
         raise last_error or ValueError(t("vision_generation_failed", lang))
-
-    async def _wait_for_result_urls(
-        self,
-        task_id: str,
-        *,
-        timeout_sec: int = 300,
-        interval_sec: float = 2.0,
-        lang: str = "ru",
-    ) -> list[str]:
-        if task_id.startswith("local_"):
-            return []
-
-        deadline = asyncio.get_running_loop().time() + timeout_sec
-        while asyncio.get_running_loop().time() < deadline:
-            record = await self.kie.get_task_record(task_id)
-            data = record.get("data") or {}
-            state = str(data.get("state", "")).lower()
-
-            if state == "success":
-                result_json = data.get("resultJson") or "{}"
-                if isinstance(result_json, str):
-                    parsed = json.loads(result_json)
-                else:
-                    parsed = result_json
-                urls = parsed.get("resultUrls") or []
-                if urls:
-                    return [str(url) for url in urls]
-                raise ValueError(t("vision_no_image_url", lang))
-
-            if state == "fail":
-                raise ValueError(data.get("failMsg") or t("vision_generation_failed", lang))
-
-            await asyncio.sleep(interval_sec)
-
-        raise TimeoutError(t("vision_generation_timeout", lang))
 
     async def _finalize_usage(
         self,

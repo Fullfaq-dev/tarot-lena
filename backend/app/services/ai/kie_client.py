@@ -12,14 +12,18 @@ logger = logging.getLogger(__name__)
 
 
 def _uses_responses_api(model: str) -> bool:
-    """GPT-5.6 Luna/Sol/Terra живут на /codex/v1/responses, не на chat/completions."""
+    """GPT-5.6/GPT-6 Luna/Sol/Terra/Astra — Responses API, не chat/completions."""
     normalized = (model or "").strip().lower().replace(".", "-")
-    return normalized.startswith("gpt-5-6") or normalized.endswith("-luna")
+    return (
+        normalized.startswith("gpt-5-6")
+        or normalized.startswith("gpt-6")
+        or normalized.endswith(("-luna", "-sol", "-terra", "-astra"))
+    )
 
 
 def _map_reasoning_effort(effort: str, *, model: str = "") -> str:
     if _uses_responses_api(model):
-        if effort in {"low", "medium", "high", "xhigh"}:
+        if effort in {"none", "low", "medium", "high", "xhigh", "max"}:
             return effort
         return "low"
     # GPT-5.2 chat/completions: only low/high
@@ -193,6 +197,22 @@ class KieClient:
     def _chat_model(self) -> str:
         return (self.settings.kie_chat_model or "gpt-5-6-luna").strip()
 
+    def _openai_key(self) -> str:
+        return (self.settings.openai_api_key or "").strip().strip('"').strip("'")
+
+    def _openai_configured(self) -> bool:
+        key = self._openai_key()
+        return bool(key) and key != "replace-me"
+
+    def _openai_model(self) -> str:
+        return (self.settings.openai_chat_model or "gpt-6-luna").strip()
+
+    def _openai_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._openai_key()}",
+            "Content-Type": "application/json",
+        }
+
     def _kie_configured(self) -> bool:
         key = (self.settings.kie_api_key or "").strip()
         return bool(key) and key != "replace-me"
@@ -267,6 +287,42 @@ class KieClient:
             raise ValueError(data.get("msg") or "KIE вернул пустой ответ")
         return text
 
+    async def _chat_once_openai(
+        self,
+        messages: list[dict],
+        *,
+        reasoning_effort: str,
+    ) -> str:
+        model = self._openai_model()
+        instructions, input_items = _messages_to_responses_input(_normalize_messages(messages))
+        if not input_items:
+            input_items = [{"role": "user", "content": [{"type": "input_text", "text": "Продолжи."}]}]
+        payload: dict[str, Any] = {
+            "model": model,
+            "stream": False,
+            "input": input_items,
+            "reasoning": {"effort": _map_reasoning_effort(reasoning_effort, model=model)},
+        }
+        if instructions:
+            payload["instructions"] = instructions
+        client = get_async_client()
+        response = await client.post(
+            f"{self.settings.openai_base_url.rstrip('/')}/responses",
+            headers=self._openai_headers(),
+            json=payload,
+            timeout=120,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if isinstance(data.get("error"), dict):
+            err = data["error"]
+            raise ValueError(err.get("message") or str(err))
+        self._remember_usage(data, model=str(data.get("model") or model), provider="openai")
+        text = _extract_responses_text(data)
+        if not text:
+            raise ValueError("OpenAI вернул пустой ответ")
+        return text
+
     async def _chat_once_302(self, messages: list[dict]) -> str:
         model = self._302_model()
         api_key = (self.settings.ai302_api_key or "").strip().strip('"').strip("'")
@@ -306,18 +362,17 @@ class KieClient:
         self.last_usage = None
         last_error: Exception | None = None
 
-        if self._kie_configured():
-            model = self._chat_model()
+        if self._openai_configured():
             for attempt in range(2):
                 try:
-                    return await self._chat_once(
-                        model, messages, reasoning_effort=reasoning_effort
+                    return await self._chat_once_openai(
+                        messages, reasoning_effort=reasoning_effort
                     )
                 except Exception as exc:
                     last_error = exc
                     logger.warning(
-                        "KIE chat failed model=%s attempt=%s: %s",
-                        model,
+                        "OpenAI chat failed model=%s attempt=%s: %s",
+                        self._openai_model(),
                         attempt + 1,
                         exc,
                     )
@@ -327,26 +382,10 @@ class KieClient:
                         await asyncio.sleep(1.0)
                         continue
                     break
+            if last_error:
+                raise last_error
 
-        if self._302_configured():
-            for attempt in range(2):
-                try:
-                    text = await self._chat_once_302(messages)
-                    logger.warning("KIE fallback used: 302.ai %s", self._302_model())
-                    return text
-                except Exception as exc:
-                    last_error = exc
-                    logger.warning(
-                        "302.AI chat failed model=%s attempt=%s: %s",
-                        self._302_model(),
-                        attempt + 1,
-                        exc,
-                    )
-                    if attempt == 0 and _is_retryable(exc):
-                        await asyncio.sleep(1.0)
-                        continue
-                    break
-
+        logger.warning("OpenAI chat skipped: OPENAI_API_KEY не настроен")
         if last_error:
             raise last_error
         return self._local_fallback(messages)
@@ -433,6 +472,6 @@ class KieClient:
                     user_text = content
                 break
         return (
-            "Я рядом. Пока KIE_API_KEY не настроен, отвечаю в локальном режиме. "
+            "Я рядом. Пока OPENAI_API_KEY не настроен, отвечаю в локальном режиме. "
             f"Твой запрос: «{user_text}». В рабочем режиме я учту профиль, память, расклады и дам живой персональный ответ."
         )

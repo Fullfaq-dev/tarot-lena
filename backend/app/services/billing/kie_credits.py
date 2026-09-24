@@ -32,11 +32,15 @@ def _parse_credits(data: Any) -> float | None:
 
 async def fetch_kie_credits() -> tuple[dict[str, Any], str | None]:
     settings = get_settings()
+    openai_key = (settings.openai_api_key or "").strip()
+    openai_on = bool(openai_key) and openai_key != "replace-me"
     payload: dict[str, Any] = {
         "configured": bool(settings.kie_api_key and settings.kie_api_key != "replace-me"),
-        "model": settings.kie_chat_model,
-        "fallback_provider": "302.ai",
-        "fallback_model": settings.ai302_chat_model,
+        "chat_provider": "openai" if openai_on else "kie",
+        "chat_model": (settings.openai_chat_model if openai_on else settings.kie_chat_model),
+        "model": (settings.openai_chat_model if openai_on else settings.kie_chat_model),
+        "fallback_provider": "" if openai_on else "302.ai",
+        "fallback_model": "" if openai_on else settings.ai302_chat_model,
         "credits": None,
     }
     if not payload["configured"]:

@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     # Channel users must join to claim the one-time gift (username without @).
     gift_channel_username: str = "arcana_tarot_ai"
 
+    openai_api_key: str = "replace-me"
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_chat_model: str = "gpt-6-luna"
+    openai_stt_model: str = "gpt-transcribe"
+    openai_tts_model: str = "gpt-4o-mini-tts"
+    openai_tts_voice: str = "nova"
+    openai_image_model: str = "gpt-image-2"
+
     kie_api_key: str = "replace-me"
     kie_base_url: str = "https://api.kie.ai"
     kie_file_upload_base_url: str = "https://kieai.redpandaai.co"

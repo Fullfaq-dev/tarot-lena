@@ -75,7 +75,6 @@ from app.services.products.chat import LeiaChatService
 from app.services.products.service import ProductService
 from app.services.profile.service import ProfileService
 from app.services.media.telegram_photo import store_telegram_photo
-from app.services.media.kie_upload import KieFileUpload
 
 _GENDER_VALUES = {
     "female": "женский",
@@ -1163,17 +1162,10 @@ async def chat_collect(message: Message, state: FSMContext) -> None:
         try:
             file_id = message.photo[-1].file_id
             stored = await store_telegram_photo(message.bot, file_id)
-            kie_url = await KieFileUpload().ensure_kie_url(
-                local_path=stored.path,
-                source_url=stored.public_url,
-                upload_path="chat",
-                file_name=stored.path.name,
-                kind="image",
-            )
             fragments.append(
                 {
                     "kind": "photo",
-                    "url": kie_url,
+                    "url": stored.public_url,
                     "caption": (message.caption or "").strip(),
                     "from": _forward_speaker(message),
                 }

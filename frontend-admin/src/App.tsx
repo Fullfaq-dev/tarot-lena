@@ -186,7 +186,7 @@ function DashboardPage() {
               }
               hint="живой остаток в кабинете KIE"
             />
-            <Metric title="Модель" value={stats.kie_credits.model || "—"} hint="KIE Luna" />
+            <Metric title="Модель" value={stats.kie_credits.model || "—"} hint={stats.kie_credits.chat_provider === "openai" ? "OpenAI Luna" : "KIE Luna"} />
             <Metric
               title="Fallback"
               value={stats.kie_credits.fallback_model || "gpt-5.6-luna-pro"}
