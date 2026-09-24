@@ -33,6 +33,22 @@ function LeiaText({ text, html }: { text: string; html?: string | null }) {
 
 type Tab = "profile" | "chat" | "history";
 
+type PackageOffer = { id: string; title: string; emoji: string; price_rub: number; pitch: string };
+
+type ActivePackage = {
+  id: string;
+  title: string;
+  emoji: string;
+  items: { id: string; title: string; left: number }[];
+};
+
+type Subscription = {
+  status: "active" | "none";
+  kind?: string | null;
+  label?: string | null;
+  expires_at?: string | null;
+};
+
 type Me = {
   user: {
     id: string;
@@ -47,46 +63,70 @@ type Me = {
   plan?: string | null;
   vip?: boolean;
   love_plus?: boolean;
+  subscription?: Subscription;
+  active_packages?: ActivePackage[];
   readings?: Reading[];
   chat?: ChatRow[];
-  packages?: { id: string; title: string; emoji: string; price_rub: number; pitch: string }[];
+  packages?: PackageOffer[];
 };
 
 const emptyProfile: Profile = { name: "", birth_date: "", birth_city: "", birth_time: "" };
 
-function TelegramLogin({ username, label = "Войти через Telegram" }: { username: string; label?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const node = ref.current;
-    const login = username.replace(/^@/, "");
-    if (!node || !login) return;
-    node.replaceChildren();
-    const script = document.createElement("script");
-    script.async = true;
-    script.src = "https://telegram.org/js/telegram-widget.js?22";
-    script.setAttribute("data-telegram-login", login);
-    script.setAttribute("data-size", "large");
-    script.setAttribute("data-radius", "20");
-    script.setAttribute("data-userpic", "false");
-    script.setAttribute("data-auth-url", `${window.location.origin}/api/web/auth/telegram/callback`);
-    script.setAttribute("data-request-access", "write");
-    node.appendChild(script);
-    return () => node.replaceChildren();
-  }, [username]);
+function TelegramLogin({
+  label = "Войти через Telegram",
+  onError,
+}: {
+  label?: string;
+  onError?: (message: string) => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function openBot() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await api<{ url?: string }>("/api/web/auth/telegram/start", { method: "POST" });
+      if (r.url) setUrl(r.url);
+    } catch (e) {
+      onError?.(e instanceof Error ? e.message : "Не открылась ссылка в бота");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="tg-login">
-      <span className="tg-login-face" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M21.5 3.3c.3-.9-.3-1.4-1.1-1.1L2.6 9.4c-.9.3-.9.8-.2 1l4.6 1.4 10.7-6.6c.5-.3.9-.1.5.2l-8.6 7.8-.3 4.6c.4 0 .7-.2.9-.4l2.2-2.1 4.5 3.3c.8.5 1.4.2 1.6-.7z"
-          />
-        </svg>
-        {label}
-      </span>
-      <div className="tg-login-hit" ref={ref} />
-    </div>
+    <>
+      <button className="tg-login" type="button" disabled={busy} onClick={() => void openBot()}>
+        <span className="tg-login-face">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M21.5 3.3c.3-.9-.3-1.4-1.1-1.1L2.6 9.4c-.9.3-.9.8-.2 1l4.6 1.4 10.7-6.6c.5-.3.9-.1.5.2l-8.6 7.8-.3 4.6c.4 0 .7-.2.9-.4l2.2-2.1 4.5 3.3c.8.5 1.4.2 1.6-.7z"
+            />
+          </svg>
+          {busy ? "Открываю…" : label}
+        </span>
+      </button>
+      {url && (
+        <div className="modal" onClick={() => setUrl("")}>
+          <div className="mc" onClick={(e) => e.stopPropagation()}>
+            <h4>Включи VPN перед переходом</h4>
+            <p>В России Telegram не открывается без VPN. Если бот не запустится — включи VPN и нажми ещё раз.</p>
+            <a className="btn" href={url}>Открыть бота</a>
+            <button className="btn link" type="button" onClick={() => setUrl("")}>Позже</button>
+          </div>
+        </div>
+      )}
+    </>
   );
+}
+
+function formatUntil(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 }
 
 function formatWhen(iso?: string) {
@@ -249,7 +289,7 @@ export function Cabinet() {
             <h2 className="h">Войди, чтобы сохранить разборы и открыть чат</h2>
             <p className="sub">Яндекс, VK или Telegram. ФИО и дата рождения подтянутся в профиль, если их отдал провайдер.</p>
             <div className="lk-auth">
-              {oauth.telegram && me?.bot_username ? <TelegramLogin username={me.bot_username} /> : null}
+              {oauth.telegram && me?.bot_username ? <TelegramLogin onError={setErr} /> : null}
               {oauth.yandex ? (
                 <a className="btn" href={oauthStart("yandex", window.location.pathname + window.location.search)}>Войти через Яндекс</a>
               ) : (
@@ -273,12 +313,14 @@ export function Cabinet() {
               <h3>{profile.name || me.user.name || "Ты"}</h3>
               <p>{me.user.email || "аккаунт на сайте"}</p>
               <p className="eyebrow">{me.plan || "Без подписки"}</p>
+              {me.subscription?.status === "active" && me.subscription.expires_at && (
+                <p className="fine">до {formatUntil(me.subscription.expires_at)}</p>
+              )}
               {me.user.telegram_bound ? (
                 <p className="fine">Telegram: @{me.user.telegram_username || "привязан"}</p>
               ) : (
                 <>
                   <p className="fine">Бот и сайт пока разные аккаунты. Привяжи Telegram — профиль, чат и разборы станут общими.</p>
-                  {oauth.telegram && me.bot_username ? <TelegramLogin username={me.bot_username} /> : null}
                   <button className="btn" type="button" onClick={bindTelegram}>
                     Открыть бота
                   </button>
@@ -344,20 +386,56 @@ export function Cabinet() {
                     {err && <p className="err">{err}</p>}
                   </section>
 
+                  <section className="quiz-frame wide lk-status">
+                    <div className="eyebrow">Статус</div>
+                    <h2 className="h">Подписка и пакеты</h2>
+                    {me.subscription?.status === "active" ? (
+                      <p className="sub">
+                        Сейчас {me.subscription.label}
+                        {me.subscription.expires_at ? ` · до ${formatUntil(me.subscription.expires_at)}` : ""}.
+                      </p>
+                    ) : (
+                      <p className="sub">Активной подписки нет. VIP и ЛЮБОВЬ+ можно взять ниже.</p>
+                    )}
+                    {(me.active_packages || []).length ? (
+                      <ul className="lk-active">
+                        {(me.active_packages || []).map((pkg) => (
+                          <li key={pkg.id}>
+                            <b>{pkg.emoji} {pkg.title}</b>
+                            <span>{pkg.items.map((item) => `${item.title}: ${item.left} шт.`).join(" · ")}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : me.subscription?.status !== "active" ? (
+                      <p className="fine">Разовые разборы в истории не сгорают.</p>
+                    ) : null}
+                  </section>
+
                   <section className="quiz-frame wide" style={{ marginTop: 18 }}>
                     <div className="eyebrow">Оплата</div>
                     <h2 className="h">Пакеты как в Telegram</h2>
                     <div className="pkg-grid">
-                      {(me.packages || []).map((pkg) => (
-                        <article key={pkg.id} className="tar">
-                          <h4>{pkg.emoji} {pkg.title}</h4>
-                          <div className="pr">{pkg.price_rub} ₽</div>
-                          <p className="sub">{pkg.pitch.replace(/\*\*/g, "")}</p>
-                          <button className="btn gold" type="button" disabled={paying} onClick={() => buy(pkg.id)}>
-                            {paying ? "Открываю оплату…" : "Оплатить"}
-                          </button>
-                        </article>
-                      ))}
+                      {(me.packages || []).map((pkg) => {
+                        const on =
+                          (pkg.id === "vip" && me.vip) ||
+                          (pkg.id === "love_plus" && me.love_plus) ||
+                          (pkg.id === "happy_woman" && (me.active_packages || []).some((row) => row.id === "happy_woman"));
+                        return (
+                          <article key={pkg.id} className={`tar ${on ? "on" : ""}`}>
+                            {on && <span className="tag">Активен</span>}
+                            <h4>{pkg.emoji} {pkg.title}</h4>
+                            <div className="pr">{pkg.price_rub} ₽</div>
+                            <p className="sub">{pkg.pitch.replace(/\*\*/g, "")}</p>
+                            <button className="btn gold" type="button" disabled={paying} onClick={() => buy(pkg.id)}>
+                              {paying
+                                ? "Открываю оплату…"
+                                : on && (pkg.id === "vip" || pkg.id === "love_plus")
+                                  ? "Продлить"
+                                  : "Оплатить"}
+                            </button>
+                          </article>
+                        );
+                      })}
                     </div>
                   </section>
                 </>

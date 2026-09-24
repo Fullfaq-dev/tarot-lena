@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 
 SUBSCRIPTION_DAYS = 30
 COMBO_PRODUCTS = ("love", "wealth", "forecast")
+COMBO_TITLES = {
+    "love": "Совместимость",
+    "wealth": "Денежный канал",
+    "forecast": "Прогноз на месяц",
+}
 # ЛЮБОВЬ+: безлимит на эти продукты (как на «Любовь»)
 LOVE_PLUS_PRODUCTS = ("love", "chat")
 
@@ -74,23 +79,62 @@ class EntitlementService:
         return await self.active_plan_label(user_id) is not None
 
     async def active_plan_label(self, user_id: str) -> str | None:
-        if await self.has_vip(user_id):
+        snap = await self.cabinet_snapshot(user_id)
+        return snap["plan"]
+
+    def _label_from_rows(self, rows: list[ProductEntitlement]) -> str | None:
+        if any(r.kind == "vip" for r in rows):
             return "👑 VIP активен"
-        if await self.has_love_plus(user_id):
+        if any(r.kind == "love_plus" for r in rows):
             return "💗 ЛЮБОВЬ+ активна"
-        labels = {
-            "love": "💞",
-            "wealth": "💰",
-            "forecast": "🔮",
-        }
+        labels = {"love": "💞", "wealth": "💰", "forecast": "🔮"}
         parts = []
         for pid in COMBO_PRODUCTS:
-            n = await self.combo_credits(user_id, pid)
+            n = sum(r.uses_remaining or 0 for r in rows if r.kind == f"combo_{pid}")
             if n:
                 parts.append(f"{labels[pid]}×{n}")
         if parts:
             return f"🎁 Комбо: {' '.join(parts)}"
         return None
+
+    async def cabinet_snapshot(self, user_id: str) -> dict:
+        async with AsyncSessionLocal() as session:
+            rows = await self._active_rows(session, user_id)
+        vip_row = next((r for r in rows if r.kind == "vip"), None)
+        love_row = next((r for r in rows if r.kind == "love_plus"), None)
+        combo_items = []
+        for pid in COMBO_PRODUCTS:
+            left = sum(r.uses_remaining or 0 for r in rows if r.kind == f"combo_{pid}")
+            if left:
+                combo_items.append({"id": pid, "title": COMBO_TITLES[pid], "left": left})
+        if vip_row:
+            kind, label, expires = "vip", "VIP-пакет", vip_row.expires_at
+        elif love_row:
+            kind, label, expires = "love_plus", "ЛЮБОВЬ+", love_row.expires_at
+        else:
+            kind, label, expires = None, None, None
+        active_packages = []
+        if combo_items:
+            active_packages.append(
+                {
+                    "id": "happy_woman",
+                    "title": "Счастливая женщина",
+                    "emoji": "🎁",
+                    "items": combo_items,
+                }
+            )
+        return {
+            "plan": self._label_from_rows(rows),
+            "vip": vip_row is not None,
+            "love_plus": love_row is not None,
+            "subscription": {
+                "status": "active" if kind else "none",
+                "kind": kind,
+                "label": label,
+                "expires_at": expires.isoformat() if expires else None,
+            },
+            "active_packages": active_packages,
+        }
 
     async def grant_combo_happy_woman(
         self, session: AsyncSession, user_id: str, payment_id: str

@@ -36,7 +36,7 @@ def load_system_prompt(lang: str = "ru") -> str:
         "Пиши нейтрально, без женских форм от первого лица. "
         "Отвечай по-русски, тепло и по делу. "
         "Держись только эзотерики и функций Леи — не раскрывай модель и не уходи в посторонние темы. "
-        "Ты есть и в Telegram, и на сайте arcaneai.online — это один диалог. "
+        "Ты есть и в Telegram, и на сайте astro-leya.ru — это один диалог. "
         "Мистику подавай как эзотерическую интерпретацию, без медицинских и юридических гарантий."
     )
 
@@ -120,7 +120,7 @@ class ContextBuilder:
             t("ctx_markdown_hint", ui_language),
             t("ctx_tier", ui_language, tier=tier),
         ]
-        here = "с сайта (личный кабинет arcaneai.online)" if channel == "web" else "из Telegram-бота"
+        here = "с сайта (личный кабинет astro-leya.ru)" if channel == "web" else "из Telegram-бота"
         system.append(
             "Каналы: ты одновременно в Telegram-боте и на сайте. "
             "История, профиль и память общие. Не притворяйся, что не знаешь другой канал. "

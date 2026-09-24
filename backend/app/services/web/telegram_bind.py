@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import UTC, datetime
 
@@ -64,6 +65,34 @@ async def create_bind_link(user: User) -> dict:
     }
 
 
+async def create_login_link(*, site_user_id: str | None = None) -> dict:
+    bot = get_settings().telegram_bot_username.lstrip("@")
+    if not bot:
+        raise ValueError("Telegram-бот не настроен")
+    token = secrets.token_urlsafe(18)
+    await (await _r()).setex(
+        f"web:tglogin:{token}",
+        BIND_TTL,
+        json.dumps({"u": site_user_id or ""}),
+    )
+    return {
+        "url": f"https://t.me/{bot}?start=login_{token}",
+        "expires_sec": BIND_TTL,
+    }
+
+
+async def finish_login_token(session: AsyncSession, token: str) -> str | None:
+    key = f"web:tglogin:{token}:uid"
+    uid = await (await _r()).get(key)
+    if not uid:
+        return None
+    user = await session.scalar(select(User).where(User.id == uid))
+    if user is None:
+        return None
+    await (await _r()).delete(key)
+    return user.id
+
+
 async def consume_bind_token(session: AsyncSession, token: str, telegram_user: User) -> User:
     raw = await (await _r()).get(f"web:tgbind:{token}")
     if not raw:
@@ -74,6 +103,38 @@ async def consume_bind_token(session: AsyncSession, token: str, telegram_user: U
     merged = await merge_site_and_telegram(session, site=site, telegram_user=telegram_user)
     await (await _r()).delete(f"web:tgbind:{token}")
     return merged
+
+
+async def consume_login_token(session: AsyncSession, token: str, telegram_user: User) -> str:
+    raw = await (await _r()).get(f"web:tglogin:{token}")
+    if not raw:
+        raise ValueError("Ссылка истекла. Нажми «Войти через Telegram» на сайте ещё раз.")
+    data = json.loads(raw)
+    site_id = str(data.get("u") or "")
+    user = telegram_user
+    if site_id and site_id != telegram_user.id:
+        site = await session.scalar(select(User).where(User.id == site_id))
+        if site is not None:
+            user = await merge_site_and_telegram(session, site=site, telegram_user=telegram_user)
+    subject = str(int(user.telegram_id))
+    ident = await session.scalar(
+        select(WebIdentity).where(WebIdentity.provider == "telegram", WebIdentity.subject == subject)
+    )
+    if ident is None:
+        session.add(
+            WebIdentity(
+                user_id=user.id,
+                provider="telegram",
+                subject=subject,
+                name=user.username or user.first_name,
+            )
+        )
+    else:
+        ident.user_id = user.id
+    await (await _r()).setex(f"web:tglogin:{token}:uid", BIND_TTL, user.id)
+    await (await _r()).delete(f"web:tglogin:{token}")
+    base = get_settings().public_base_url.rstrip("/")
+    return f"{base}/api/web/auth/telegram/complete?token={token}"
 
 
 async def merge_site_and_telegram(session: AsyncSession, *, site: User, telegram_user: User) -> User:

@@ -5,12 +5,13 @@ APP_DIR="${APP_DIR:-/opt/tarot-lena}"
 COMPOSE_FILE="docker-compose.prod.yml"
 VPS_IP="${VPS_IP:-85.234.106.108}"
 HTTP_PORT="${HTTP_PORT:-80}"
-DOMAIN="${DOMAIN:-arcaneai.online}"
+CERT_DOMAIN="${CERT_DOMAIN:-arcaneai.online}"
+PUBLIC_HOST="${PUBLIC_HOST:-astro-leya.ru}"
 
 cd "$APP_DIR"
 
-if [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
-  PUBLIC_URL="https://${DOMAIN}"
+if [ -f "/etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem" ]; then
+  PUBLIC_URL="https://${PUBLIC_HOST}"
 elif [ "$HTTP_PORT" = "80" ]; then
   PUBLIC_URL="http://${VPS_IP}"
 else

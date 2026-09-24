@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "replace-me"
     admin_bootstrap_email: str = "admin@arcaneai.online"
     admin_bootstrap_password: str = "ArcanaPanel#2026!Km"
-    legal_page_url: str = "https://arcaneai.online/"
+    legal_page_url: str = "https://astro-leya.ru/legal"
     support_telegram_url: str = "https://t.me/OnePage_support"
 
     platega_merchant_id: str = Field(default="", alias="PLATEGA_MERCHANT_ID")

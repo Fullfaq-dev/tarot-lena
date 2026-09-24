@@ -305,6 +305,35 @@ async def patch_profile(
     return payload
 
 
+@router.post("/auth/telegram/start")
+async def telegram_login_start(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from app.services.web.telegram_bind import create_login_link
+
+    current = await web_auth.user_from_request(request, session)
+    try:
+        return await create_login_link(site_user_id=current.id if current else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/auth/telegram/complete")
+async def telegram_login_complete(
+    token: str,
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse:
+    from app.services.web.telegram_bind import finish_login_token
+
+    uid = await finish_login_token(session, token)
+    if not uid:
+        return RedirectResponse("/lk?auth=fail")
+    response = RedirectResponse("/lk")
+    web_auth.set_login_cookie(response, uid)
+    return response
+
+
 @router.post("/telegram/bind")
 async def telegram_bind(
     user: User = Depends(require_user),
