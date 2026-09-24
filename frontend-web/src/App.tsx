@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, guestId, track, utm } from "./api";
+import { api, attribution, guestId, track } from "./api";
 import { Cabinet } from "./Cabinet";
-import { Landing } from "./Landing";
+import { HowItWorks, Landing, type LandingPage } from "./Landing";
 
 type Card = {
   id: string;
@@ -42,13 +42,23 @@ type Reading = {
   paid_text?: string;
 };
 
+function landingPage(): LandingPage | "how" {
+  const path = window.location.pathname.replace(/\/$/, "") || "/";
+  if (path === "/taro") return "taro";
+  if (path === "/matrica") return "matrica";
+  if (path === "/sovmestimost") return "sovmestimost";
+  if (path === "/how") return "how";
+  return "home";
+}
+
 export function App() {
+  const page = landingPage();
   const tokenFromPath = window.location.pathname.startsWith("/r/")
     ? window.location.pathname.slice(3)
     : "";
   const [cards, setCards] = useState<Card[]>([]);
   const [cfg, setCfg] = useState({ bot_username: "astro_leia_bot", legal_url: "/legal" });
-  const [tab, setTab] = useState("rel");
+  const [tab, setTab] = useState(page === "home" ? "rel" : "rel");
   const [screen, setScreen] = useState(tokenFromPath ? 8 : 1);
   const [sel, setSel] = useState<Card | null>(null);
   const [qi, setQi] = useState(0);
@@ -70,7 +80,8 @@ export function App() {
   const [stream, setStream] = useState("");
   const [paying, setPaying] = useState(false);
 
-  const showLanding = screen === 1 && !tokenFromPath;
+  const showLanding = screen === 1 && !tokenFromPath && page !== "how";
+  const showHow = page === "how" && screen === 1 && !tokenFromPath;
 
   useEffect(() => {
     api<{ cards: Card[] }>("/api/web/cards").then(async (d) => {
@@ -90,9 +101,14 @@ export function App() {
       setScreen(2);
     });
     api<typeof cfg>("/api/web/config").then(setCfg);
+    const attr = attribution();
     api("/api/web/sessions", {
       method: "POST",
-      body: JSON.stringify({ guest_id: guestId(), utm: utm() }),
+      body: JSON.stringify({
+        guest_id: guestId(),
+        utm: attr.utm,
+        metrika_client_id: attr.metrika_client_id,
+      }),
     }).catch(() => undefined);
     api<{ profile?: { birth_date?: string; birth_city?: string; birth_time?: string } }>("/api/web/me")
       .then((d) => {
@@ -107,11 +123,27 @@ export function App() {
       api<Reading>(`/api/web/readings/${tokenFromPath}`)
         .then((r) => {
           setReading(r);
+          if (new URLSearchParams(window.location.search).get("pay") === "fail") {
+            setErr("Оплата не прошла. Разбор на месте — можно оплатить ещё раз.");
+            setScreen(7);
+            return;
+          }
           setScreen(r.paid ? 8 : 6);
         })
         .catch(() => setErr("Ссылка не найдена или истекла"));
     }
   }, [tokenFromPath]);
+
+  useEffect(() => {
+    if (screen === 7 && reading) track("paywall_view");
+    if (screen === 8 && reading?.paid) {
+      const key = `leia_purchase_${reading.token}`;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, "1");
+        track("purchase", { order_price: reading.price_rub, currency: "RUB" });
+      }
+    }
+  }, [screen, reading]);
 
   useEffect(() => {
     if (screen === 8 && reading?.paid_text) {
@@ -128,17 +160,19 @@ export function App() {
   }, [screen, reading?.paid_text]);
 
   const q = sel?.questions[qi];
-  const visible = useMemo(
-    () => cards.filter((c) => c.tab === tab),
-    [cards, tab],
-  );
+  const visible = useMemo(() => {
+    if (page === "taro") return cards.filter((c) => c.tab === "rel" && c.branch === "taro");
+    if (page === "matrica") return cards.filter((c) => c.branch === "date");
+    if (page === "sovmestimost") return cards.filter((c) => c.branch === "pair");
+    return cards.filter((c) => c.tab === tab);
+  }, [cards, tab, page]);
 
   function goHome() {
     setScreen(1);
     setSel(null);
     setReading(null);
     setErr("");
-    window.history.replaceState({}, "", "/");
+    window.history.replaceState({}, "", page === "home" || page === "how" ? "/" : `/${page}`);
   }
 
   async function pickCard(card: Card) {
@@ -198,7 +232,8 @@ export function App() {
           birth_city: city,
           birth_time: time,
           partner_birth: partner,
-          utm: utm(),
+          utm: attribution().utm,
+          metrika_client_id: attribution().metrika_client_id,
         }),
       });
       setReading(r);
@@ -228,7 +263,6 @@ export function App() {
       const full = await api<Reading>(`/api/web/readings/${r.token}`);
       setReading(full);
       window.history.replaceState({}, "", `/r/${r.token}`);
-      track("purchase");
       setScreen(8);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Оплата не прошла");
@@ -288,22 +322,23 @@ export function App() {
             <span>Лея</span>
           </button>
           <div className="topbar-right">
-            {showLanding && (
+            {(showLanding || showHow) && (
               <nav className="topnav">
-                <a href="#how">Как это работает</a>
-                <a href="#quiz">Разбор</a>
-                <a href={cfg.legal_url}>Документы</a>
+                <a href="/how" target="_blank" rel="noreferrer">Как это работает</a>
+                <a href={cfg.legal_url} target="_blank" rel="noreferrer">Документы</a>
               </nav>
             )}
-            {!showLanding && (
+            {!showLanding && !showHow && (
               <button className="nav-ghost" type="button" onClick={goHome}>На главную</button>
             )}
             <a className="nav-lk" href="/lk">Кабинет</a>
           </div>
         </header>
 
+        {showHow && <HowItWorks legalUrl={cfg.legal_url} bot={cfg.bot_username} />}
+
         {showLanding && (
-          <Landing cfg={cfg} tab={tab} setTab={setTab} visible={visible} onPick={pickCard} />
+          <Landing page={page === "how" ? "home" : page} tab={tab} setTab={setTab} visible={visible} onPick={pickCard} />
         )}
 
         {!showLanding && (
@@ -452,10 +487,10 @@ export function App() {
                       <button className="btn" onClick={() => setScreen(10)}>{reading.mini.cut}</button>
                     )}
                     {!reading.mini.free && (
-                      <button className="btn" onClick={() => { track("paywall_view"); setScreen(7); }}>{reading.mini.cta}</button>
+                      <button className="btn" onClick={() => setScreen(7)}>{reading.mini.cta}</button>
                     )}
                     {reading.mini.free && reading.card_id === "other" && (
-                      <button className="btn" onClick={() => { track("paywall_view"); setScreen(7); }}>Открыть полный разбор</button>
+                      <button className="btn" onClick={() => setScreen(7)}>Открыть полный разбор</button>
                     )}
                     <a className="btn ghost" href={`/lk?reading=${reading.token}`}>Сохранить в кабинете</a>
                   </>

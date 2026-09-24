@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     robokassa_hash: str = Field(default="md5", alias="ROBOKASSA_HASH")
 
     yandex_metrika_id: str = Field(default="110607194", alias="YANDEX_METRIKA_ID")
+    yandex_metrika_token: str = Field(default="", alias="YANDEX_METRIKA_TOKEN")
     smtp_host: str = Field(default="", alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_user: str = Field(default="", alias="SMTP_USER")

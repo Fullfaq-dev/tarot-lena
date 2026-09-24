@@ -204,7 +204,7 @@ export function Cabinet() {
             <span>Лея</span>
           </a>
           <nav className="lk-nav">
-            <a className="nav-ghost" href="/#quiz">Квиз</a>
+            <a className="nav-ghost" href="/">Разбор</a>
             <a className="nav-ghost" href="/">На сайт</a>
           </nav>
         </header>
@@ -224,7 +224,7 @@ export function Cabinet() {
             ) : (
               <p className="fine">VK OAuth ещё не подключён</p>
             )}
-            <a className="btn gold" href="/#quiz">Сначала пройти квиз</a>
+            <a className="btn gold" href="/">Сначала пройти разбор</a>
             {err && <p className="err">{err}</p>}
           </section>
         )}
@@ -246,7 +246,7 @@ export function Cabinet() {
                   </button>
                 </>
               )}
-              <a className="btn gold" href="/#quiz">Новый разбор</a>
+              <a className="btn gold" href="/">Новый разбор</a>
               <div className="lk-tabs">
                 <button className={tab === "profile" ? "on" : ""} type="button" onClick={() => goTab("profile")}>Профиль</button>
                 <button className={tab === "chat" ? "on" : ""} type="button" onClick={() => goTab("chat")}>Чат</button>
@@ -366,7 +366,7 @@ export function Cabinet() {
                   <h2 className="h">Проведённые разборы</h2>
                   <p className="sub">Дата и ответ Леи. Чат сюда не подмешивается.</p>
                   <div className="lk-new-readings">
-                    <a className="btn gold" href="/#quiz">Новый разбор на сайте</a>
+                    <a className="btn gold" href="/">Новый разбор на сайте</a>
                     <div className="cards landing-cards">
                       {quizCards.map((c) => (
                         <a key={c.id} className="c" href={`/?start=${encodeURIComponent(c.id)}`}>
