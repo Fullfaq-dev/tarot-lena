@@ -17,20 +17,59 @@ export function guestId(): string {
   return id;
 }
 
-export function utm(): Record<string, string> {
-  const p = new URLSearchParams(window.location.search);
-  const out: Record<string, string> = {};
-  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
-    const v = p.get(key);
-    if (v) out[key] = v;
+const ATTR_KEY = "leia_attr";
+const YM_ID = 110607194;
+const ATTR_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "yclid"];
+
+type Attr = { utm: Record<string, string>; metrika_client_id?: string };
+
+function readAttr(): Attr {
+  try {
+    const raw = localStorage.getItem(ATTR_KEY);
+    if (!raw) return { utm: {} };
+    const parsed = JSON.parse(raw) as Attr;
+    return { utm: parsed.utm || {}, metrika_client_id: parsed.metrika_client_id };
+  } catch {
+    return { utm: {} };
   }
-  return out;
 }
 
-export function track(name: string, extra?: Record<string, string>) {
+function writeAttr(next: Attr) {
+  localStorage.setItem(ATTR_KEY, JSON.stringify(next));
+}
+
+export function attribution(): Attr {
+  const current = readAttr();
+  const params = new URLSearchParams(window.location.search);
+  let changed = false;
+  for (const key of ATTR_KEYS) {
+    const value = params.get(key);
+    if (value && !current.utm[key]) {
+      current.utm[key] = value;
+      changed = true;
+    }
+  }
+  if (changed) writeAttr(current);
+  const ym = (window as unknown as { ym?: (id: number, method: string, cb: (id: string) => void) => void }).ym;
+  if (!current.metrika_client_id && ym) {
+    ym(YM_ID, "getClientID", (clientID) => {
+      const fresh = readAttr();
+      if (fresh.metrika_client_id || !clientID) return;
+      fresh.metrika_client_id = clientID;
+      writeAttr(fresh);
+    });
+  }
+  return current;
+}
+
+export function utm(): Record<string, string> {
+  return attribution().utm;
+}
+
+export function track(name: string, extra?: Record<string, string | number>) {
   try {
-    const ym = (window as unknown as { ym?: (id: number, a: string, n: string) => void }).ym;
-    ym?.(110607194, "reachGoal", name);
+    const ym = (window as unknown as { ym?: (id: number, a: string, n: string, p?: Record<string, string | number>) => void }).ym;
+    ym?.(YM_ID, "reachGoal", name, extra);
     fetch("/api/web/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

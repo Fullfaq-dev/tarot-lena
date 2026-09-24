@@ -187,9 +187,11 @@ async def ensure_session(
         await session.flush()
     if utm:
         merged = dict(row.utm or {})
-        merged.update({k: v for k, v in utm.items() if v})
+        for key, value in utm.items():
+            if value and not merged.get(key):
+                merged[key] = value
         row.utm = merged
-    if metrika_client_id:
+    if metrika_client_id and not row.metrika_client_id:
         row.metrika_client_id = metrika_client_id
     if user:
         row.user_id = user.id
@@ -524,6 +526,8 @@ async def checkout(
         payload["sku"] = sku
         payload["tariff"] = tariff
         payload["reading_id"] = reading.id
+        payload["metrika_client_id"] = web.metrika_client_id
+        payload["yclid"] = (web.utm or {}).get("yclid")
         payment.payload = payload
         result = await _open_robokassa(
             session, payment, amount=amount, title=title, success_url=success_url, fail_url=fail_url
@@ -543,6 +547,8 @@ async def checkout(
             "sku": sku,
             "tariff": tariff,
             "idempotency_key": key,
+            "metrika_client_id": web.metrika_client_id,
+            "yclid": (web.utm or {}).get("yclid"),
         },
     )
     session.add(payment)

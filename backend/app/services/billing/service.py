@@ -1037,7 +1037,11 @@ class BillingService:
         payload["robokassa_inv_id"] = inv_id
         payload["robokassa_out_sum"] = out_sum
         payment.payload = payload
-        return await self.complete_payment(session, payment)
+        result = await self.complete_payment(session, payment)
+        from app.services.web.metrika import report_purchase
+
+        await report_purchase(payment)
+        return result
 
     async def process_platega_callback(
         self,
