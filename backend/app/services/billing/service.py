@@ -53,6 +53,7 @@ _PAYMENT_DESCRIPTIONS = {
     "subscription_love_plus": "ЛЮБОВЬ+ — подписка на месяц",
     "subscription_vip": "VIP-пакет — подписка на месяц",
     "combo_happy_woman": "Комбо «Счастливая женщина»",
+    "test_payment": "Тестовый платёж 10 ₽",
     "product_love_full": "Любовь — полная расшифровка",
     "product_chat_full": "Разбор переписки — полная расшифровка",
     "product_wealth_full": "Денежный код — полная расшифровка",
@@ -119,6 +120,8 @@ class BillingService:
                 "🎁 Пакет «Счастливая женщина» активирован!\n\n"
                 "Три полных разбора ждут тебя: 💞 Любовь, 💰 Деньги, 📆 Прогноз — выбери в меню."
             )
+        elif payment.purpose == "test_payment":
+            text = "✅ Тестовый платёж 10 ₽ прошёл. Доступ не выдаётся."
         elif payment.purpose.startswith("product_") and payment.purpose.endswith("_full"):
             product_text = (payment.payload or {}).get("generated_text")
             if product_text:
@@ -1193,10 +1196,14 @@ class BillingService:
                     )
                     if web:
                         web.unlimited_until = datetime.now(timezone.utc) + timedelta(days=30)
+        elif payment.purpose == "test_payment":
+            payload = dict(payment.payload or {})
+            payload["test_ok"] = True
+            payment.payload = payload
         else:
             raise ValueError(f"Неизвестное назначение платежа: {payment.purpose}")
 
-        if user.telegram_id and user.telegram_id > 0:
+        if user.telegram_id and user.telegram_id > 0 and payment.purpose != "test_payment":
             from app.services.referrals.service import ReferralService
 
             await ReferralService().accrue_reward(session, user.id, payment.amount_rub)
@@ -1239,6 +1246,9 @@ class BillingService:
         elif payment.purpose == "combo_happy_woman":
             owner_title = "🎁 Комбо-пакет"
             owner_item = f"Счастливая женщина ({paid})"
+        elif payment.purpose == "test_payment":
+            owner_title = "🧪 Тестовый платёж"
+            owner_item = paid
         elif payment.purpose.startswith("product_"):
             owner_title = "🛒 Покупка"
             label = _PAYMENT_DESCRIPTIONS.get(payment.purpose, payment.purpose)
