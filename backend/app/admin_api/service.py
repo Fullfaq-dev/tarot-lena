@@ -754,6 +754,7 @@ _PAYMENT_PURPOSE_LABELS = {
     "subscription_love_plus": "ЛЮБОВЬ+ — подписка на месяц",
     "subscription_vip": "VIP-пакет — подписка на месяц",
     "combo_happy_woman": "Комбо «Счастливая женщина»",
+    "test_payment": "Тестовый платёж 10 ₽",
     "product_tarot_spread_full": "Расклад Таро — полная расшифровка",
     "product_love_full": "Любовь — полная расшифровка",
     "product_chat_full": "Разбор переписки — полная расшифровка",

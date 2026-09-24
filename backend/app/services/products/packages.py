@@ -12,7 +12,24 @@ class Package:
     purpose: str
 
 
-PACKAGES: dict[str, Package] = {
+# Тест кассы 10 ₽. После проверки поставь False — пакет пропадёт с сайта и из бота.
+TEST_PAYMENT_ENABLED = True
+
+PACKAGES: dict[str, Package] = {}
+if TEST_PAYMENT_ENABLED:
+    PACKAGES["test_10"] = Package(
+        id="test_10",
+        title="Тестовый платёж",
+        emoji="🧪",
+        price_rub=Decimal("10"),
+        purpose="test_payment",
+        pitch=(
+            "🧪 **Тестовый платёж** — 10 ₽\n\n"
+            "Проверка Робокассы. Доступа не даёт, пакет не активирует."
+        ),
+    )
+
+PACKAGES.update({
     "happy_woman": Package(
         id="happy_woman",
         title="Счастливая женщина",
@@ -57,6 +74,6 @@ PACKAGES: dict[str, Package] = {
             "✔️ Личный эзотерический помощник 24/7."
         ),
     ),
-}
+})
 
 COMBO_PRODUCTS = ("love", "wealth", "forecast")
