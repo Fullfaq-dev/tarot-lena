@@ -54,8 +54,13 @@ async def record_kie_usage(
             cost_credits = provider_cost_credits(input_tokens, output_tokens)
             cost_usd = provider_cost_usd(input_tokens, output_tokens)
             settings = get_settings()
-            model = settings.kie_chat_model or "gpt-5-6-luna"
-            provider = "kie"
+            openai_key = (settings.openai_api_key or "").strip()
+            if openai_key and openai_key != "replace-me":
+                model = settings.openai_chat_model or "gpt-6-luna"
+                provider = "openai"
+            else:
+                model = settings.kie_chat_model or "gpt-5-6-luna"
+                provider = "kie"
             if api_usage:
                 raw_model = api_usage.get("model")
                 if isinstance(raw_model, str) and raw_model.strip():

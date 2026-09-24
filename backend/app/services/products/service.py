@@ -332,7 +332,7 @@ class ProductService:
                 img_block, body = rest, ""
             for line in img_block.splitlines():
                 line = line.strip()
-                if line.startswith("http"):
+                if line.startswith("http") or line.startswith("data:image"):
                     images.append(line)
                 elif line.startswith("images="):
                     images.extend(

@@ -40,6 +40,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           KIE_API_KEY: ${{ secrets.KIE_API_KEY }}
           AI302_API_KEY: ${{ secrets.AI302_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
@@ -54,7 +55,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          envs: TELEGRAM_BOT_TOKEN,KIE_API_KEY,AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY,ROBOKASSA_MERCHANT_LOGIN,ROBOKASSA_PASSWORD1,ROBOKASSA_PASSWORD2,ROBOKASSA_IS_TEST,VPS_HOST
+          envs: TELEGRAM_BOT_TOKEN,OPENAI_API_KEY,KIE_API_KEY,AI302_API_KEY,ELEVENLABS_API_KEY,PLATEGA_MERCHANT_ID,PLATEGA_API_KEY,ROBOKASSA_MERCHANT_LOGIN,ROBOKASSA_PASSWORD1,ROBOKASSA_PASSWORD2,ROBOKASSA_IS_TEST,VPS_HOST
           script: |
             set -euo pipefail
             cd /opt/tarot-lena
@@ -88,6 +89,16 @@ jobs:
 
             if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
               set_env TELEGRAM_BOT_TOKEN "${TELEGRAM_BOT_TOKEN}"
+            fi
+
+            set_env OPENAI_BASE_URL "https://api.openai.com/v1"
+            set_env OPENAI_CHAT_MODEL "gpt-6-luna"
+            set_env OPENAI_STT_MODEL "gpt-transcribe"
+            set_env OPENAI_TTS_MODEL "gpt-4o-mini-tts"
+            set_env OPENAI_TTS_VOICE "nova"
+            set_env OPENAI_IMAGE_MODEL "gpt-image-2"
+            if [ -n "${OPENAI_API_KEY:-}" ]; then
+              set_env OPENAI_API_KEY "${OPENAI_API_KEY}"
             fi
 
             if [ -n "${KIE_API_KEY:-}" ]; then

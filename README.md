@@ -1,6 +1,6 @@
 # AI Tarot / Astrology Telegram Bot
 
-Премиальная платформа Telegram-бота по Таро и эзотерике: онбординг, память, Relationship Memory, расклады, AI-ответы через KIE.ai, голос, фото/аура/ладонь, подписки, баланс, рефералка, PDF-отчеты, уведомления и отдельная веб-админка.
+Премиальная платформа Telegram-бота по Таро и эзотерике: онбординг, память, Relationship Memory, расклады, AI-ответы через OpenAI, голос, фото/аура/ладонь, подписки, баланс, рефералка, PDF-отчеты, уведомления и отдельная веб-админка.
 
 ## Быстрый Запуск
 
@@ -15,7 +15,7 @@ cp .env.example .env
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 - `PUBLIC_BASE_URL`
-- `KIE_API_KEY`
+- `OPENAI_API_KEY` (чат, картинки, голос)
 - `JWT_SECRET`
 - параметры Platega, когда будет готов SDK
 
@@ -40,11 +40,11 @@ curl http://localhost:8000/health
 ## Основные Модули
 
 - `backend/app/bot` — Telegram handlers, меню, онбординг.
-- `backend/app/services/ai` — KIE.ai client, streaming, AI Orchestrator.
+- `backend/app/services/ai` — OpenAI client, streaming, AI Orchestrator.
 - `backend/app/services/memory` — Chat Memory, Long-Term Memory, Soul Profile, Relationship Memory.
 - `backend/app/services/tarot` — локальная колода, карта дня, расклады.
 - `backend/app/services/billing` — тарифы, баланс, лимиты, Platega adapter.
-- `backend/app/services/voice` — Whisper adapter boundary и ElevenLabs TTS через KIE.ai.
+- `backend/app/services/voice` — OpenAI Whisper/gpt-transcribe и gpt-4o-mini-tts.
 - `backend/app/services/vision` — фото, аура, ладонь, инфографика через GPT Image 2.
 - `backend/app/services/notifications` — карта дня, реактивации, follow-up по людям.
 - `frontend-admin` — отдельная React-админка.
