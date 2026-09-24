@@ -95,9 +95,11 @@ async def user_from_request(request: Request, session: AsyncSession) -> User | N
 
 def oauth_ready() -> dict[str, bool]:
     settings = get_settings()
+    token = settings.telegram_bot_token
     return {
         "yandex": bool(settings.yandex_oauth_client_id and settings.yandex_oauth_client_secret),
         "vk": bool(settings.vk_oauth_client_id and settings.vk_oauth_client_secret),
+        "telegram": bool(token and token != "replace-me" and settings.telegram_bot_username),
     }
 
 
@@ -304,5 +306,78 @@ async def upsert_oauth_user(
                 overwrite=False,
             )
     await upsert_soul_profile(session, user, name=name, birth=birth, overwrite=False)
+    await session.flush()
+    return user
+
+
+def verify_telegram_login(params: dict[str, str]) -> dict[str, str]:
+    settings = get_settings()
+    token = settings.telegram_bot_token
+    if not token or token == "replace-me":
+        raise HTTPException(400, "Telegram-бот не настроен")
+    their_hash = params.get("hash") or ""
+    data = {key: value for key, value in params.items() if key != "hash" and value}
+    check = "\n".join(f"{key}={data[key]}" for key in sorted(data))
+    secret = hashlib.sha256(token.encode()).digest()
+    digest = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    if not their_hash or not hmac.compare_digest(digest, their_hash):
+        raise HTTPException(400, "Подпись Telegram не сошлась")
+    auth_date = int(data.get("auth_date") or "0")
+    if time.time() - auth_date > 86400:
+        raise HTTPException(400, "Сессия Telegram устарела")
+    if not data.get("id"):
+        raise HTTPException(400, "Telegram не вернул id")
+    return data
+
+
+async def login_telegram_user(
+    session: AsyncSession,
+    payload: dict[str, str],
+    current: User | None,
+) -> User:
+    from app.services.web.telegram_bind import merge_site_and_telegram
+
+    tg_id = int(payload["id"])
+    username = (payload.get("username") or "")[:255] or None
+    first_name = (payload.get("first_name") or "Лея")[:255]
+    last_name = (payload.get("last_name") or "")[:255] or None
+    found = await session.scalar(select(User).where(User.telegram_id == tg_id))
+    site_account = current is not None and (current.telegram_id is None or current.telegram_id <= 0)
+
+    if site_account and current is not None:
+        if found and found.id != current.id:
+            user = await merge_site_and_telegram(session, site=current, telegram_user=found)
+        else:
+            current.telegram_id = tg_id
+            user = current
+    elif found:
+        user = found
+    else:
+        user = User(telegram_id=tg_id, first_name=first_name, language_code="ru")
+        session.add(user)
+        await session.flush()
+
+    if username:
+        user.username = username
+    if first_name and (not user.first_name or user.first_name in {"Гость сайта", "Лея"}):
+        user.first_name = first_name
+    if last_name and not user.last_name:
+        user.last_name = last_name
+
+    subject = str(tg_id)
+    ident = await session.scalar(
+        select(WebIdentity).where(WebIdentity.provider == "telegram", WebIdentity.subject == subject)
+    )
+    if ident is None:
+        session.add(
+            WebIdentity(
+                user_id=user.id,
+                provider="telegram",
+                subject=subject,
+                name=" ".join(p for p in [first_name, last_name] if p) or None,
+            )
+        )
+    elif ident.user_id != user.id:
+        ident.user_id = user.id
     await session.flush()
     return user

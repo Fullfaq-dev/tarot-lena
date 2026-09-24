@@ -42,7 +42,8 @@ type Me = {
     telegram_username?: string | null;
   } | null;
   profile?: Profile;
-  oauth?: { yandex?: boolean; vk?: boolean };
+  oauth?: { yandex?: boolean; vk?: boolean; telegram?: boolean };
+  bot_username?: string;
   plan?: string | null;
   vip?: boolean;
   love_plus?: boolean;
@@ -52,6 +53,28 @@ type Me = {
 };
 
 const emptyProfile: Profile = { name: "", birth_date: "", birth_city: "", birth_time: "" };
+
+function TelegramLogin({ username }: { username: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = ref.current;
+    const login = username.replace(/^@/, "");
+    if (!node || !login) return;
+    node.replaceChildren();
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = "https://telegram.org/js/telegram-widget.js?22";
+    script.setAttribute("data-telegram-login", login);
+    script.setAttribute("data-size", "large");
+    script.setAttribute("data-radius", "20");
+    script.setAttribute("data-userpic", "false");
+    script.setAttribute("data-auth-url", `${window.location.origin}/api/web/auth/telegram/callback`);
+    script.setAttribute("data-request-access", "write");
+    node.appendChild(script);
+    return () => node.replaceChildren();
+  }, [username]);
+  return <div className="tg-login" ref={ref} />;
+}
 
 function formatWhen(iso?: string) {
   if (!iso) return "";
@@ -85,6 +108,7 @@ export function Cabinet() {
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [openReading, setOpenReading] = useState<string>(params.get("reading") || "");
+  const [tgUrl, setTgUrl] = useState("");
   const [quizCards, setQuizCards] = useState<QuizCard[]>([]);
   const chatEnd = useRef<HTMLDivElement | null>(null);
 
@@ -168,7 +192,7 @@ export function Cabinet() {
         await reload();
         return;
       }
-      if (r.url) window.open(r.url, "_blank", "noopener");
+      if (r.url) setTgUrl(r.url);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Не открылась ссылка в бота");
     }
@@ -213,7 +237,8 @@ export function Cabinet() {
           <section className="quiz-frame lk-login">
             <div className="eyebrow">Личный кабинет</div>
             <h2 className="h">Войди, чтобы сохранить разборы и открыть чат</h2>
-            <p className="sub">Яндекс или VK. ФИО и дата рождения подтянутся в профиль, если их отдал провайдер.</p>
+            <p className="sub">Яндекс, VK или Telegram. ФИО и дата рождения подтянутся в профиль, если их отдал провайдер.</p>
+            {oauth.telegram && me?.bot_username ? <TelegramLogin username={me.bot_username} /> : null}
             {oauth.yandex ? (
               <a className="btn" href={oauthStart("yandex", window.location.pathname + window.location.search)}>Войти через Яндекс</a>
             ) : (
@@ -241,9 +266,20 @@ export function Cabinet() {
               ) : (
                 <>
                   <p className="fine">Бот и сайт пока разные аккаунты. Привяжи Telegram — профиль, чат и разборы станут общими.</p>
+                  {oauth.telegram && me.bot_username ? <TelegramLogin username={me.bot_username} /> : null}
                   <button className="btn" type="button" onClick={bindTelegram}>
-                    Привязать Telegram
+                    Открыть бота
                   </button>
+                  {tgUrl && (
+                    <div className="modal" onClick={() => setTgUrl("")}>
+                      <div className="mc" onClick={(e) => e.stopPropagation()}>
+                        <h4>Включи VPN перед переходом</h4>
+                        <p>В России Telegram не открывается без VPN. Если бот не запустится — включи VPN и нажми ещё раз.</p>
+                        <a className="btn" href={tgUrl}>Открыть бота</a>
+                        <button className="btn link" type="button" onClick={() => setTgUrl("")}>Позже</button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
               <a className="btn gold" href="/">Новый разбор</a>
