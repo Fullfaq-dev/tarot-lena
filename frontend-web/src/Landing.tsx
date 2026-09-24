@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 type CardLite = {
   id: string;
   tab: string;
@@ -84,32 +86,123 @@ export function Landing<T extends CardLite>({ page, tab, setTab, visible, onPick
   );
 }
 
-export function HowItWorks({ legalUrl, bot }: { legalUrl: string; bot: string }) {
+const GUIDE = [
+  {
+    title: "Выбери, что волнует",
+    text: "На главной сразу карточки. Нажала — и разбор уже начался, без анкеты и без регистрации.",
+  },
+  {
+    title: "Ответь на пару вопросов",
+    text: "Три коротких уточнения. Для матрицы и совместимости вместо карт нужна дата рождения.",
+  },
+  {
+    title: "Прочитай бесплатную часть",
+    text: "Лея показывает начало разбора. Дальше текст обрывается — видно, что внутри, но не всё.",
+  },
+  {
+    title: "Открой полный текст",
+    text: "Разовый платёж, без подписки. Ссылка живёт год. Telegram можно подключить потом, если захочешь диалог.",
+  },
+] as const;
+
+const SAMPLE_CARDS = ["Вернётся ли он?", "Почему я одна?", "Наша совместимость"];
+const SAMPLE_ANSWERS = ["Меньше месяца", "Один-три месяца", "Больше года"];
+
+export function HowItWorks({
+  legalUrl,
+  bot,
+  onClose,
+}: {
+  legalUrl: string;
+  bot: string;
+  onClose?: () => void;
+}) {
+  const [step, setStep] = useState(0);
+  const [card, setCard] = useState(SAMPLE_CARDS[0]);
+  const [answer, setAnswer] = useState(SAMPLE_ANSWERS[0]);
+  const current = GUIDE[step];
+
   return (
-    <section className="section">
-      <div className="section-title">
-        <h1>Как это работает</h1>
-        <p>Четыре шага. Почту можно оставить потом — чтобы не потерять ссылку.</p>
+    <section className="guide">
+      <div className="guide-head">
+        <div>
+          <h1>Как это работает</h1>
+          <p>Четыре шага. Можно понажимать — это пример, не настоящий разбор.</p>
+        </div>
+        {onClose && (
+          <button className="guide-x" type="button" onClick={onClose} aria-label="Закрыть">
+            ×
+          </button>
+        )}
       </div>
-      <div className="flow">
-        <article className="flow-card">
-          <h3>Ситуация</h3>
-          <p>Любовь, возврат, деньги, работа или карта дня.</p>
-        </article>
-        <article className="flow-card">
-          <h3>Вопросы</h3>
-          <p>Три уточнения. Для матрицы — дата рождения.</p>
-        </article>
-        <article className="flow-card">
-          <h3>Мини-разбор</h3>
-          <p>Открытая часть бесплатно. Дальше текст обрывается.</p>
-        </article>
-        <article className="flow-card">
-          <h3>Полный текст</h3>
-          <p>Разовый платёж. Ссылка живёт год. Telegram — по желанию.</p>
-        </article>
+      <div className="guide-dots" role="tablist">
+        {GUIDE.map((item, index) => (
+          <button
+            key={item.title}
+            type="button"
+            className={index === step ? "on" : ""}
+            onClick={() => setStep(index)}
+          >
+            {index + 1}. {item.title}
+          </button>
+        ))}
       </div>
-      <p className="sub" style={{ marginTop: 24 }}>
+      <div className="guide-body">
+        <div>
+          <h2>{current.title}</h2>
+          <p>{current.text}</p>
+          <div className="guide-nav">
+            <button className="btn ghost" type="button" disabled={step === 0} onClick={() => setStep(step - 1)}>
+              Назад
+            </button>
+            {step < GUIDE.length - 1 ? (
+              <button className="btn" type="button" onClick={() => setStep(step + 1)}>
+                Дальше
+              </button>
+            ) : (
+              <a className="btn" href="/" onClick={onClose}>
+                К разборам
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="guide-stage">
+          {step === 0 &&
+            SAMPLE_CARDS.map((title) => (
+              <button key={title} type="button" className={`c ${card === title ? "on" : ""}`} onClick={() => setCard(title)}>
+                <b>{title}</b>
+              </button>
+            ))}
+          {step === 1 && (
+            <>
+              <p className="guide-q">Как давно вы расстались?</p>
+              {SAMPLE_ANSWERS.map((title) => (
+                <button key={title} type="button" className={`opt ${answer === title ? "on" : ""}`} onClick={() => setAnswer(title)}>
+                  {title}
+                </button>
+              ))}
+            </>
+          )}
+          {step === 2 && (
+            <div className="guide-mini">
+              <b>{card}</b>
+              <p>Он не пропал из-за равнодушия. Пауза держится на страхе сказать прямо, и это уже видно по первым картам.</p>
+              <div className="lock">Дальше — почему это повторяется и что делать на этой неделе.</div>
+            </div>
+          )}
+          {step === 3 && (
+            <div className="guide-mini">
+              <b>Полный разбор</b>
+              <p>Десять блоков вместо трёх абзацев. Ссылка останется в кабинете.</p>
+              <div className="tar on">
+                <h4>{card}</h4>
+                <div className="pr">590 ₽</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="sub guide-links">
         <a href="/">К разборам</a>
         {" · "}
         <a href="/lk">Кабинет</a>

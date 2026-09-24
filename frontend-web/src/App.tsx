@@ -82,6 +82,7 @@ export function App() {
 
   const showLanding = screen === 1 && !tokenFromPath && page !== "how";
   const showHow = page === "how" && screen === 1 && !tokenFromPath;
+  const [guide, setGuide] = useState(false);
 
   useEffect(() => {
     api<{ cards: Card[] }>("/api/web/cards").then(async (d) => {
@@ -323,7 +324,7 @@ export function App() {
           <div className="topbar-right">
             {(showLanding || showHow) && (
               <nav className="topnav">
-                <a href="/how" target="_blank" rel="noreferrer">Как это работает</a>
+                <button className="nav-ghost" type="button" onClick={() => setGuide(true)}>Как это работает</button>
                 <a href={cfg.legal_url} target="_blank" rel="noreferrer">Документы</a>
               </nav>
             )}
@@ -335,6 +336,13 @@ export function App() {
         </header>
 
         {showHow && <HowItWorks legalUrl={cfg.legal_url} bot={cfg.bot_username} />}
+        {guide && !showHow && (
+          <div className="modal" onClick={() => setGuide(false)}>
+            <div className="mc guide-modal" onClick={(e) => e.stopPropagation()}>
+              <HowItWorks legalUrl={cfg.legal_url} bot={cfg.bot_username} onClose={() => setGuide(false)} />
+            </div>
+          </div>
+        )}
 
         {showLanding && (
           <Landing page={page === "how" ? "home" : page} tab={tab} setTab={setTab} visible={visible} onPick={pickCard} />
