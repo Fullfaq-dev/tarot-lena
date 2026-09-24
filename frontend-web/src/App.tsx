@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, attribution, guestId, track } from "./api";
 import { Cabinet } from "./Cabinet";
-import { HowItWorks, Landing, type LandingPage } from "./Landing";
+import { Landing, type LandingPage } from "./Landing";
 
 type Card = {
   id: string;
@@ -42,12 +42,11 @@ type Reading = {
   paid_text?: string;
 };
 
-function landingPage(): LandingPage | "how" {
+function landingPage(): LandingPage {
   const path = window.location.pathname.replace(/\/$/, "") || "/";
   if (path === "/taro") return "taro";
   if (path === "/matrica") return "matrica";
   if (path === "/sovmestimost") return "sovmestimost";
-  if (path === "/how") return "how";
   return "home";
 }
 
@@ -80,9 +79,7 @@ export function App() {
   const [stream, setStream] = useState("");
   const [paying, setPaying] = useState(false);
 
-  const showLanding = screen === 1 && !tokenFromPath && page !== "how";
-  const showHow = page === "how" && screen === 1 && !tokenFromPath;
-  const [guide, setGuide] = useState(false);
+  const showLanding = screen === 1 && !tokenFromPath;
 
   useEffect(() => {
     api<{ cards: Card[] }>("/api/web/cards").then(async (d) => {
@@ -173,7 +170,7 @@ export function App() {
     setSel(null);
     setReading(null);
     setErr("");
-    window.history.replaceState({}, "", page === "home" || page === "how" ? "/" : `/${page}`);
+    window.history.replaceState({}, "", page === "home" ? "/" : `/${page}`);
   }
 
   async function pickCard(card: Card) {
@@ -317,35 +314,32 @@ export function App() {
       <div className="orb one" />
       <div className="orb two" />
       <div className="shell">
-        <header className="topbar">
+        <header className={`topbar ${showLanding ? "topbar-landing" : "topbar-compact"}`}>
           <button className="brand" type="button" onClick={goHome} aria-label="Лея">
-            <img className="brand-logo" src="/logo.jpg" alt="Лея" />
+            {showLanding ? (
+              <img className="brand-logo" src="/logo.jpg" alt="Лея" />
+            ) : (
+              <>
+                <span className="brand-mark"><img src="/logo.jpg" alt="" /></span>
+                <span>Лея</span>
+              </>
+            )}
           </button>
           <div className="topbar-right">
-            {(showLanding || showHow) && (
+            {showLanding && (
               <nav className="topnav">
-                <button className="nav-ghost" type="button" onClick={() => setGuide(true)}>Как это работает</button>
                 <a href={cfg.legal_url} target="_blank" rel="noreferrer">Документы</a>
               </nav>
             )}
-            {!showLanding && !showHow && (
+            {!showLanding && (
               <button className="nav-ghost" type="button" onClick={goHome}>На главную</button>
             )}
             <a className="nav-lk" href="/lk">Кабинет</a>
           </div>
         </header>
 
-        {showHow && <HowItWorks legalUrl={cfg.legal_url} bot={cfg.bot_username} />}
-        {guide && !showHow && (
-          <div className="modal" onClick={() => setGuide(false)}>
-            <div className="mc guide-modal" onClick={(e) => e.stopPropagation()}>
-              <HowItWorks legalUrl={cfg.legal_url} bot={cfg.bot_username} onClose={() => setGuide(false)} />
-            </div>
-          </div>
-        )}
-
         {showLanding && (
-          <Landing page={page === "how" ? "home" : page} tab={tab} setTab={setTab} visible={visible} onPick={pickCard} />
+          <Landing page={page} tab={tab} setTab={setTab} visible={visible} onPick={pickCard} />
         )}
 
         {!showLanding && (
