@@ -420,17 +420,27 @@ h1, h2, h3, h4 { font-family: "Cormorant Garamond", Lora, Georgia, serif; font-w
 .lk-aside .eyebrow { margin: 12px 0; }
 .lk-new-readings { margin: 0 0 22px; }
 .lk-new-readings .cards { margin-top: 12px; }
-.lk-readings { display: flex; flex-direction: column; gap: 10px; }
+.lk-group-title {
+  margin: 4px 0 12px; font-family: "Cormorant Garamond", Lora, serif;
+  font-size: 1.35rem; font-weight: 600;
+}
+.lk-readings { display: flex; flex-direction: column; gap: 10px; margin: 0 0 22px; }
 .lk-reading {
   border: 1px solid var(--line); border-radius: 18px; background: #fff; overflow: hidden;
 }
 .lk-reading.on { border-color: rgba(255, 217, 146, .45); }
 .lk-reading-head {
-  width: 100%; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+  width: 100%; padding: 14px 16px 8px; display: flex; flex-direction: column; gap: 4px;
   text-align: left; background: none; border: none; color: inherit; cursor: pointer; font: inherit;
 }
 .lk-reading-head b { font-family: "Cormorant Garamond", Lora, serif; font-size: 1.2rem; }
+.lk-reading-actions {
+  display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 14px;
+}
+.lk-reading-actions .btn { width: auto; margin: 0; min-width: 0; padding: 10px 16px; }
 .lk-reading-body { padding: 0 16px 16px; }
+.pay-auth { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 16px; }
+.pay-auth .btn, .pay-auth .tg-login { width: 100%; }
 .lk-status { margin-top: 18px; }
 .lk-active { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .lk-active li {

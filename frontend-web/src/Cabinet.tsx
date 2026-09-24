@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { api, oauthStart } from "./api";
+import { api, oauthStart, guestId } from "./api";
 
 type Reading = {
   token: string;
   product_name?: string;
   card_id: string;
   paid?: boolean;
+  can_pay?: boolean;
+  can_chat?: boolean;
+  chat_left?: number;
+  price_rub?: number;
   source?: string;
   created_at?: string;
   mini?: { title?: string; lead?: string };
@@ -72,12 +76,14 @@ type Me = {
 
 const emptyProfile: Profile = { name: "", birth_date: "", birth_city: "", birth_time: "" };
 
-function TelegramLogin({
+export function TelegramLogin({
   label = "Войти через Telegram",
   onError,
+  next = "/lk",
 }: {
   label?: string;
   onError?: (message: string) => void;
+  next?: string;
 }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,7 +92,10 @@ function TelegramLogin({
     if (busy) return;
     setBusy(true);
     try {
-      const r = await api<{ url?: string }>("/api/web/auth/telegram/start", { method: "POST" });
+      const r = await api<{ url?: string }>("/api/web/auth/telegram/start", {
+        method: "POST",
+        body: JSON.stringify({ next, guest_id: guestId() }),
+      });
       if (r.url) setUrl(r.url);
     } catch (e) {
       onError?.(e instanceof Error ? e.message : "Не открылась ссылка в бота");
@@ -142,6 +151,70 @@ function formatWhen(iso?: string) {
   });
 }
 
+function isWebReadingToken(token: string) {
+  return Boolean(token) && !token.includes(":");
+}
+
+function ReadingCard({
+  reading,
+  open,
+  paying,
+  onToggle,
+  onPay,
+  onDiscuss,
+}: {
+  reading: Reading;
+  open: boolean;
+  paying: boolean;
+  onToggle: () => void;
+  onPay: () => void;
+  onDiscuss: () => void;
+}) {
+  const web = isWebReadingToken(reading.token);
+  return (
+    <article className={`lk-reading ${open ? "on" : ""}`}>
+      <button className="lk-reading-head" type="button" onClick={onToggle}>
+        <span className="fine">{formatWhen(reading.created_at) || "без даты"}</span>
+        <b>{reading.mini?.title || reading.product_name || reading.card_id}</b>
+        <span className="fine">
+          {reading.source === "telegram"
+            ? "Telegram"
+            : reading.paid
+              ? "полный"
+              : "мини · можно оплатить"}
+        </span>
+      </button>
+      <div className="lk-reading-actions">
+        {reading.can_pay ? (
+          <button className="btn gold" type="button" disabled={paying} onClick={onPay}>
+            {paying ? "Открываю оплату…" : `Оплатить${reading.price_rub ? ` ${reading.price_rub} ₽` : ""}`}
+          </button>
+        ) : null}
+        {reading.can_chat ? (
+          <button className="btn" type="button" disabled={reading.chat_left === 0} onClick={onDiscuss}>
+            {reading.chat_left === 0
+              ? "Лимит обсуждения"
+              : `Обсудить${typeof reading.chat_left === "number" ? ` · ${reading.chat_left}` : ""}`}
+          </button>
+        ) : null}
+        {web ? (
+          <a className="btn ghost" href={`/r/${reading.token}${reading.can_pay ? "?pay=1" : ""}`}>
+            {reading.can_pay ? "Открыть и оплатить" : "Открыть"}
+          </a>
+        ) : null}
+      </div>
+      {open && (
+        <div className="lk-reading-body">
+          <LeiaText
+            text={reading.paid_text || reading.mini?.lead || "Текст разбора не сохранился."}
+            html={reading.html}
+          />
+        </div>
+      )}
+    </article>
+  );
+}
+
 function tabFromUrl(): Tab {
   const value = new URLSearchParams(window.location.search).get("tab");
   if (value === "chat" || value === "history" || value === "profile") return value;
@@ -151,11 +224,14 @@ function tabFromUrl(): Tab {
 export function Cabinet() {
   const params = new URLSearchParams(window.location.search);
   const [me, setMe] = useState<Me | null>(null);
-  const [tab, setTab] = useState<Tab>(params.get("reading") ? "history" : tabFromUrl());
+  const [tab, setTab] = useState<Tab>(params.get("chat") || params.get("tab") === "chat" ? "chat" : params.get("reading") ? "history" : tabFromUrl());
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const [text, setText] = useState("");
   const [log, setLog] = useState<ChatRow[]>([]);
+  const [threadLog, setThreadLog] = useState<ChatRow[]>([]);
+  const [readingThread, setReadingThread] = useState<string>(params.get("chat") || "");
+  const [chatLeft, setChatLeft] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -180,8 +256,18 @@ export function Cabinet() {
   }, []);
 
   useEffect(() => {
+    if (tab !== "chat" || !readingThread || !me?.user) return;
+    api<{ chat?: ChatRow[]; chat_left?: number }>(`/api/web/chat?reading_token=${encodeURIComponent(readingThread)}`)
+      .then((d) => {
+        setThreadLog(d.chat || []);
+        if (typeof d.chat_left === "number") setChatLeft(d.chat_left);
+      })
+      .catch(() => undefined);
+  }, [tab, readingThread, me?.user]);
+
+  useEffect(() => {
     chatEnd.current?.scrollIntoView({ block: "end" });
-  }, [log, busy, tab]);
+  }, [log, threadLog, busy, tab]);
 
   const oauth = me?.oauth || {};
 
@@ -189,6 +275,11 @@ export function Cabinet() {
     setTab(next);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", next);
+    if (next !== "chat") {
+      url.searchParams.delete("chat");
+      setReadingThread("");
+      setChatLeft(null);
+    }
     window.history.replaceState({}, "", url);
   }
 
@@ -198,19 +289,62 @@ export function Cabinet() {
     setErr("");
     const mine = text.trim();
     setText("");
-    setLog((rows) => [...rows, { role: "user", text: mine }]);
+    const target = readingThread && tab === "chat" ? setThreadLog : setLog;
+    target((rows) => [...rows, { role: "user", text: mine }]);
     try {
-      const r = await api<{ reply: string; chat?: ChatRow[] }>("/api/web/chat", {
+      const r = await api<{ reply: string; chat?: ChatRow[]; chat_left?: number }>("/api/web/chat", {
         method: "POST",
-        body: JSON.stringify({ text: mine }),
+        body: JSON.stringify({
+          text: mine,
+          reading_token: readingThread && tab === "chat" ? readingThread : undefined,
+        }),
       });
-      if (r.chat) setLog(r.chat);
-      else setLog((rows) => [...rows, { role: "leia", text: r.reply }]);
+      if (r.chat) target(r.chat);
+      else target((rows) => [...rows, { role: "leia", text: r.reply }]);
+      if (typeof r.chat_left === "number") setChatLeft(r.chat_left);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Чат не ответил");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function payReading(token: string) {
+    if (paying) return;
+    setErr("");
+    setPaying(true);
+    try {
+      const r = await api<{ payment_url?: string; demo?: boolean; token?: string }>(
+        `/api/web/readings/${token}/checkout`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            tariff: "base",
+            email: me?.user?.email || undefined,
+          }),
+        },
+      );
+      if (r.payment_url) {
+        window.location.href = r.payment_url;
+        return;
+      }
+      window.location.href = `/r/${r.token || token}`;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Оплата не прошла");
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  function discussReading(token: string, left?: number) {
+    setReadingThread(token);
+    setErr("");
+    setChatLeft(typeof left === "number" ? left : null);
+    setTab("chat");
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", "chat");
+    url.searchParams.set("chat", token);
+    window.history.replaceState({}, "", url);
   }
 
   async function buy(packageId: string) {
@@ -289,7 +423,9 @@ export function Cabinet() {
             <h2 className="h">Войди, чтобы сохранить разборы и открыть чат</h2>
             <p className="sub">Яндекс, VK или Telegram. ФИО и дата рождения подтянутся в профиль, если их отдал провайдер.</p>
             <div className="lk-auth">
-              {oauth.telegram && me?.bot_username ? <TelegramLogin onError={setErr} /> : null}
+              {oauth.telegram && me?.bot_username ? (
+                <TelegramLogin onError={setErr} next={window.location.pathname + window.location.search} />
+              ) : null}
               {oauth.yandex ? (
                 <a className="btn" href={oauthStart("yandex", window.location.pathname + window.location.search)}>Войти через Яндекс</a>
               ) : (
@@ -444,16 +580,35 @@ export function Cabinet() {
               {tab === "chat" && (
                 <section className="quiz-frame wide">
                   <div className="eyebrow">Чат</div>
-                  <h2 className="h">Диалог с Леей</h2>
-                  <p className="sub">
-                    {me.user.telegram_bound
-                      ? "Это тот же чат, что в Telegram. Разборы лежат отдельно во вкладке «Разборы»."
-                      : me.vip
-                        ? "VIP: можно писать свободно. Готовые разборы — во вкладке «Разборы»."
-                        : "Привяжи Telegram или возьми VIP, чтобы писать. Готовые разборы — отдельной вкладкой."}
-                  </p>
+                  <h2 className="h">{readingThread ? "Разбор с Леей" : "Диалог с Леей"}</h2>
+                  {readingThread ? (
+                    <p className="sub">
+                      Отдельный чат по этому разбору
+                      {chatLeft != null ? ` · осталось ${chatLeft} из 10 сообщений` : " · до 10 сообщений"}.
+                      {" "}
+                      <button className="btn link" type="button" onClick={() => {
+                        setReadingThread("");
+                        setChatLeft(null);
+                        setThreadLog([]);
+                        const url = new URL(window.location.href);
+                        url.searchParams.set("tab", "chat");
+                        url.searchParams.delete("chat");
+                        window.history.replaceState({}, "", url);
+                      }}>
+                        К общему чату
+                      </button>
+                    </p>
+                  ) : (
+                    <p className="sub">
+                      {me.user.telegram_bound
+                        ? "Это тот же чат, что в Telegram. Оплаченные разборы обсуждаются отдельно — кнопка «Обсудить» во вкладке «Разборы»."
+                        : me.vip
+                          ? "VIP: можно писать свободно. По оплаченному разбору — отдельный чат во вкладке «Разборы»."
+                          : "Общий чат — с VIP или Telegram. По оплаченному разбору или пакету — кнопка «Обсудить» в «Разборах»."}
+                    </p>
+                  )}
                   <div className="chat-log">
-                    {log.map((row, i) => (
+                    {(readingThread ? threadLog : log).map((row, i) => (
                       <div key={row.id || i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>
                         {row.role === "leia" ? <LeiaText text={row.text} html={row.html} /> : row.text}
                       </div>
@@ -464,8 +619,12 @@ export function Cabinet() {
                         <span className="typing-dots"><span /><span /><span /></span>
                       </div>
                     )}
-                    {!log.length && !busy && (
-                      <p className="chat-empty">Напиши Лее — продолжим диалог. Расклады сюда не подмешиваются.</p>
+                    {!(readingThread ? threadLog : log).length && !busy && (
+                      <p className="chat-empty">
+                        {readingThread
+                          ? "Спроси про этот разбор — Лея держит его в контексте."
+                          : "Напиши Лее — продолжим диалог. Расклады сюда не подмешиваются."}
+                      </p>
                     )}
                     <div ref={chatEnd} />
                   </div>
@@ -473,12 +632,18 @@ export function Cabinet() {
                     <input
                       className="inp"
                       value={text}
-                      disabled={busy}
-                      placeholder={busy ? "Лея ещё отвечает…" : "Напиши Лее…"}
+                      disabled={busy || (!!readingThread && chatLeft === 0)}
+                      placeholder={
+                        busy
+                          ? "Лея ещё отвечает…"
+                          : readingThread && chatLeft === 0
+                            ? "Лимит по этому разбору исчерпан"
+                            : "Напиши Лее…"
+                      }
                       onChange={(e) => setText(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && !busy && send()}
                     />
-                    <button className="btn" type="button" disabled={busy || !text.trim()} onClick={send}>
+                    <button className="btn" type="button" disabled={busy || !text.trim() || (!!readingThread && chatLeft === 0)} onClick={send}>
                       {busy ? "Пишет…" : "Отправить"}
                     </button>
                   </div>
@@ -489,9 +654,10 @@ export function Cabinet() {
               {tab === "history" && (
                 <section className="quiz-frame wide">
                   <div className="eyebrow">Разборы</div>
-                  <h2 className="h">Проведённые разборы</h2>
-                  <p className="sub">Дата и ответ Леи. Чат сюда не подмешивается.</p>
+                  <h2 className="h">Разборы</h2>
+                  <p className="sub">Сначала новые — потом мини, которые ещё можно открыть, и полные с чатом.</p>
                   <div className="lk-new-readings">
+                    <h3 className="lk-group-title">Сделать разбор</h3>
                     <a className="btn gold" href="/">Новый разбор на сайте</a>
                     <div className="cards landing-cards">
                       {quizCards.map((c) => (
@@ -502,37 +668,38 @@ export function Cabinet() {
                       ))}
                     </div>
                   </div>
-                  <div className="lk-readings">
-                    {(me.readings || []).map((r) => {
-                      const open = openReading === r.token;
-                      return (
-                        <article key={r.token} className={`lk-reading ${open ? "on" : ""}`}>
-                          <button
-                            className="lk-reading-head"
-                            type="button"
-                            onClick={() => setOpenReading(open ? "" : r.token)}
-                          >
-                            <span className="fine">{formatWhen(r.created_at) || "без даты"}</span>
-                            <b>{r.mini?.title || r.product_name || r.card_id}</b>
-                            <span className="fine">
-                              {r.source === "telegram" ? "Telegram" : r.paid ? "сайт" : "сайт · мини"}
-                            </span>
-                          </button>
-                          {open && (
-                            <div className="lk-reading-body">
-                              <LeiaText
-                                text={r.paid_text || r.mini?.lead || "Текст разбора не сохранился."}
-                                html={r.html}
-                              />
-                            </div>
-                          )}
-                        </article>
-                      );
-                    })}
-                    {!me.readings?.length && (
-                      <p className="sub">Пока пусто — выбери карточку выше или сделай расклад в боте.</p>
-                    )}
-                  </div>
+                  {(() => {
+                    const list = me.readings || [];
+                    const minis = list.filter((r) => r.can_pay);
+                    const archive = list.filter((r) => !r.can_pay);
+                    const cards = (rows: Reading[]) =>
+                      rows.map((r) => (
+                        <ReadingCard
+                          key={r.token}
+                          reading={r}
+                          open={openReading === r.token}
+                          paying={paying}
+                          onToggle={() => setOpenReading(openReading === r.token ? "" : r.token)}
+                          onPay={() => payReading(r.token)}
+                          onDiscuss={() => discussReading(r.token, r.chat_left)}
+                        />
+                      ));
+                    return (
+                      <>
+                        <div className="lk-readings">
+                          <h3 className="lk-group-title">Мини — открыть полный</h3>
+                          {cards(minis)}
+                          {!minis.length && <p className="sub">Нет незакрытых мини. Новый разбор — карточки выше.</p>}
+                        </div>
+                        <div className="lk-readings">
+                          <h3 className="lk-group-title">Прошлые разборы</h3>
+                          {cards(archive)}
+                          {!archive.length && <p className="sub">Полных пока нет — оплати мини или сделай расклад в боте.</p>}
+                        </div>
+                      </>
+                    );
+                  })()}
+                  {err && <p className="err">{err}</p>}
                 </section>
               )}
             </div>

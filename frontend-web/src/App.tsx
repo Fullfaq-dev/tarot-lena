@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, attribution, guestId, track } from "./api";
-import { Cabinet } from "./Cabinet";
+import { api, attribution, guestId, oauthStart, track } from "./api";
+import { Cabinet, TelegramLogin } from "./Cabinet";
 import { Landing, type LandingPage } from "./Landing";
 
 type Card = {
@@ -50,13 +50,41 @@ function landingPage(): LandingPage {
   return "home";
 }
 
+function AuthWays({
+  next,
+  oauth,
+  bot,
+  onError,
+}: {
+  next: string;
+  oauth: { yandex?: boolean; vk?: boolean; telegram?: boolean };
+  bot?: string;
+  onError: (message: string) => void;
+}) {
+  return (
+    <div className="pay-auth">
+      {oauth.telegram && bot ? <TelegramLogin label="Войти через Telegram" next={next} onError={onError} /> : null}
+      {oauth.yandex ? (
+        <a className="btn ghost" href={oauthStart("yandex", next)}>Войти через Яндекс</a>
+      ) : null}
+      {oauth.vk ? (
+        <a className="btn ghost" href={oauthStart("vk", next)}>Войти через VK</a>
+      ) : null}
+    </div>
+  );
+}
+
 export function App() {
   const page = landingPage();
   const tokenFromPath = window.location.pathname.startsWith("/r/")
     ? window.location.pathname.slice(3)
     : "";
   const [cards, setCards] = useState<Card[]>([]);
-  const [cfg, setCfg] = useState({ bot_username: "astro_leia_bot", legal_url: "/legal" });
+  const [cfg, setCfg] = useState({
+    bot_username: "astro_leia_bot",
+    legal_url: "/legal",
+    oauth: { yandex: false, vk: false, telegram: false },
+  });
   const [tab, setTab] = useState(page === "home" ? "rel" : "rel");
   const [screen, setScreen] = useState(tokenFromPath ? 8 : 1);
   const [sel, setSel] = useState<Card | null>(null);
@@ -78,6 +106,7 @@ export function App() {
   const [recur, setRecur] = useState(false);
   const [stream, setStream] = useState("");
   const [paying, setPaying] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
 
   const showLanding = screen === 1 && !tokenFromPath;
 
@@ -98,7 +127,9 @@ export function App() {
       }
       setScreen(2);
     });
-    api<typeof cfg>("/api/web/config").then(setCfg);
+    api<typeof cfg>("/api/web/config").then((d) =>
+      setCfg((prev) => ({ ...prev, ...d, oauth: { ...prev.oauth, ...(d.oauth || {}) } })),
+    );
     const attr = attribution();
     api("/api/web/sessions", {
       method: "POST",
@@ -108,8 +139,12 @@ export function App() {
         metrika_client_id: attr.metrika_client_id,
       }),
     }).catch(() => undefined);
-    api<{ profile?: { birth_date?: string; birth_city?: string; birth_time?: string } }>("/api/web/me")
+    api<{ profile?: { birth_date?: string; birth_city?: string; birth_time?: string }; user?: { email?: string } | null }>(
+      "/api/web/me",
+    )
       .then((d) => {
+        setLoggedIn(Boolean(d.user));
+        if (d.user?.email) setEmail((v) => v || d.user?.email || "");
         const p = d.profile;
         if (!p) return;
         if (p.birth_date) setBirth((v) => v || p.birth_date || "");
@@ -121,12 +156,21 @@ export function App() {
       api<Reading>(`/api/web/readings/${tokenFromPath}`)
         .then((r) => {
           setReading(r);
-          if (new URLSearchParams(window.location.search).get("pay") === "fail") {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get("pay") === "fail") {
             setErr("Оплата не прошла. Разбор на месте — можно оплатить ещё раз.");
             setScreen(7);
             return;
           }
-          setScreen(r.paid ? 8 : 6);
+          if (r.paid) {
+            setScreen(8);
+            return;
+          }
+          if (params.get("pay") === "1") {
+            setScreen(7);
+            return;
+          }
+          setScreen(6);
         })
         .catch(() => setErr("Ссылка не найдена или истекла"));
     }
@@ -246,13 +290,30 @@ export function App() {
 
   async function pay() {
     if (!reading || paying) return;
+    const mail = email.trim();
+    if (!loggedIn && !mail) {
+      setErr("Укажи почту — или войди, чтобы разбор сохранился в кабинете");
+      return;
+    }
+    if (mail && !mail.includes("@")) {
+      setErr("Похоже, в почте опечатка");
+      return;
+    }
     setErr("");
     setPaying(true);
     track("checkout_start");
     try {
       const r = await api<{ payment_url?: string; demo?: boolean; token: string }>(
         `/api/web/readings/${reading.token}/checkout`,
-        { method: "POST", body: JSON.stringify({ tariff }) },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            tariff,
+            email: mail || undefined,
+            marketing: mkt,
+            privacy: priv,
+          }),
+        },
       );
       if (r.payment_url) {
         window.location.href = r.payment_url;
@@ -449,8 +510,7 @@ export function App() {
                   <>
                     <div className="spin" />
                     <div className="h" style={{ textAlign: "center" }}>{sel?.branch === "taro" ? "Лея раскладывает карты" : "Лея считает по дате"}</div>
-                    <div className="field"><label>Прислать разбор, чтобы не потерять?</label><input className="inp" placeholder="твоя почта" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                    <p className="fine">Можно пропустить — результат откроется здесь</p>
+                    <p className="fine">Сначала покажу мини-разбор — почту спросим, если захочешь полный</p>
                   </>
                 )}
 
@@ -493,14 +553,22 @@ export function App() {
                     {reading.mini.free && reading.card_id === "other" && (
                       <button className="btn" onClick={() => setScreen(7)}>Открыть полный разбор</button>
                     )}
-                    <a className="btn ghost" href={`/lk?reading=${reading.token}`}>Сохранить в кабинете</a>
+                    {loggedIn ? (
+                      <a className="btn ghost" href={`/lk?tab=history&reading=${reading.token}`}>Открыть в кабинете</a>
+                    ) : (
+                      <p className="fine">Мини уже здесь. Полный — после оплаты: почта или вход, потом СБП.</p>
+                    )}
                   </>
                 )}
 
                 {screen === 7 && reading && (
                   <>
                     <div className="h">Полный разбор</div>
-                    <p className="sub">Десять блоков вместо трёх абзацев</p>
+                    <p className="sub">
+                      {reading.price_rub
+                        ? `Мини уже готов. Полный — за ${reading.price_rub} ₽, и можно спросить Лею по нему.`
+                        : "Десять блоков вместо трёх абзацев"}
+                    </p>
                     <div className={`tar ${tariff === "base" ? "on" : ""}`} onClick={() => setTariff("base")}>
                       <h4>{reading.product_name}</h4>
                       <div className="pr">{price} ₽</div>
@@ -510,13 +578,42 @@ export function App() {
                       <h4>{reading.product_name} + доп. разбор</h4>
                       <div className="pr">{bundle} ₽ <s>{price + 590} ₽</s></div>
                     </div>
+                    <div className="field">
+                      <label>{loggedIn ? "Почта — прислать копию разбора" : "Почта — чтобы не потерять разбор"}</label>
+                      <input
+                        className="inp"
+                        type="email"
+                        placeholder="ты@почта.ru"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+                    <label className={`chk ${mkt ? "on" : ""}`} onClick={() => setMkt(!mkt)}>
+                      <i />
+                      <span>Можно присылать разборы и предложения. Отписка в один клик</span>
+                    </label>
+                    <label className={`chk ${priv ? "on" : ""}`} onClick={() => setPriv(!priv)}>
+                      <i />
+                      <span>Согласна с <a href={cfg.legal_url}>политикой обработки персональных данных</a></span>
+                    </label>
+                    {!loggedIn && (
+                      <>
+                        <p className="fine">Или войди — разбор сохранится в кабинете, и сразу откроется оплата</p>
+                        <AuthWays
+                          next={`/r/${reading.token}?pay=1`}
+                          oauth={cfg.oauth}
+                          bot={cfg.bot_username}
+                          onError={setErr}
+                        />
+                      </>
+                    )}
                     <div className="pay"><span className="on">СБП</span><span>Карта</span></div>
                     <button className="btn gold" disabled={paying} onClick={pay}>
                       {paying ? "Открываю оплату…" : `Оплатить ${tariff === "bundle" ? bundle : price} ₽`}
                     </button>
                     {err && <p className="err">{err}</p>}
                     <p className="fine">Без подписок и автосписаний. Это разовый разбор с сайта.</p>
-                    <a className="btn ghost" href={`/lk?reading=${reading.token}`}>Сначала войти в кабинет</a>
+                    <button className="btn link" type="button" onClick={() => setScreen(6)}>Назад к мини-разбору</button>
                   </>
                 )}
 
@@ -525,7 +622,20 @@ export function App() {
                     <div className="eyebrow">Разбор готов</div>
                     <div className="h">{reading.mini.title}</div>
                     <div className="stream">{stream || "Готовлю текст…"}<span className="cursor" /></div>
-                    <button className="btn" onClick={() => { track("upsell_view"); setScreen(9); }}>Что дальше</button>
+                    {loggedIn ? (
+                      <a className="btn" href={`/lk?tab=chat&chat=${reading.token}`}>Обсудить разбор с Леей</a>
+                    ) : (
+                      <>
+                        <p className="sub">Чтобы спросить Лею по этому разбору — войди. До 10 сообщений, она держит контекст расклада.</p>
+                        <AuthWays
+                          next={`/lk?tab=chat&chat=${reading.token}`}
+                          oauth={cfg.oauth}
+                          bot={cfg.bot_username}
+                          onError={setErr}
+                        />
+                      </>
+                    )}
+                    <button className="btn ghost" onClick={() => { track("upsell_view"); setScreen(9); }}>Что дальше</button>
                   </>
                 )}
 
