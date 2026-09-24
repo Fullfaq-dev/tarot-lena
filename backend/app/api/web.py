@@ -37,6 +37,9 @@ class ReadingIn(BaseModel):
 class CheckoutIn(BaseModel):
     tariff: str = "base"
     recur_consent: bool = False
+    email: str | None = None
+    marketing: bool = False
+    privacy: bool = False
 
 
 class ContactIn(BaseModel):
@@ -135,7 +138,13 @@ async def checkout(token: str, body: CheckoutIn, session: AsyncSession = Depends
         raise HTTPException(status_code=404, detail="Расчёт не найден")
     try:
         result = await web.checkout(
-            session, reading, tariff=body.tariff, recur_consent=body.recur_consent
+            session,
+            reading,
+            tariff=body.tariff,
+            recur_consent=body.recur_consent,
+            email=body.email,
+            marketing=body.marketing,
+            privacy=body.privacy,
         )
         await session.commit()
     except ValueError as exc:
@@ -314,7 +323,21 @@ async def telegram_login_start(
 
     current = await web_auth.user_from_request(request, session)
     try:
-        return await create_login_link(site_user_id=current.id if current else None)
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    next_path = str(body.get("next") or "/lk")
+    if not next_path.startswith("/"):
+        next_path = "/lk"
+    guest = str(body.get("guest_id") or "")
+    try:
+        return await create_login_link(
+            site_user_id=current.id if current else None,
+            next_path=next_path,
+            guest_id=guest or None,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -329,7 +352,10 @@ async def telegram_login_complete(
     uid = await finish_login_token(session, token)
     if not uid:
         return RedirectResponse("/lk?auth=fail")
-    response = RedirectResponse("/lk")
+    from app.services.web.telegram_bind import login_next_path
+
+    dest = await login_next_path(token)
+    response = RedirectResponse(dest or "/lk")
     web_auth.set_login_cookie(response, uid)
     return response
 
@@ -355,6 +381,24 @@ async def package_checkout(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return result
+
+
+@router.get("/chat")
+async def chat_history(
+    reading_token: str | None = None,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    if reading_token:
+        return {
+            "chat": await web.load_reading_thread(session, user, reading_token),
+            "chat_left": max(
+                0,
+                web.READING_CHAT_LIMIT
+                - await web._count_reading_user_msgs(session, user.id, reading_token),
+            ),
+        }
+    return {"chat": await web.load_chat_history(session, user)}
 
 
 @router.post("/chat")

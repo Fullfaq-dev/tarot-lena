@@ -65,15 +65,21 @@ async def create_bind_link(user: User) -> dict:
     }
 
 
-async def create_login_link(*, site_user_id: str | None = None) -> dict:
+async def create_login_link(
+    *,
+    site_user_id: str | None = None,
+    next_path: str = "/lk",
+    guest_id: str | None = None,
+) -> dict:
     bot = get_settings().telegram_bot_username.lstrip("@")
     if not bot:
         raise ValueError("Telegram-бот не настроен")
     token = secrets.token_urlsafe(18)
+    dest = next_path if next_path.startswith("/") else "/lk"
     await (await _r()).setex(
         f"web:tglogin:{token}",
         BIND_TTL,
-        json.dumps({"u": site_user_id or ""}),
+        json.dumps({"u": site_user_id or "", "n": dest, "g": guest_id or ""}),
     )
     return {
         "url": f"https://t.me/{bot}?start=login_{token}",
@@ -91,6 +97,16 @@ async def finish_login_token(session: AsyncSession, token: str) -> str | None:
         return None
     await (await _r()).delete(key)
     return user.id
+
+
+async def login_next_path(token: str) -> str:
+    key = f"web:tglogin:{token}:next"
+    dest = await (await _r()).get(key)
+    if dest:
+        await (await _r()).delete(key)
+        text = str(dest)
+        return text if text.startswith("/") else "/lk"
+    return "/lk"
 
 
 async def consume_bind_token(session: AsyncSession, token: str, telegram_user: User) -> User:
@@ -132,6 +148,16 @@ async def consume_login_token(session: AsyncSession, token: str, telegram_user: 
     else:
         ident.user_id = user.id
     await (await _r()).setex(f"web:tglogin:{token}:uid", BIND_TTL, user.id)
+    dest = str(data.get("n") or "/lk")
+    if not dest.startswith("/"):
+        dest = "/lk"
+    await (await _r()).setex(f"web:tglogin:{token}:next", BIND_TTL, dest)
+    guest_id = str(data.get("g") or "")
+    if guest_id:
+        from app.services.web.service import ensure_session
+
+        web = await ensure_session(session, guest_id)
+        web.user_id = user.id
     await (await _r()).delete(f"web:tglogin:{token}")
     base = get_settings().public_base_url.rstrip("/")
     return f"{base}/api/web/auth/telegram/complete?token={token}"

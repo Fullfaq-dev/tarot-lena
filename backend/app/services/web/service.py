@@ -36,6 +36,7 @@ from app.services.web.mini import build_mini
 logger = logging.getLogger(__name__)
 
 READING_TTL = timedelta(days=366)
+READING_CHAT_LIMIT = 10
 BANNED = ("суицид", "беремен", "диагноз", "смерть", "юридическ", "лечение", "аборт")
 
 
@@ -377,6 +378,7 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
         "product_name": (reading.input_payload or {}).get("product_name"),
         "drawn": (reading.input_payload or {}).get("drawn") or [],
         "paid": paid,
+        "can_pay": (not paid) and int((reading.input_payload or {}).get("price_rub") or 0) > 0,
         "source": "web",
         "created_at": reading.created_at.isoformat() if reading.created_at else None,
         "expires_at": reading.expires_at.isoformat() if reading.expires_at else None,
@@ -462,7 +464,19 @@ async def checkout(
     *,
     tariff: str,
     recur_consent: bool = False,
+    email: str | None = None,
+    marketing: bool = False,
+    privacy: bool = False,
 ) -> dict:
+    if email and email.strip():
+        await save_contact(
+            session,
+            reading,
+            email=email,
+            telegram=None,
+            marketing=marketing,
+            privacy=privacy,
+        )
     cards = await resolved_cards(session)
     card = cards[reading.card_id]
     web = await session.scalar(select(WebSession).where(WebSession.id == reading.session_id))
@@ -714,8 +728,75 @@ async def load_chat_history(session: AsyncSession, user: User, *, limit: int = 8
     for row in rows:
         if (row.meta or {}).get("source") == "product_reading":
             continue
+        if (row.meta or {}).get("thread") == "reading":
+            continue
         out.append(serialize_chat_message(row))
     return out
+
+
+async def load_reading_thread(session: AsyncSession, user: User, reading_token: str) -> list[dict]:
+    rows = list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.user_id == user.id)
+                .order_by(Message.created_at.desc())
+                .limit(80)
+            )
+        ).all()
+    )
+    rows.reverse()
+    out = []
+    for row in rows:
+        meta = row.meta or {}
+        if meta.get("thread") != "reading" or meta.get("reading_token") != reading_token:
+            continue
+        out.append(serialize_chat_message(row))
+    return out
+
+
+async def _count_reading_user_msgs(session: AsyncSession, user_id: str, reading_token: str) -> int:
+    rows = list(
+        (
+            await session.scalars(
+                select(Message).where(
+                    Message.user_id == user_id,
+                    Message.role == MessageRole.USER.value,
+                )
+            )
+        ).all()
+    )
+    return sum(
+        1
+        for row in rows
+        if (row.meta or {}).get("thread") == "reading"
+        and (row.meta or {}).get("reading_token") == reading_token
+    )
+
+
+async def _has_paid_plan(user_id: str) -> bool:
+    from app.services.products.entitlements import EntitlementService
+
+    ent = EntitlementService()
+    return bool(await ent.has_any_plan(user_id))
+
+
+async def _has_web_unlimited(session: AsyncSession, user_id: str) -> bool:
+    now = datetime.now(UTC)
+    rows = list((await session.scalars(select(WebSession).where(WebSession.user_id == user_id))).all())
+    return any(bool(row.unlimited_until and row.unlimited_until > now) for row in rows)
+
+
+async def _can_discuss_readings(session: AsyncSession, user_id: str) -> bool:
+    return await _has_paid_plan(user_id) or await _has_web_unlimited(session, user_id)
+
+
+def _reading_item_can_pay(item: dict) -> bool:
+    if item.get("source") == "telegram":
+        return False
+    if item.get("paid"):
+        return False
+    return bool(item.get("can_pay") or (item.get("price_rub") or 0) > 0)
 
 
 async def cabinet_payload(session: AsyncSession, user: User) -> dict:
@@ -837,9 +918,19 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
     readings.sort(key=lambda item: item.get("created_at") or "", reverse=True)
     from app.bot.formatting import leia_markdown_to_web_html
 
+    plan = await _can_discuss_readings(session, user.id)
     for item in readings:
         body = item.get("paid_text") or (item.get("mini") or {}).get("lead") or ""
         item["html"] = leia_markdown_to_web_html(body)
+        token = str(item.get("token") or "")
+        paid = bool(item.get("paid"))
+        item["can_pay"] = _reading_item_can_pay(item)
+        item["can_chat"] = bool(paid or plan)
+        if item["can_chat"] and token:
+            used = await _count_reading_user_msgs(session, user.id, token)
+            item["chat_left"] = max(0, READING_CHAT_LIMIT - used)
+        else:
+            item["chat_left"] = 0
     ent = EntitlementService()
     snap = await ent.cabinet_snapshot(user.id)
     return {
@@ -944,22 +1035,41 @@ async def chat_reply(
             if reading is None:
                 raise ValueError("Разбор не найден")
 
+    plan = await _can_discuss_readings(session, user.id)
     vip = await EntitlementService().has_vip(user.id)
     bound = bool(user.telegram_id and user.telegram_id > 0)
     paid = bool(
         (reading and reading.status in {"paid", "ready"} and reading.paid_text)
         or tg_reading
-        or (product_usage and product_usage.content_preview)
+        or (product_usage and product_usage.level == "full" and product_usage.content_preview)
         or product_snippet
+        or (product_usage and product_usage.content_preview and plan)
     )
-    if not bound and not vip and not paid:
-        raise ValueError("Чат по разбору — после оплаты. Свободный чат — с VIP или после привязки Telegram.")
+    reading_thread = bool(reading_token)
+    if reading_thread:
+        if not paid and not plan:
+            raise ValueError("Сначала оплати полный разбор — потом можно спросить Лею про него.")
+        used = await _count_reading_user_msgs(session, user.id, reading_token)
+        if used >= READING_CHAT_LIMIT:
+            raise ValueError(f"По этому разбору уже {READING_CHAT_LIMIT} сообщений. Новый вопрос — новый разбор или пакет.")
+    elif not bound and not vip:
+        raise ValueError("Свободный чат — с VIP или после привязки Telegram. По оплаченному разбору — кнопка «Обсудить».")
 
     messages = await ContextBuilder().build(session, user, user_query=text, channel="web")
-    messages = _inject_system_addon(
-        messages,
-        "Сейчас пишут с сайта. Ты та же Лея, что в Telegram. Не начинай диалог с нуля.",
-    )
+    if reading_thread:
+        messages = [m for m in messages if m.get("role") == "system"]
+        messages = _inject_system_addon(
+            messages,
+            "Сейчас человек пишет с сайта в отдельном чате по одному разбору. "
+            "Держись контекста этого разбора и профиля пользователя. "
+            "Не уходи в новый расклад и не предлагай заново гадать, если не спросили. "
+            "Коротко, на «ты», как Лея.",
+        )
+    else:
+        messages = _inject_system_addon(
+            messages,
+            "Сейчас пишут с сайта. Ты та же Лея, что в Telegram. Не начинай диалог с нуля.",
+        )
     addon_parts = []
     if reading:
         addon_parts.append(
@@ -980,23 +1090,45 @@ async def chat_reply(
         )
     if product_snippet:
         addon_parts.append(f"Открыт разбор из Telegram «{product_snippet[0]}».\n{product_snippet[1][:5000]}")
+    if reading_thread:
+        profile = await session.scalar(select(SoulProfile).where(SoulProfile.user_id == user.id))
+        ident = await session.scalar(select(WebIdentity).where(WebIdentity.user_id == user.id))
+        name = (profile.name if profile else None) or user.first_name or (ident.name if ident else "") or ""
+        birth = profile.birth_date.isoformat() if profile and profile.birth_date else ""
+        city = (profile.birth_city if profile else "") or ""
+        addon_parts.append(
+            f"Пользователь: {name or 'без имени'}"
+            + (f", дата рождения {birth}" if birth else "")
+            + (f", город {city}" if city else "")
+            + ". Отвечай лично, с опорой на этот разбор, не как в общем чате."
+        )
     if addon_parts:
         messages = _inject_system_addon(messages, "\n".join(addon_parts))
+    if reading_thread and reading_token:
+        for row in await load_reading_thread(session, user, reading_token):
+            role = "user" if row.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": [{"type": "text", "text": row.get("text") or ""}]})
     messages.append({"role": "user", "content": [{"type": "text", "text": text}]})
 
     billing = BillingService()
-    billing_mode = "web"
-    if bound or vip:
+    billing_mode = "web_reading" if reading_thread else "web"
+    if not reading_thread and (bound or vip):
         allowed, reason, billing_mode = await billing.ensure_can_use_chat(
             session, user, context_messages=messages
         )
-        if not allowed and not vip and not paid:
+        if not allowed and not vip:
             raise ValueError(reason)
         if allowed:
             billing_mode = await billing.reserve_chat_slot(session, user, billing_mode)
 
     reply = await KieClient().chat_completion(messages, reasoning_effort="low")
-    meta = {"channel": "web", "reading_token": reading_token, "billing_mode": billing_mode}
+    meta = {
+        "channel": "web",
+        "reading_token": reading_token,
+        "billing_mode": billing_mode,
+    }
+    if reading_thread:
+        meta["thread"] = "reading"
     session.add(Message(user_id=user.id, role=MessageRole.USER.value, content=text, meta=meta))
     session.add(Message(user_id=user.id, role=MessageRole.ASSISTANT.value, content=reply, meta=meta))
     await session.flush()
@@ -1005,5 +1137,12 @@ async def chat_reply(
     except Exception:
         logger.exception("web chat memory extract failed")
     await session.flush()
+    if reading_thread and reading_token:
+        used = await _count_reading_user_msgs(session, user.id, reading_token)
+        return {
+            "reply": reply,
+            "chat": await load_reading_thread(session, user, reading_token),
+            "chat_left": max(0, READING_CHAT_LIMIT - used),
+        }
     return {"reply": reply, "chat": await load_chat_history(session, user)}
 
