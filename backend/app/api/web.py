@@ -239,6 +239,25 @@ async def auth_callback(
     return response
 
 
+@router.get("/auth/telegram/callback")
+async def telegram_login_callback(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse:
+    try:
+        payload = web_auth.verify_telegram_login(
+            {key: value for key, value in request.query_params.items() if value}
+        )
+        current = await web_auth.user_from_request(request, session)
+        user = await web_auth.login_telegram_user(session, payload, current)
+        await session.commit()
+    except HTTPException:
+        return RedirectResponse("/lk?auth=fail")
+    response = RedirectResponse("/lk")
+    web_auth.set_login_cookie(response, user.id)
+    return response
+
+
 @router.post("/auth/logout")
 async def auth_logout() -> Response:
     response = Response(content='{"ok":true}', media_type="application/json")
@@ -253,9 +272,14 @@ async def me(
 ) -> dict:
     user = await web_auth.user_from_request(request, session)
     if user is None:
-        return {"user": None, "oauth": web_auth.oauth_ready()}
+        return {
+            "user": None,
+            "oauth": web_auth.oauth_ready(),
+            "bot_username": get_settings().telegram_bot_username,
+        }
     payload = await web.cabinet_payload(session, user)
     payload["oauth"] = web_auth.oauth_ready()
+    payload["bot_username"] = get_settings().telegram_bot_username
     await session.commit()
     return payload
 

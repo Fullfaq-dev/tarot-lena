@@ -318,8 +318,7 @@ export function App() {
       <div className="shell">
         <header className="topbar">
           <button className="brand" type="button" onClick={goHome} aria-label="Лея">
-            <span className="brand-mark"><img src="/avatar.png" alt="" /></span>
-            <span>Лея</span>
+            <img className="brand-logo" src="/logo.jpg" alt="Лея" />
           </button>
           <div className="topbar-right">
             {(showLanding || showHow) && (
