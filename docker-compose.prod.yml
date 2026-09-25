@@ -65,8 +65,6 @@ services:
       dockerfile: Dockerfile.prod
     image: tarot-lena-web:latest
     restart: unless-stopped
-    volumes:
-      - ./frontend-web/dist:/usr/share/nginx/html:ro
     depends_on:
       - api
 
