@@ -554,10 +554,9 @@ async def checkout(
         purpose = "web_reading"
         key = f"web_reading:{reading.id}:{tariff}"
     settings = get_settings()
+    # Robokassa GET Success/Fail URL cannot contain query string.
     success_url = f"{settings.public_base_url.rstrip('/')}/r/{reading.token}"
-    if tariff == "test":
-        success_url = f"{success_url}?pay=test"
-    fail_url = f"{settings.public_base_url.rstrip('/')}/r/{reading.token}?pay=fail"
+    fail_url = f"{settings.public_base_url.rstrip('/')}/payment/failed"
 
     payment = None
     if bind_reading and reading.payment_id:
@@ -686,7 +685,7 @@ async def checkout_package(session: AsyncSession, user: User, package_id: str) -
     settings = get_settings()
     key = f"web_pkg:{user.id}:{pkg.id}"
     success_url = f"{settings.public_base_url.rstrip('/')}/lk"
-    fail_url = f"{settings.public_base_url.rstrip('/')}/lk?pay=fail"
+    fail_url = f"{settings.public_base_url.rstrip('/')}/payment/failed"
     payment = await _pending_by_key(session, user.id, key)
     if payment is None:
         payment = Payment(

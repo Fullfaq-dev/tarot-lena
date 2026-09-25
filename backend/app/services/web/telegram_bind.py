@@ -83,8 +83,15 @@ async def create_login_link(
     )
     return {
         "url": f"https://t.me/{bot}?start=login_{token}",
+        "token": token,
         "expires_sec": BIND_TTL,
     }
+
+
+async def login_ready(token: str) -> bool:
+    if not token or len(token) > 80:
+        return False
+    return bool(await (await _r()).get(f"web:tglogin:{token}:uid"))
 
 
 async def finish_login_token(session: AsyncSession, token: str) -> str | None:

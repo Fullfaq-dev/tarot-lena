@@ -109,17 +109,17 @@
       <div class="brand">Лея · Таро и Нумерология</div>
       <h1>Оплата не завершена</h1>
       <p>
-        Платёж был отменён или не прошёл. С карты ничего не списали — попробуй ещё раз
-        через меню продуктов в боте.
+        Платёж был отменён или не прошёл. С карты ничего не списали — можно попробовать ещё раз.
       </p>
       <div class="actions">
+        <a class="btn btn-primary" href="{{ site_url }}/lk">Открыть кабинет</a>
         {% if bot_url %}
-        <a class="btn btn-primary" href="{{ bot_url }}">Вернуться в бота</a>
+        <a class="btn btn-ghost" href="{{ bot_url }}">Вернуться в бота</a>
         {% endif %}
         <a class="btn btn-ghost" href="{{ support_url }}">Написать в поддержку</a>
       </div>
       <footer>
-        <a href="{{ site_url }}/legal.html">Документы</a>
+        <a href="{{ site_url }}/legal">Документы</a>
       </footer>
     </section>
   </main>

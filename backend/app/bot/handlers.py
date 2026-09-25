@@ -808,10 +808,10 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
                     tg_user = await db.scalar(select(User).where(User.id == user_id))
                     if tg_user is None:
                         raise ValueError("Сначала напиши боту /start")
-                    back = await consume_login_token(db, login_token, tg_user)
+                    await consume_login_token(db, login_token, tg_user)
                     await db.commit()
                 await message.answer(
-                    "Вход на сайт подтверждён. Вернись в кабинет по ссылке:\n" + back,
+                    "Авторизация на сайте прошла.\nМожешь вернуться в браузер — вход уже подтверждён, страница обновится сама.",
                     parse_mode=None,
                 )
             except ValueError as exc:
@@ -819,6 +819,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
             except Exception:
                 logger.exception("telegram login start failed")
                 await message.answer("Не получилось войти. Нажми кнопку на сайте ещё раз.", parse_mode=None)
+            return
 
         if is_new and command.args and message.from_user and not command.args.startswith(("bind_", "web_", "login_")):
             try:
