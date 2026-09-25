@@ -78,6 +78,29 @@ type Me = {
 
 const emptyProfile: Profile = { name: "", birth_date: "", birth_city: "", birth_time: "" };
 
+const TG_WAIT_KEY = "leia_tg_login";
+
+function readTgWait(): { token: string; next: string } | null {
+  try {
+    const raw = sessionStorage.getItem(TG_WAIT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { token?: string; next?: string };
+    if (parsed.token && parsed.next) return { token: parsed.token, next: parsed.next };
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function writeTgWait(wait: { token: string; next: string } | null) {
+  try {
+    if (!wait) sessionStorage.removeItem(TG_WAIT_KEY);
+    else sessionStorage.setItem(TG_WAIT_KEY, JSON.stringify(wait));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function TelegramLogin({
   label = "Войти через Telegram",
   onError,
@@ -94,8 +117,14 @@ export function TelegramLogin({
   const [waitToken, setWaitToken] = useState("");
 
   useEffect(() => {
+    const saved = readTgWait();
+    if (saved?.token) setWaitToken(saved.token);
+  }, []);
+
+  useEffect(() => {
     if (!waitToken) return;
     let stop = false;
+    const dest = readTgWait()?.next || next;
     const tick = async () => {
       if (stop) return;
       try {
@@ -106,7 +135,8 @@ export function TelegramLogin({
           method: "POST",
           body: JSON.stringify({ token: waitToken }),
         });
-        window.location.assign(done.next || next);
+        writeTgWait(null);
+        window.location.assign(done.next || dest);
       } catch {
         /* ещё не подтвердили в боте */
       }
@@ -115,6 +145,7 @@ export function TelegramLogin({
     void tick();
     const timeout = window.setTimeout(() => {
       stop = true;
+      writeTgWait(null);
       setWaitToken("");
       setUrl("");
       onError?.("Время вышло. Нажми «Войти через Telegram» ещё раз.");
@@ -128,6 +159,7 @@ export function TelegramLogin({
 
   async function openBot() {
     if (busy || disabled) return;
+    const popup = window.open("", "_blank");
     setBusy(true);
     setWaitToken("");
     try {
@@ -135,9 +167,18 @@ export function TelegramLogin({
         method: "POST",
         body: JSON.stringify({ next, guest_id: guestId() }),
       });
-      if (r.token) setWaitToken(r.token);
-      if (r.url) setUrl(r.url);
+      if (r.token) {
+        writeTgWait({ token: r.token, next });
+        setWaitToken(r.token);
+      }
+      if (r.url) {
+        setUrl(r.url);
+        if (popup) popup.location.href = r.url;
+      } else {
+        popup?.close();
+      }
     } catch (e) {
+      popup?.close();
       onError?.(e instanceof Error ? e.message : "Не открылась ссылка в бота");
     } finally {
       setBusy(false);
@@ -157,17 +198,17 @@ export function TelegramLogin({
           {busy ? "Открываю…" : waitToken ? "Жду Telegram…" : label}
         </span>
       </button>
-      {waitToken && !url && <p className="fine">Открой бота и вернись сюда — страница обновится сама.</p>}
-      {url && (
-        <div className="modal" onClick={() => setUrl("")}>
-          <div className="mc" onClick={(e) => e.stopPropagation()}>
-            <h4>Включи VPN перед переходом</h4>
-            <p>В России Telegram не открывается без VPN. Если бот не запустится — включи VPN и нажми ещё раз. После «Start» в боте вернись на эту вкладку.</p>
-            <a className="btn" href={url}>Открыть бота</a>
-            <button className="btn link" type="button" onClick={() => setUrl("")}>Позже</button>
-          </div>
-        </div>
-      )}
+      {waitToken ? (
+        <p className="fine">
+          В боте нажми Start и вернись на эту вкладку — вход подхватится сам.
+          {url ? (
+            <>
+              {" "}
+              <a href={url} target="_blank" rel="noopener noreferrer">Открыть бота ещё раз</a>
+            </>
+          ) : null}
+        </p>
+      ) : null}
     </>
   );
 }
@@ -522,7 +563,7 @@ export function Cabinet() {
                       <div className="mc" onClick={(e) => e.stopPropagation()}>
                         <h4>Включи VPN перед переходом</h4>
                         <p>В России Telegram не открывается без VPN. Если бот не запустится — включи VPN и нажми ещё раз.</p>
-                        <a className="btn" href={tgUrl}>Открыть бота</a>
+                        <a className="btn" href={tgUrl} target="_blank" rel="noopener noreferrer">Открыть бота</a>
                         <button className="btn link" type="button" onClick={() => setTgUrl("")}>Позже</button>
                       </div>
                     </div>
