@@ -94,7 +94,13 @@ else
   echo "WARN: frontend-admin/dist/index.html missing; upload admin build in CI before deploy"
 fi
 
+if [ -f frontend-web/frontend-web/dist/index.html ] && [ ! -f frontend-web/dist/index.html ]; then
+  rm -rf frontend-web/dist
+  mv frontend-web/frontend-web/dist frontend-web/dist
+  rm -rf frontend-web/frontend-web
+fi
 if [ -f frontend-web/dist/index.html ]; then
+  chmod -R a+rX frontend-web/dist || true
   echo "Web dist ready: $(grep -oE 'index-[^\" ]+\.js' frontend-web/dist/index.html | head -1 || true)"
 else
   echo "WARN: frontend-web/dist/index.html missing; trying image rebuild from local cache"
@@ -138,6 +144,10 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   sleep 2
 done
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin web nginx
+if [ -f frontend-web/dist/index.html ]; then
+  docker compose -f "$COMPOSE_FILE" cp frontend-web/dist/. web:/usr/share/nginx/html/
+  echo "Web dist copied into container"
+fi
 
 docker image prune -f
 
