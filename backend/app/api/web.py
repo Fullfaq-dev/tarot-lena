@@ -57,11 +57,15 @@ class EventIn(BaseModel):
 @router.get("/config")
 async def web_config() -> dict:
     settings = get_settings()
+    from app.services.products.packages import TEST_PAYMENT_ENABLED
+
     return {
         "metrika_id": settings.yandex_metrika_id,
         "bot_username": settings.telegram_bot_username,
         "legal_url": "/legal",
         "unlimited_price": 590,
+        "test_payment": TEST_PAYMENT_ENABLED,
+        "test_payment_price": 10,
         "oauth": web_auth.oauth_ready(),
     }
 

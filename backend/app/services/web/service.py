@@ -338,6 +338,8 @@ async def create_reading(
             "drawn": drawn,
             "price_rub": card.price_rub,
             "product_name": card.product_name,
+            "context": card.context,
+            "includes": list(card.positions or card.open_blocks) + list(card.closed_blocks),
         },
         mini=mini,
         paid_text=None if card.price_rub else _free_full_text(mini),
@@ -365,8 +367,24 @@ def _free_full_text(mini: dict) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+def _offer_meta(reading: WebReading) -> tuple[list[str], str]:
+    from app.services.web.catalog import CARDS
+
+    raw = reading.input_payload or {}
+    includes = [str(item) for item in (raw.get("includes") or []) if item]
+    context = str(raw.get("context") or "")
+    card = CARDS.get(reading.card_id)
+    if card:
+        if not includes:
+            includes = list(card.positions or card.open_blocks) + list(card.closed_blocks)
+        if not context:
+            context = card.context
+    return includes, context
+
+
 def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
     paid = bool(reading.status in {"paid", "ready"} and reading.paid_text)
+    includes, context = _offer_meta(reading)
     payload = {
         "token": reading.token,
         "card_id": reading.card_id,
@@ -377,6 +395,8 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
         "price_rub": int((reading.input_payload or {}).get("price_rub") or 0),
         "product_name": (reading.input_payload or {}).get("product_name"),
         "drawn": (reading.input_payload or {}).get("drawn") or [],
+        "includes": includes,
+        "context": context,
         "paid": paid,
         "can_pay": (not paid) and int((reading.input_payload or {}).get("price_rub") or 0) > 0,
         "source": "web",
@@ -484,12 +504,22 @@ async def checkout(
         raise ValueError("Сессия не найдена")
     user = await ensure_guest_user(session, web)
 
-    if web.unlimited_until and web.unlimited_until > datetime.now(UTC):
+    if tariff != "test" and web.unlimited_until and web.unlimited_until > datetime.now(UTC):
         await fulfill_paid(session, reading)
         return {"ok": True, "unlimited": True, "token": reading.token}
 
     base = int(card.price_rub)
-    if tariff == "bundle":
+    bind_reading = True
+    if tariff == "test":
+        from app.services.products.packages import TEST_PAYMENT_ENABLED
+
+        if not TEST_PAYMENT_ENABLED:
+            raise ValueError("Тестовый платёж выключен")
+        amount = Decimal("10")
+        sku = "test_10"
+        title = "Тестовый платёж 10 ₽"
+        bind_reading = False
+    elif tariff == "bundle":
         amount = Decimal(base + 300)
         sku = f"{card.sku}_bundle"
         title = f"{card.product_name} + доп. разбор"
@@ -514,14 +544,23 @@ async def checkout(
     if reading.status in {"paid", "ready"} and tariff in {"base", "bundle"}:
         return {"ok": True, "token": reading.token}
 
-    purpose = "web_unlimited" if sku == "web_unlimited_month" else "web_reading"
-    key = f"web_reading:{reading.id}:{tariff}"
+    if tariff == "test":
+        purpose = "test_payment"
+        key = f"web_test:{user.id}:{reading.id}"
+    elif sku == "web_unlimited_month":
+        purpose = "web_unlimited"
+        key = f"web_reading:{reading.id}:{tariff}"
+    else:
+        purpose = "web_reading"
+        key = f"web_reading:{reading.id}:{tariff}"
     settings = get_settings()
     success_url = f"{settings.public_base_url.rstrip('/')}/r/{reading.token}"
+    if tariff == "test":
+        success_url = f"{success_url}?pay=test"
     fail_url = f"{settings.public_base_url.rstrip('/')}/r/{reading.token}?pay=fail"
 
     payment = None
-    if reading.payment_id:
+    if bind_reading and reading.payment_id:
         existing = await session.scalar(select(Payment).where(Payment.id == reading.payment_id))
         if (
             existing
@@ -533,7 +572,8 @@ async def checkout(
     if payment is None:
         payment = await _pending_by_key(session, user.id, key)
     if payment is not None:
-        reading.payment_id = payment.id
+        if bind_reading:
+            reading.payment_id = payment.id
         payload = dict(payment.payload or {})
         payload["idempotency_key"] = key
         payload["token"] = reading.token
@@ -567,7 +607,8 @@ async def checkout(
     )
     session.add(payment)
     await session.flush()
-    reading.payment_id = payment.id
+    if bind_reading:
+        reading.payment_id = payment.id
     result = await _open_robokassa(
         session, payment, amount=amount, title=title, success_url=success_url, fail_url=fail_url
     )

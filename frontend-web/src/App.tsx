@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { api, attribution, guestId, oauthStart, track } from "./api";
 import { Cabinet, TelegramLogin } from "./Cabinet";
 import { Landing, type LandingPage } from "./Landing";
+import { CookieBanner, ConsentBoxes, SiteFooter } from "./legal";
+import { maskTime, TIME_PLACEHOLDER } from "./timeMask";
 
 type Card = {
   id: string;
@@ -40,7 +42,23 @@ type Reading = {
   drawn: { name?: string; image?: string }[];
   paid?: boolean;
   paid_text?: string;
+  includes?: string[];
+  context?: string;
 };
+
+function offerKind(context?: string, product?: string) {
+  const blob = `${context || ""} ${product || ""}`.toLowerCase();
+  if (blob.includes("деньг") || blob.includes("богат") || blob.includes("канал")) {
+    return { one: "финансовый", many: "финансовых" };
+  }
+  if (blob.includes("работ") || blob.includes("предназнач")) {
+    return { one: "про работу", many: "про работу" };
+  }
+  if (blob.includes("совмест") || blob.includes("отношен") || blob.includes("замуж") || blob.includes("возврат")) {
+    return { one: "про отношения", many: "про отношения" };
+  }
+  return { one: "", many: "таких" };
+}
 
 function landingPage(): LandingPage {
   const path = window.location.pathname.replace(/\/$/, "") || "/";
@@ -55,20 +73,32 @@ function AuthWays({
   oauth,
   bot,
   onError,
+  disabled,
 }: {
   next: string;
   oauth: { yandex?: boolean; vk?: boolean; telegram?: boolean };
   bot?: string;
   onError: (message: string) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="pay-auth">
-      {oauth.telegram && bot ? <TelegramLogin label="Войти через Telegram" next={next} onError={onError} /> : null}
+    <div className={`pay-auth${disabled ? " dim" : ""}`}>
+      {oauth.telegram && bot ? (
+        <TelegramLogin label="Войти через Telegram" next={next} onError={onError} disabled={disabled} />
+      ) : null}
       {oauth.yandex ? (
-        <a className="btn ghost" href={oauthStart("yandex", next)}>Войти через Яндекс</a>
+        disabled ? (
+          <button className="btn ghost" type="button" disabled>Войти через Яндекс</button>
+        ) : (
+          <a className="btn ghost" href={oauthStart("yandex", next)}>Войти через Яндекс</a>
+        )
       ) : null}
       {oauth.vk ? (
-        <a className="btn ghost" href={oauthStart("vk", next)}>Войти через VK</a>
+        disabled ? (
+          <button className="btn ghost" type="button" disabled>Войти через VK</button>
+        ) : (
+          <a className="btn ghost" href={oauthStart("vk", next)}>Войти через VK</a>
+        )
       ) : null}
     </div>
   );
@@ -84,6 +114,8 @@ export function App() {
     bot_username: "astro_leia_bot",
     legal_url: "/legal",
     oauth: { yandex: false, vk: false, telegram: false },
+    test_payment: false,
+    test_payment_price: 10,
   });
   const [tab, setTab] = useState(page === "home" ? "rel" : "rel");
   const [screen, setScreen] = useState(tokenFromPath ? 8 : 1);
@@ -98,7 +130,7 @@ export function App() {
   const [partner, setPartner] = useState("");
   const [email, setEmail] = useState("");
   const [reading, setReading] = useState<Reading | null>(null);
-  const [tariff, setTariff] = useState<"base" | "bundle">("bundle");
+  const [tariff, setTariff] = useState<"base" | "bundle" | "test">("base");
   const [err, setErr] = useState("");
   const [vpn, setVpn] = useState(false);
   const [mkt, setMkt] = useState(false);
@@ -164,6 +196,11 @@ export function App() {
           }
           if (r.paid) {
             setScreen(8);
+            return;
+          }
+          if (params.get("pay") === "test") {
+            setErr("Тестовые 10 ₽ прошли. Это проверка кассы — полный разбор за ними не открывается.");
+            setScreen(7);
             return;
           }
           if (params.get("pay") === "1") {
@@ -291,8 +328,12 @@ export function App() {
   async function pay() {
     if (!reading || paying) return;
     const mail = email.trim();
-    if (!loggedIn && !mail) {
+    if (tariff !== "test" && !loggedIn && !mail) {
       setErr("Укажи почту — или войди, чтобы разбор сохранился в кабинете");
+      return;
+    }
+    if (tariff !== "test" && !priv) {
+      setErr("Нужно согласие на обработку персональных данных и оферту");
       return;
     }
     if (mail && !mail.includes("@")) {
@@ -319,6 +360,10 @@ export function App() {
         window.location.href = r.payment_url;
         return;
       }
+      if (tariff === "test") {
+        setErr("Тестовые 10 ₽ прошли. Это проверка кассы — полный разбор за ними не открывается.");
+        return;
+      }
       const full = await api<Reading>(`/api/web/readings/${r.token}`);
       setReading(full);
       window.history.replaceState({}, "", `/r/${r.token}`);
@@ -332,6 +377,14 @@ export function App() {
 
   async function buy(kind: "upsell" | "unlimited") {
     if (!reading || paying) return;
+    if (kind === "unlimited" && !email.trim()) {
+      setErr("Нужна почта — на неё придёт напоминание за сутки до списания");
+      return;
+    }
+    if (kind === "unlimited" && !priv) {
+      setErr("Нужно согласие на обработку персональных данных и оферту");
+      return;
+    }
     if (kind === "unlimited" && !recur) {
       setErr("Нужна галочка согласия на подписку");
       return;
@@ -342,7 +395,13 @@ export function App() {
         `/api/web/readings/${reading.token}/checkout`,
         {
           method: "POST",
-          body: JSON.stringify({ tariff: kind, recur_consent: recur }),
+          body: JSON.stringify({
+            tariff: kind,
+            recur_consent: recur,
+            email: email.trim() || undefined,
+            marketing: mkt,
+            privacy: priv,
+          }),
         },
       );
       if (r.payment_url) {
@@ -361,6 +420,10 @@ export function App() {
 
   const price = reading?.price_rub || 590;
   const bundle = price + 300;
+  const testPrice = cfg.test_payment_price || 10;
+  const payAmount = tariff === "test" ? testPrice : tariff === "bundle" ? bundle : price;
+  const parts = reading?.includes?.filter(Boolean) || [];
+  const kind = offerKind(reading?.context, reading?.product_name);
   const inCabinet = window.location.pathname.startsWith("/lk");
 
   if (inCabinet) {
@@ -420,7 +483,7 @@ export function App() {
                   </p>
                 </div>
               </aside>
-              <div className="quiz-frame">
+              <div className={`quiz-frame${screen === 7 ? " offer-frame" : ""}`}>
                 {screen === 2 && sel && q && (
                   <>
                     <div className="bar"><i style={{ width: `${((qi + 1) / sel.questions.length) * 100}%` }} /></div>
@@ -488,7 +551,7 @@ export function App() {
                         <div className="q">Матрица строится по дате — карты здесь не нужны</div>
                         <div className="field"><label>Дата рождения</label><input className="inp" placeholder="дд.мм.гггг" value={birth} onChange={(e) => setBirth(e.target.value)} /></div>
                         <div className="field"><label>Город рождения</label><input className="inp" placeholder="не обязательно" value={city} onChange={(e) => setCity(e.target.value)} /></div>
-                        <div className="field"><label>Время рождения — если знаешь</label><input className="inp" placeholder="не обязательно" value={time} onChange={(e) => setTime(e.target.value)} /></div>
+                        <div className="field"><label>Время рождения — если знаешь</label><input className="inp" inputMode="numeric" maxLength={5} placeholder={TIME_PLACEHOLDER} value={time} onChange={(e) => setTime(maskTime(e.target.value))} /></div>
                         <button className="btn" disabled={!birth} onClick={() => { track("date_entered"); calculate(); }}>Построить матрицу</button>
                       </>
                     )}
@@ -556,7 +619,7 @@ export function App() {
                     {loggedIn ? (
                       <a className="btn ghost" href={`/lk?tab=history&reading=${reading.token}`}>Открыть в кабинете</a>
                     ) : (
-                      <p className="fine">Мини уже здесь. Полный — после оплаты: почта или вход, потом СБП.</p>
+                      <p className="fine">Мини уже здесь. Полный — после оплаты: почта или вход, потом кнопка «Оплатить».</p>
                     )}
                   </>
                 )}
@@ -565,54 +628,103 @@ export function App() {
                   <>
                     <div className="h">Полный разбор</div>
                     <p className="sub">
-                      {reading.price_rub
-                        ? `Мини уже готов. Полный — за ${reading.price_rub} ₽, и можно спросить Лею по нему.`
-                        : "Десять блоков вместо трёх абзацев"}
+                      Мини уже готов. Выбери пакет — внутри написано, что именно открывается.
                     </p>
-                    <div className={`tar ${tariff === "base" ? "on" : ""}`} onClick={() => setTariff("base")}>
-                      <h4>{reading.product_name}</h4>
+                    <div
+                      className={`tar offer ${tariff === "base" ? "on" : ""}`}
+                      onClick={() => setTariff("base")}
+                    >
+                      <h4>1 полный «{reading.product_name}»</h4>
                       <div className="pr">{price} ₽</div>
+                      <div className="tar-copy">
+                        <p>
+                          Пакет содержит один полный {kind.one ? `${kind.one} ` : ""}разбор «{reading.product_name}»
+                          {parts.length
+                            ? ` — ${parts.length} ${kind.many === "финансовых" ? "финансовых " : ""}${parts.length === 1 ? "блок" : "блока"}:`
+                            : "."}
+                        </p>
+                        {parts.length ? (
+                          <ul>
+                            {parts.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className={`tar ${tariff === "bundle" ? "on" : ""}`} onClick={() => setTariff("bundle")}>
+                    <div
+                      className={`tar offer ${tariff === "bundle" ? "on" : ""}`}
+                      onClick={() => setTariff("bundle")}
+                    >
                       <span className="tag">Выгоднее</span>
-                      <h4>{reading.product_name} + доп. разбор</h4>
+                      <h4>«{reading.product_name}» + доп. разбор</h4>
                       <div className="pr">{bundle} ₽ <s>{price + 590} ₽</s></div>
+                      <div className="tar-copy">
+                        <p>
+                          Пакет содержит этот полный {kind.one ? `${kind.one} ` : ""}разбор
+                          {parts.length ? ` из ${parts.length} блоков` : ""} и ещё один полный разбор на сайте.
+                          После оплаты можно спросить Лею в отдельном чате — до 10 вопросов по разбору.
+                        </p>
+                        <ul>
+                          <li>Полный «{reading.product_name}» по этому мини</li>
+                          {parts.map((item) => (
+                            <li key={`b-${item}`}>{item}</li>
+                          ))}
+                          <li>Ещё один полный разбор на выбор</li>
+                          <li>Чат с Леей по разбору — до 10 вопросов</li>
+                        </ul>
+                      </div>
                     </div>
-                    <div className="field">
-                      <label>{loggedIn ? "Почта — прислать копию разбора" : "Почта — чтобы не потерять разбор"}</label>
-                      <input
-                        className="inp"
-                        type="email"
-                        placeholder="ты@почта.ru"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                      />
-                    </div>
-                    <label className={`chk ${mkt ? "on" : ""}`} onClick={() => setMkt(!mkt)}>
-                      <i />
-                      <span>Можно присылать разборы и предложения. Отписка в один клик</span>
-                    </label>
-                    <label className={`chk ${priv ? "on" : ""}`} onClick={() => setPriv(!priv)}>
-                      <i />
-                      <span>Согласна с <a href={cfg.legal_url}>политикой обработки персональных данных</a></span>
-                    </label>
-                    {!loggedIn && (
+                    {cfg.test_payment && (
+                      <div
+                        className={`tar offer ${tariff === "test" ? "on" : ""}`}
+                        onClick={() => setTariff("test")}
+                      >
+                        <span className="tag">Касса</span>
+                        <h4>Тестовый платёж</h4>
+                        <div className="pr">{testPrice} ₽</div>
+                        <div className="tar-copy">
+                          <p>Проверка Робокассы. Доступа не даёт, полный разбор не открывает, пакет не активирует.</p>
+                        </div>
+                      </div>
+                    )}
+                    {tariff !== "test" && (
                       <>
-                        <p className="fine">Или войди — разбор сохранится в кабинете, и сразу откроется оплата</p>
-                        <AuthWays
-                          next={`/r/${reading.token}?pay=1`}
-                          oauth={cfg.oauth}
-                          bot={cfg.bot_username}
-                          onError={setErr}
-                        />
+                        <div className="field">
+                          <label>{loggedIn ? "Почта — прислать копию разбора" : "Почта — чтобы не потерять разбор"}</label>
+                          <input
+                            className="inp"
+                            type="email"
+                            placeholder="ты@почта.ru"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                          />
+                        </div>
+                        <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
+                        {!loggedIn && (
+                          <>
+                            <p className="fine">Или войди — разбор сохранится в кабинете, и сразу откроется оплата</p>
+                            {!priv && <p className="fine">Сначала отметь согласие с офертой.</p>}
+                            <AuthWays
+                              next={`/r/${reading.token}?pay=1`}
+                              oauth={cfg.oauth}
+                              bot={cfg.bot_username}
+                              onError={setErr}
+                              disabled={!priv}
+                            />
+                          </>
+                        )}
                       </>
                     )}
-                    <div className="pay"><span className="on">СБП</span><span>Карта</span></div>
-                    <button className="btn gold" disabled={paying} onClick={pay}>
-                      {paying ? "Открываю оплату…" : `Оплатить ${tariff === "bundle" ? bundle : price} ₽`}
+                    <button className="btn gold" disabled={paying || (tariff !== "test" && !priv)} onClick={pay}>
+                      {paying ? "Открываю оплату…" : `Оплатить ${payAmount} ₽`}
                     </button>
                     {err && <p className="err">{err}</p>}
-                    <p className="fine">Без подписок и автосписаний. Это разовый разбор с сайта.</p>
+                    <p className="fine">
+                      {tariff === "test"
+                        ? "Тестовые 10 ₽ — только проверка кассы."
+                        : "Без подписок и автосписаний. Это разовый разбор с сайта."}
+                    </p>
                     <button className="btn link" type="button" onClick={() => setScreen(6)}>Назад к мини-разбору</button>
                   </>
                 )}
@@ -627,11 +739,13 @@ export function App() {
                     ) : (
                       <>
                         <p className="sub">Чтобы спросить Лею по этому разбору — войди. До 10 сообщений, она держит контекст расклада.</p>
+                        <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
                         <AuthWays
                           next={`/lk?tab=chat&chat=${reading.token}`}
                           oauth={cfg.oauth}
                           bot={cfg.bot_username}
                           onError={setErr}
+                          disabled={!priv}
                         />
                       </>
                     )}
@@ -667,11 +781,24 @@ export function App() {
                       <div className="pr">590 ₽ <em>/ месяц</em></div>
                       <p>Сайтовые разборы без лимита. VIP бота этим платежом не открывается.</p>
                     </div>
+                    <p className="sub">
+                      590 ₽ сейчас, дальше 590 ₽ каждые 30 дней, пока не отменишь. Напомним на почту за день до списания. Отменить — в кабинете в один клик.
+                    </p>
+                    {(!loggedIn || !email) && (
+                      <div className="field">
+                        <label>Почта — на неё придёт напоминание за сутки до списания</label>
+                        <input className="inp" type="email" placeholder="ты@почта.ru" value={email} onChange={(e) => setEmail(e.target.value)} />
+                      </div>
+                    )}
+                    <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
                     <label className={`chk ${recur ? "on" : ""}`} onClick={() => setRecur(!recur)}>
                       <i />
-                      <span>Согласна на списание 590 ₽ раз в 30 дней. Отмена в один клик через поддержку.</span>
+                      <span>
+                        Согласна на автоматическое списание 590 ₽ каждые 30 дней с этой карты или счёта по{" "}
+                        <a href="/legal#subscription" onClick={(e) => e.stopPropagation()}>условиям подписки</a>
+                      </span>
                     </label>
-                    <button className="btn gold" disabled={paying} onClick={() => buy("unlimited")}>
+                    <button className="btn gold" disabled={paying || !recur || !priv} onClick={() => buy("unlimited")}>
                       {paying ? "Открываю оплату…" : "Подключить безлимит"}
                     </button>
                     <button className="btn link" onClick={() => setScreen(11)}>Пока без подписки</button>
@@ -709,10 +836,10 @@ export function App() {
                     <div className="h">Куда прислать разбор?</div>
                     <p className="sub">Ссылка живёт год — откроешь даже с другого телефона</p>
                     <div className="field"><label>Почта</label><input className="inp" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                    <label className={`chk ${mkt ? "on" : ""}`} onClick={() => setMkt(!mkt)}><i /><span>Согласна получать разборы и предложения. Отписаться можно в один клик</span></label>
-                    <label className={`chk ${priv ? "on" : ""}`} onClick={() => setPriv(!priv)}><i /><span>Согласна с <a href={cfg.legal_url}>политикой обработки персональных данных</a></span></label>
+                    <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
                     <button
                       className="btn"
+                      disabled={!priv || !email.trim()}
                       onClick={async () => {
                         if (reading) {
                           await api(`/api/web/readings/${reading.token}/contact`, {
@@ -726,7 +853,8 @@ export function App() {
                     >
                       Сохранить и открыть разбор
                     </button>
-                    <p className="fine">Без галочки согласия разбор всё равно откроется — рассылка просто не придёт</p>
+                    <p className="fine">Первая галочка обязательна, чтобы отправить разбор на почту. Рассылка — только если отметишь вторую.</p>
+                    <button className="btn link" type="button" onClick={goHome}>Открыть без почты</button>
                   </>
                 )}
 
@@ -735,6 +863,8 @@ export function App() {
             </div>
           </div>
         )}
+        <SiteFooter />
+        <CookieBanner />
       </div>
     </div>
   );
