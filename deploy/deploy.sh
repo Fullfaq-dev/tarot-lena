@@ -94,12 +94,17 @@ else
   echo "WARN: frontend-admin/dist/index.html missing; upload admin build in CI before deploy"
 fi
 
-set +e
-docker compose -f "$COMPOSE_FILE" build --pull=false web
-web_build_rc=$?
-set -e
-if [ "$web_build_rc" -ne 0 ]; then
-  echo "WARN: web quiz build failed"
+if [ -f frontend-web/dist/index.html ]; then
+  echo "Web dist ready: $(grep -oE 'index-[^\" ]+\.js' frontend-web/dist/index.html | head -1 || true)"
+else
+  echo "WARN: frontend-web/dist/index.html missing; trying image rebuild from local cache"
+  set +e
+  DOCKER_BUILDKIT=0 docker compose -f "$COMPOSE_FILE" build --pull=false web
+  web_build_rc=$?
+  set -e
+  if [ "$web_build_rc" -ne 0 ]; then
+    echo "WARN: web quiz build failed"
+  fi
 fi
 
 build_ok=0
