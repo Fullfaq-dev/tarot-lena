@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, oauthStart, guestId } from "./api";
+import { CookieBanner, ConsentBoxes, SiteFooter } from "./legal";
+import { maskTime, TIME_PLACEHOLDER } from "./timeMask";
 
 type Reading = {
   token: string;
@@ -80,16 +82,18 @@ export function TelegramLogin({
   label = "Войти через Telegram",
   onError,
   next = "/lk",
+  disabled,
 }: {
   label?: string;
   onError?: (message: string) => void;
   next?: string;
+  disabled?: boolean;
 }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function openBot() {
-    if (busy) return;
+    if (busy || disabled) return;
     setBusy(true);
     try {
       const r = await api<{ url?: string }>("/api/web/auth/telegram/start", {
@@ -106,7 +110,7 @@ export function TelegramLogin({
 
   return (
     <>
-      <button className="tg-login" type="button" disabled={busy} onClick={() => void openBot()}>
+      <button className="tg-login" type="button" disabled={busy || disabled} onClick={() => void openBot()}>
         <span className="tg-login-face">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
             <path
@@ -236,6 +240,8 @@ export function Cabinet() {
   const [paying, setPaying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<Profile>(emptyProfile);
+  const [priv, setPriv] = useState(false);
+  const [mkt, setMkt] = useState(false);
   const [openReading, setOpenReading] = useState<string>(params.get("reading") || "");
   const [tgUrl, setTgUrl] = useState("");
   const [quizCards, setQuizCards] = useState<QuizCard[]>([]);
@@ -423,16 +429,30 @@ export function Cabinet() {
             <h2 className="h">Войди, чтобы сохранить разборы и открыть чат</h2>
             <p className="sub">Яндекс, VK или Telegram. ФИО и дата рождения подтянутся в профиль, если их отдал провайдер.</p>
             <div className="lk-auth">
+              <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
+              {!priv && <p className="fine">Сначала отметь согласие с офертой — потом можно войти.</p>}
               {oauth.telegram && me?.bot_username ? (
-                <TelegramLogin onError={setErr} next={window.location.pathname + window.location.search} />
+                <TelegramLogin
+                  onError={setErr}
+                  next={window.location.pathname + window.location.search}
+                  disabled={!priv}
+                />
               ) : null}
               {oauth.yandex ? (
-                <a className="btn" href={oauthStart("yandex", window.location.pathname + window.location.search)}>Войти через Яндекс</a>
+                priv ? (
+                  <a className="btn" href={oauthStart("yandex", window.location.pathname + window.location.search)}>Войти через Яндекс</a>
+                ) : (
+                  <button className="btn" type="button" disabled>Войти через Яндекс</button>
+                )
               ) : (
                 <p className="fine">Яндекс OAuth ещё не подключён</p>
               )}
               {oauth.vk ? (
-                <a className="btn ghost" href={oauthStart("vk", window.location.pathname + window.location.search)}>Войти через VK</a>
+                priv ? (
+                  <a className="btn ghost" href={oauthStart("vk", window.location.pathname + window.location.search)}>Войти через VK</a>
+                ) : (
+                  <button className="btn ghost" type="button" disabled>Войти через VK</button>
+                )
               ) : (
                 <p className="fine">VK OAuth ещё не подключён</p>
               )}
@@ -512,7 +532,7 @@ export function Cabinet() {
                       </div>
                       <div className="field">
                         <label>Время рождения</label>
-                        <input className="inp" placeholder="если знаешь" value={profile.birth_time} onChange={(e) => setProfile({ ...profile, birth_time: e.target.value })} />
+                        <input className="inp" inputMode="numeric" maxLength={5} placeholder={TIME_PLACEHOLDER} value={profile.birth_time} onChange={(e) => setProfile({ ...profile, birth_time: maskTime(e.target.value) })} />
                       </div>
                       <button className="btn ghost" type="button" disabled={saving} onClick={saveProfile}>
                         {saving ? "Сохраняю…" : "Сохранить профиль"}
@@ -526,10 +546,20 @@ export function Cabinet() {
                     <div className="eyebrow">Статус</div>
                     <h2 className="h">Подписка и пакеты</h2>
                     {me.subscription?.status === "active" ? (
-                      <p className="sub">
-                        Сейчас {me.subscription.label}
-                        {me.subscription.expires_at ? ` · до ${formatUntil(me.subscription.expires_at)}` : ""}.
-                      </p>
+                      <>
+                        <p className="sub">
+                          Сейчас {me.subscription.label}
+                          {me.subscription.expires_at ? ` · до ${formatUntil(me.subscription.expires_at)}` : ""}.
+                          {me.subscription.expires_at ? ` Следующее списание: ${formatUntil(me.subscription.expires_at)}, 590 ₽.` : ""}
+                        </p>
+                        <a
+                          className="btn ghost"
+                          href="mailto:elenakarpva@gmail.com?subject=%D0%9E%D1%82%D0%BC%D0%B5%D0%BD%D0%B0%20%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D0%B8%20%D0%9B%D0%B5%D1%8F"
+                        >
+                          Отменить подписку
+                        </a>
+                        <p className="fine">Либо напиши в поддержку t.me/leia_astro_help. Доступ останется до конца оплаченного периода.</p>
+                      </>
                     ) : (
                       <p className="sub">Активной подписки нет. VIP и ЛЮБОВЬ+ можно взять ниже.</p>
                     )}
@@ -556,12 +586,13 @@ export function Cabinet() {
                           (pkg.id === "vip" && me.vip) ||
                           (pkg.id === "love_plus" && me.love_plus) ||
                           (pkg.id === "happy_woman" && (me.active_packages || []).some((row) => row.id === "happy_woman"));
+                        const pitch = pkg.pitch.replace(/\*\*/g, "").replace(/_/g, "");
                         return (
-                          <article key={pkg.id} className={`tar ${on ? "on" : ""}`}>
+                          <article key={pkg.id} className={`tar offer ${on ? "on" : ""}`}>
                             {on && <span className="tag">Активен</span>}
                             <h4>{pkg.emoji} {pkg.title}</h4>
                             <div className="pr">{pkg.price_rub} ₽</div>
-                            <p className="sub">{pkg.pitch.replace(/\*\*/g, "")}</p>
+                            <p className="sub">{pitch}</p>
                             <button className="btn gold" type="button" disabled={paying} onClick={() => buy(pkg.id)}>
                               {paying
                                 ? "Открываю оплату…"
@@ -705,6 +736,8 @@ export function Cabinet() {
             </div>
           </div>
         )}
+        <SiteFooter />
+        <CookieBanner />
       </div>
     </div>
   );

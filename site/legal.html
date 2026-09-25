@@ -4,879 +4,354 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Документы Лея</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    window.leiaInitMetrika = function () {
+      if (window.__leiaYm) return;
+      window.__leiaYm = true;
+      (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+      m[i].l=1*new Date();
+      for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+      k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+      (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+      ym(110607194, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true, trackHash:true });
+    };
+    try { if (localStorage.getItem("leia_cookies") === "all") window.leiaInitMetrika(); } catch (e) {}
+  </script>
   <style>
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --border: #2a2f3d;
-      --text: #e8eaef;
-      --muted: #9aa3b5;
-      --accent: #6c8cff;
-      --accent-soft: rgba(108, 140, 255, 0.12);
+      --bg: #f8f4ee;
+      --surface: #ffffff;
+      --ink: #1f1c22;
+      --soft: #5b5650;
+      --muted: #8e8882;
+      --line: rgba(60, 45, 30, 0.12);
+      --violet: #7446d4;
+      --lilac: #efe7fc;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: Manrope, system-ui, sans-serif;
       background: var(--bg);
-      color: var(--text);
+      color: var(--ink);
       line-height: 1.65;
       font-size: 15px;
     }
-    .wrap { max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; }
-    header { margin-bottom: 24px; }
-    header h1 { font-size: 1.5rem; margin: 0 0 6px; }
-    header p { margin: 0; color: var(--muted); font-size: 0.95rem; }
-    .tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
+    h1, h2, h3 { font-family: Literata, Georgia, serif; font-weight: 500; }
+    .legal-home-link { padding: 16px 16px 0; }
+    .legal-home-link a { color: var(--violet); text-decoration: none; font-size: 14px; }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 12px 16px 64px; }
+    header h1 { font-size: 1.7rem; margin: 0 0 6px; }
+    header p { margin: 0; color: var(--muted); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }
     .tabs button {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      padding: 10px 14px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-size: 0.88rem;
-      transition: 0.15s;
+      background: var(--surface); border: 1.5px solid var(--line); color: var(--soft);
+      padding: 10px 14px; border-radius: 999px; cursor: pointer; font: 600 13px Manrope, sans-serif;
     }
-    .tabs button.active {
-      background: var(--accent-soft);
-      border-color: var(--accent);
-      color: var(--text);
-    }
+    .tabs button.active { background: var(--lilac); border-color: var(--violet); color: var(--violet); }
     .panel {
-      display: none;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 24px 20px;
+      display: none; background: var(--surface); border: 1.5px solid var(--line);
+      border-radius: 18px; padding: 24px 20px;
     }
     .panel.active { display: block; }
-    .panel h2 { font-size: 1.25rem; margin: 0 0 8px; }
+    .panel h2 { font-size: 1.3rem; margin: 0 0 8px; }
     .panel h3 { font-size: 1.05rem; margin: 1.4em 0 0.5em; }
-    .panel p, .panel li { color: #cdd2dc; }
+    .panel p, .panel li { color: var(--soft); }
     .panel ul { padding-left: 1.2em; }
     .panel li { margin: 0.35em 0; }
     .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.2em; }
-    .requisites {
-      margin-top: 1.5em;
-      padding: 16px;
-      background: var(--bg);
-      border-radius: 10px;
-      border: 1px solid var(--border);
+    a { color: var(--violet); }
+    .table-wrap { overflow-x: auto; margin: 12px 0 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: var(--lilac); color: var(--ink); }
+    footer { margin-top: 28px; text-align: center; color: var(--muted); font-size: 0.85rem; line-height: 1.55; }
+    .cookie-bar {
+      position: fixed; z-index: 60; left: 12px; right: 12px; bottom: 12px;
+      max-width: 720px; margin: 0 auto; padding: 16px 18px;
+      border: 1.5px solid var(--line); border-radius: 20px; background: var(--surface);
+      box-shadow: 0 8px 28px rgba(40, 30, 20, 0.08);
     }
-    a { color: var(--accent); }
-    footer {
-      margin-top: 32px;
-      text-align: center;
-      color: var(--muted);
-      font-size: 0.85rem;
+    .cookie-bar p { margin: 0 0 12px; font-size: 13.5px; color: var(--soft); }
+    .cookie-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .cookie-actions button {
+      flex: 1; min-width: 140px; padding: 10px 14px; border-radius: 999px; cursor: pointer;
+      font: 600 13px Manrope, sans-serif;
     }
+    .cookie-all { background: #c9932f; border: 0; color: #fff; }
+    .cookie-needed { background: var(--surface); border: 1.5px solid var(--line); color: var(--soft); }
     @media (max-width: 560px) {
-      .tabs button { flex: 1 1 calc(50% - 8px); text-align: center; }
-    }
-
-    :root {
-      --arcana-bg: #090613;
-      --arcana-ink: #fff8ec;
-      --arcana-violet: #4c1f86;
-      --arcana-purple: #170d34;
-      --arcana-gold: #d7a85d;
-      --arcana-gold-bright: #ffd992;
-      --arcana-lilac: #c59cff;
-      --arcana-glass: rgba(255, 248, 236, 0.08);
-      --arcana-line: rgba(255, 217, 146, 0.22);
-      --arcana-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
-    }
-    html { scroll-behavior: smooth; }
-    body {
-      background:
-        radial-gradient(circle at 50% -10%, rgba(115, 56, 183, 0.42), transparent 34rem),
-        radial-gradient(circle at 85% 12%, rgba(215, 168, 93, 0.16), transparent 22rem),
-        radial-gradient(circle at 15% 35%, rgba(101, 42, 160, 0.28), transparent 26rem),
-        var(--arcana-bg);
-      overflow-x: hidden;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        radial-gradient(circle, rgba(255,255,255,.75) 0 1px, transparent 1.4px),
-        radial-gradient(circle, rgba(255,217,146,.55) 0 1px, transparent 1.6px);
-      background-size: 120px 120px, 190px 190px;
-      background-position: 13px 22px, 70px 90px;
-      opacity: .18;
-      animation: star-drift 34s linear infinite;
-    }
-    .landing {
-      position: relative;
-      isolation: isolate;
-      color: var(--arcana-ink);
-      min-height: 100vh;
-    }
-    .landing a { color: inherit; }
-    .orb {
-      position: absolute;
-      border-radius: 999px;
-      filter: blur(4px);
-      opacity: .85;
-      pointer-events: none;
-    }
-    .orb.one {
-      width: 18rem;
-      height: 18rem;
-      left: -7rem;
-      top: 16rem;
-      background: radial-gradient(circle, rgba(108,54,179,.65), transparent 70%);
-      animation: float-slow 10s ease-in-out infinite;
-    }
-    .orb.two {
-      width: 14rem;
-      height: 14rem;
-      right: -5rem;
-      top: 7rem;
-      background: radial-gradient(circle, rgba(215,168,93,.42), transparent 72%);
-      animation: float-slow 12s ease-in-out infinite reverse;
-    }
-    .landing-shell {
-      width: min(1180px, calc(100% - 32px));
-      margin: 0 auto;
-      padding: 28px 0 72px;
-    }
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 48px;
-    }
-    .brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      font-weight: 800;
-      letter-spacing: .06em;
-      text-transform: uppercase;
-    }
-    .brand-mark {
-      width: 42px;
-      height: 42px;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--arcana-line);
-      border-radius: 999px;
-      background: radial-gradient(circle at 50% 35%, var(--arcana-gold-bright), #6d3d9c 47%, #110820 72%);
-      box-shadow: 0 0 35px rgba(215,168,93,.28);
-    }
-
-    .brand-mark {
-      overflow: hidden;
-    }
-    .brand-mark img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .sparkles {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-      overflow: hidden;
-    }
-    .sparkles span {
-      position: absolute;
-      width: 7px;
-      height: 7px;
-      border-radius: 999px;
-      background: #fff8ec;
-      box-shadow: 0 0 18px #ffd992, 0 0 38px rgba(197,156,255,.48);
-      opacity: .64;
-      animation: sparkle-rise 7s ease-in-out infinite;
-    }
-    .sparkles span::before,
-    .sparkles span::after {
-      content: "";
-      position: absolute;
-      inset: -5px 3px;
-      border-radius: 999px;
-      background: rgba(255,217,146,.72);
-    }
-    .sparkles span::after {
-      inset: 3px -5px;
-    }
-    .sparkles span:nth-child(1) { left: 7%; top: 18%; animation-delay: -1s; }
-    .sparkles span:nth-child(2) { left: 22%; top: 72%; animation-delay: -4s; transform: scale(.72); }
-    .sparkles span:nth-child(3) { left: 47%; top: 12%; animation-delay: -2.5s; transform: scale(.55); }
-    .sparkles span:nth-child(4) { left: 68%; top: 68%; animation-delay: -5.2s; transform: scale(.82); }
-    .sparkles span:nth-child(5) { left: 87%; top: 24%; animation-delay: -3.2s; transform: scale(.62); }
-    .sparkles span:nth-child(6) { left: 78%; top: 88%; animation-delay: -6.1s; transform: scale(.48); }
-
-    .topnav {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      color: rgba(255,248,236,.72);
-      font-size: .92rem;
-    }
-    .topnav a { text-decoration: none; }
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1.05fr) minmax(320px, .95fr);
-      gap: 52px;
-      align-items: center;
-      padding: 28px 0 80px;
-    }
-    .eyebrow {
-      display: inline-flex;
-      gap: 8px;
-      align-items: center;
-      margin: 0 0 20px;
-      padding: 8px 12px;
-      border: 1px solid var(--arcana-line);
-      border-radius: 999px;
-      background: rgba(255,255,255,.055);
-      color: var(--arcana-gold-bright);
-      box-shadow: inset 0 0 30px rgba(215,168,93,.06);
-    }
-    .hero h1 {
-      margin: 0;
-      max-width: 720px;
-      font-size: clamp(3rem, 8vw, 6.9rem);
-      line-height: .88;
-      letter-spacing: -0.075em;
-    }
-    .hero h1 span {
-      display: block;
-      color: transparent;
-      background: linear-gradient(100deg, #fff8ec, #ffd992 38%, #b690ff 78%);
-      -webkit-background-clip: text;
-      background-clip: text;
-      text-shadow: 0 0 48px rgba(197,156,255,.2);
-    }
-    .hero-copy {
-      max-width: 650px;
-      margin: 24px 0 0;
-      color: rgba(255,248,236,.76);
-      font-size: clamp(1.06rem, 2vw, 1.28rem);
-    }
-    .cta-row {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 14px;
-      margin-top: 32px;
-    }
-    .cta-primary,
-    .cta-secondary {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      min-height: 56px;
-      padding: 0 22px;
-      border-radius: 999px;
-      text-decoration: none;
-      font-weight: 800;
-      transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-    }
-    .cta-primary {
-      color: #160b24;
-      background: linear-gradient(135deg, #ffd992, #c88d3f);
-      box-shadow: 0 18px 48px rgba(215,168,93,.28), inset 0 1px 0 rgba(255,255,255,.45);
-    }
-    .cta-secondary {
-      border: 1px solid var(--arcana-line);
-      color: var(--arcana-ink);
-      background: rgba(255,255,255,.06);
-    }
-    .cta-primary:hover,
-    .cta-secondary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 22px 58px rgba(215,168,93,.32);
-    }
-    .trust-row {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 34px;
-      max-width: 640px;
-    }
-    .trust-pill {
-      padding: 14px;
-      border: 1px solid var(--arcana-line);
-      border-radius: 18px;
-      background: var(--arcana-glass);
-      color: rgba(255,248,236,.78);
-      backdrop-filter: blur(16px);
-    }
-    .trust-pill strong {
-      display: block;
-      color: var(--arcana-gold-bright);
-      font-size: 1.08rem;
-    }
-    .portal-card {
-      position: relative;
-      min-height: 560px;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--arcana-line);
-      border-radius: 42px;
-      background:
-        radial-gradient(circle at 50% 28%, rgba(255,217,146,.18), transparent 26%),
-        linear-gradient(150deg, rgba(255,255,255,.12), rgba(255,255,255,.035));
-      box-shadow: var(--arcana-shadow);
-      overflow: hidden;
-    }
-    .portal-card::before,
-    .portal-card::after {
-      content: "";
-      position: absolute;
-      width: 78%;
-      aspect-ratio: 1;
-      border: 1px solid rgba(255,217,146,.42);
-      border-radius: 999px;
-      animation: rotate-ring 30s linear infinite;
-    }
-    .portal-card::after {
-      width: 58%;
-      border-style: dashed;
-      opacity: .72;
-      animation-direction: reverse;
-      animation-duration: 42s;
-    }
-    .mystic-avatar {
-      position: relative;
-      z-index: 1;
-      width: min(82%, 390px);
-      aspect-ratio: 1;
-      display: grid;
-      place-items: center;
-      border-radius: 999px;
-      border: 3px solid rgba(255,217,146,.72);
-      background:
-        radial-gradient(circle at 50% 40%, rgba(255,217,146,.28), transparent 13%),
-        radial-gradient(circle at 50% 55%, rgba(73,30,130,.72), transparent 50%),
-        linear-gradient(180deg, #171035, #05030b);
-      box-shadow:
-        inset 0 0 70px rgba(255,217,146,.16),
-        0 0 70px rgba(115,56,183,.36);
-      overflow: hidden;
-      animation: breathe 5s ease-in-out infinite;
-    }
-    .mystic-avatar img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      filter: saturate(1.04) contrast(1.03);
-    }
-    .floating-note {
-      position: absolute;
-      z-index: 2;
-      max-width: 210px;
-      padding: 14px 16px;
-      border: 1px solid var(--arcana-line);
-      border-radius: 18px;
-      background: rgba(10, 6, 22, .72);
-      backdrop-filter: blur(18px);
-      color: rgba(255,248,236,.84);
-      box-shadow: 0 20px 50px rgba(0,0,0,.34);
-      animation: float-slow 7s ease-in-out infinite;
-    }
-    .floating-note strong {
-      display: block;
-      color: var(--arcana-gold-bright);
-    }
-    .floating-note.left { left: 20px; bottom: 50px; }
-    .floating-note.right { right: 20px; top: 54px; animation-delay: -2s; }
-    .section {
-      padding: 76px 0;
-    }
-    .section-title {
-      max-width: 760px;
-      margin: 0 auto 34px;
-      text-align: center;
-    }
-    .section-title h2 {
-      margin: 0 0 12px;
-      font-size: clamp(2rem, 5vw, 4rem);
-      line-height: .96;
-      letter-spacing: -.045em;
-    }
-    .section-title p {
-      margin: 0;
-      color: rgba(255,248,236,.68);
-      font-size: 1.08rem;
-    }
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-    }
-    .feature-card {
-      position: relative;
-      min-height: 230px;
-      padding: 24px;
-      border: 1px solid var(--arcana-line);
-      border-radius: 28px;
-      background:
-        linear-gradient(160deg, rgba(255,255,255,.105), rgba(255,255,255,.035)),
-        radial-gradient(circle at 20% 10%, rgba(197,156,255,.18), transparent 34%);
-      overflow: hidden;
-      box-shadow: 0 22px 60px rgba(0,0,0,.22);
-      transition: transform .22s ease, border-color .22s ease;
-    }
-    .feature-card:hover {
-      transform: translateY(-6px);
-      border-color: rgba(255,217,146,.58);
-    }
-    .feature-card .icon {
-      width: 52px;
-      height: 52px;
-      display: grid;
-      place-items: center;
-      margin-bottom: 16px;
-      border-radius: 18px;
-      background:
-        radial-gradient(circle at 45% 28%, rgba(255,217,146,.24), transparent 44%),
-        rgba(255,217,146,.1);
-      color: var(--arcana-gold-bright);
-      box-shadow: inset 0 0 24px rgba(197,156,255,.12), 0 10px 26px rgba(0,0,0,.2);
-    }
-    .feature-card .icon svg {
-      width: 28px;
-      height: 28px;
-      stroke: currentColor;
-      fill: none;
-      stroke-width: 1.7;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .feature-card h3 {
-      margin: 0 0 10px;
-      font-size: 1.22rem;
-      line-height: 1.15;
-    }
-    .feature-card p {
-      margin: 0;
-      color: rgba(255,248,236,.66);
-    }
-    .flow {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-      counter-reset: step;
-    }
-    .flow-card {
-      position: relative;
-      padding: 22px;
-      border: 1px solid var(--arcana-line);
-      border-radius: 24px;
-      background: rgba(255,255,255,.055);
-    }
-    .flow-card::before {
-      counter-increment: step;
-      content: "0" counter(step);
-      display: inline-flex;
-      margin-bottom: 18px;
-      color: var(--arcana-gold-bright);
-      font-weight: 900;
-      letter-spacing: .08em;
-    }
-    .flow-card h3 { margin: 0 0 8px; }
-    .flow-card p { margin: 0; color: rgba(255,248,236,.66); }
-    .wide-cta {
-      position: relative;
-      margin-top: 36px;
-      padding: clamp(28px, 6vw, 56px);
-      border: 1px solid rgba(255,217,146,.36);
-      border-radius: 34px;
-      background:
-        radial-gradient(circle at 15% 0, rgba(255,217,146,.18), transparent 24rem),
-        linear-gradient(135deg, rgba(77,31,134,.86), rgba(12,7,27,.92));
-      box-shadow: var(--arcana-shadow);
-      overflow: hidden;
-    }
-    .wide-cta h2 {
-      max-width: 760px;
-      margin: 0 0 14px;
-      font-size: clamp(2.1rem, 6vw, 4.6rem);
-      line-height: .95;
-      letter-spacing: -.055em;
-    }
-    .wide-cta p {
-      max-width: 660px;
-      margin: 0 0 26px;
-      color: rgba(255,248,236,.72);
-      font-size: 1.12rem;
-    }
-    .legal-wrap {
-      border-top: 1px solid var(--arcana-line);
-      margin-top: 20px;
-      padding-top: 46px;
-    }
-    .landing-footer {
-      margin: 42px 0 0;
-      padding: 28px 0 0;
-      border-top: 1px solid var(--arcana-line);
-      text-align: center;
-      color: rgba(255,248,236,.62);
-    }
-    .landing-footer a { color: var(--arcana-gold-bright); }
-    .legal-home-link {
-      width: min(820px, calc(100% - 32px));
-      margin: 24px auto 0;
-      color: var(--arcana-gold-bright);
-      font-weight: 800;
-    }
-    .legal-home-link a { color: inherit; }
-    @keyframes star-drift {
-      from { transform: translate3d(0,0,0); }
-      to { transform: translate3d(-120px,120px,0); }
-    }
-    @keyframes sparkle-rise {
-      0%, 100% { opacity: .18; transform: translateY(0) scale(.7) rotate(0deg); }
-      35% { opacity: .88; }
-      50% { transform: translateY(-18px) scale(1) rotate(45deg); }
-    }
-    @keyframes rotate-ring {
-      from { transform: rotate(0); }
-      to { transform: rotate(360deg); }
-    }
-    @keyframes float-slow {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-18px); }
-    }
-    @keyframes breathe {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.025); }
-    }
-    @media (max-width: 900px) {
-      .hero,
-      .feature-grid,
-      .flow {
-        grid-template-columns: 1fr;
-      }
-      .hero { padding-bottom: 48px; }
-      .portal-card { min-height: 460px; }
-      .topnav { display: none; }
-      .trust-row { grid-template-columns: 1fr; }
-      .feature-card { min-height: auto; }
-    }
-    @media (max-width: 560px) {
-      body { font-size: 14px; }
-      .landing-shell { width: min(100% - 22px, 1180px); padding-top: 18px; }
-      .topbar { margin-bottom: 24px; }
-      .brand { gap: 10px; font-size: .95rem; letter-spacing: .04em; }
-      .brand-mark { width: 38px; height: 38px; flex: 0 0 38px; }
-      .hero { padding-top: 6px; gap: 26px; }
-      .hero h1 { font-size: clamp(2.45rem, 14vw, 4rem); line-height: .92; letter-spacing: -.06em; }
-      .hero-copy { font-size: 1rem; }
-      .cta-row { align-items: stretch; }
-      .cta-primary, .cta-secondary {
-        width: 100%;
-        min-height: 52px;
-        padding: 0 16px;
-        white-space: normal;
-        text-align: center;
-        line-height: 1.2;
-      }
-      .portal-card { min-height: auto; padding: 24px 12px 118px; border-radius: 28px; overflow: visible; }
-      .portal-card::before { width: 88%; }
-      .portal-card::after { width: 68%; }
-      .mystic-avatar { width: min(78vw, 320px); }
-      .floating-note {
-        display: block;
-        max-width: min(78vw, 270px);
-        padding: 11px 13px;
-        font-size: .86rem;
-        line-height: 1.35;
-      }
-      .floating-note.right { right: 10px; top: 14px; }
-      .floating-note.left { left: 10px; bottom: 14px; }
-      .section { padding: 54px 0; }
-      .section-title h2, .wide-cta h2 { letter-spacing: -.035em; }
-      .feature-card { padding: 20px; border-radius: 22px; }
-      .wide-cta { padding: 26px 20px; border-radius: 26px; }
-      .tabs button { flex: 1 1 100%; }
+      .tabs button { flex: 1 1 calc(50% - 8px); }
     }
   </style>
 </head>
 <body class="legal-page">
-  <div class="legal-home-link"><a href="/">← На лендинг</a></div>
-  <div class="wrap legal-wrap" id="legal">
+  <div class="legal-home-link"><a href="/">← На сайт</a></div>
+  <div class="wrap" id="legal">
     <header>
-      <h1>Юридическая информация</h1>
-      <p>Лея · публичная оферта, соглашение и документы по персональным данным</p>
+      <h1>Документы</h1>
+      <p>Лея · astro-leya.ru · редакция от 25.09.2026</p>
     </header>
-
     <nav class="tabs" role="tablist">
       <button type="button" class="active" data-tab="offer">Публичная оферта</button>
-      <button type="button" data-tab="terms">Пользовательское соглашение</button>
-      <button type="button" data-tab="privacy">Политика ПДн</button>
-      <button type="button" data-tab="consent">Согласие на ПДн</button>
+      <button type="button" class="" data-tab="privacy">Политика ПДн</button>
+      <button type="button" class="" data-tab="consent">Согласие на ПДн</button>
+      <button type="button" class="" data-tab="mailing">Рассылка</button>
+      <button type="button" class="" data-tab="requisites">Реквизиты</button>
     </nav>
-
-    <!-- ОФЕРТА -->
     <article id="offer" class="panel active" role="tabpanel">
-      <h2>Публичная оферта о заключении договора об оказании услуг</h2>
-      <p class="meta">Редакция от 12.06.2026</p>
-
-      <h3>1. Общие положения</h3>
-      <p>Настоящая Публичная оферта содержит условия заключения Договора об оказании услуг (далее — «Договор»). Офертой признаётся предложение, адресованное неопределённому кругу лиц, содержащее все существенные условия договора.</p>
-      <p>Совершение действий, указанных в настоящей Оферте, является акцептом и означает заключение Договора на изложенных условиях (ст. 437, 438 ГК РФ).</p>
-
-      <p><strong>Термины:</strong></p>
-      <ul>
-        <li><strong>Исполнитель</strong> — Карпова Елена Игоревна, самозанятый (НПД).</li>
-        <li><strong>Заказчик / Пользователь</strong> — физическое лицо, использующее сервис Лея.</li>
-        <li><strong>Сервис</strong> — Telegram-бот <strong>Лея</strong> (<a href="https://t.me/astro_leia_bot">@astro_leia_bot</a>) и сайт, предоставляющие доступ к таро-разборам, нумерологии, астрологии, утренней рассылке и платным продуктам духовного наставника.</li>
-        <li><strong>Услуги</strong> — (1) бесплатные мини-разборы по продуктам «Любовь», «Деньги», «Негатив», «Личный прогноз», «Ответ на вопрос»; (2) полные платные разборы по тем же направлениям; (3) пакеты «Счастливая женщина», «ЛЮБОВЬ+», «VIP»; (4) утренняя рассылка (карта дня, число дня, астросовет); (5) еженедельный гороскоп; (6) нумерологический портрет; (7) реферальная программа и иные функции Сервиса.</li>
-        <li><strong>Баланс</strong> — предоплаченный лицевой счёт Заказчика в Сервисе в рублях (для реферальных выплат и legacy-функций), с которого может списываться стоимость отдельных услуг, если это предусмотрено в боте.</li>
-      </ul>
-
-      <h3>2. Предмет Договора</h3>
-      <ul>
-        <li>Исполнитель оказывает Заказчику Услуги, Заказчик оплачивает их в порядке и на условиях настоящей Оферты.</li>
-        <li>Сервис Лея не является разработчиком моделей ИИ: при генерации разборов и рассылок Исполнитель организует обращение к внешним AI-провайдерам (KIE API и др.) с передачей запроса Заказчика, данных анкеты и системных инструкций, настроенных для Сервиса.</li>
-        <li>Результаты таро-раскладов, интерпретаций и советов носят развлекательно-информационный характер и не являются профессиональной психологической, медицинской или юридической консультацией.</li>
-        <li>Наименование, объём и стоимость Услуг определяются при оформлении заказа в боте и/или в разделе «Тарифы».</li>
-        <li>Исполнитель вправе привлекать третьих лиц (хостинг, платёжные системы, AI-провайдеры) и несёт ответственность за их действия как за свои в пределах, установленных законом.</li>
-        <li>Акцепт выражается в: начале использования бота @astro_leia_bot, прохождении анкеты, заказе разборов, оплате услуг или оформлении пакета ЛЮБОВЬ+ / VIP / «Счастливая женщина».</li>
-      </ul>
-
-      <h3>3. Права и обязанности Сторон</h3>
-      <p><strong>Исполнитель обязуется:</strong> оказывать Услуги в соответствии с Офертой; обеспечивать работу Сервиса в разумных пределах; обрабатывать персональные данные в соответствии с законодательством РФ и Политикой ПДн.</p>
-      <p><strong>Исполнитель вправе:</strong> изменять функционал, тарифы, лимиты бесплатного доступа и условия Оферты в одностороннем порядке с публикацией новой редакции на сайте (для новых заказов).</p>
-      <p><strong>Заказчик обязуется:</strong> предоставлять достоверные данные; не использовать Сервис для незаконных целей; не злоупотреблять бесплатным доступом; соблюдать настоящую Оферту и законодательство РФ.</p>
-      <p><strong>Заказчик вправе:</strong> использовать остаток на Балансе для оплаты Услуг в рамках Сервиса; обращаться в службу поддержки по вопросам работы Сервиса (контакты — в футере сайта).</p>
-
-      <h3>4. Цена и порядок расчётов</h3>
-      <ul>
-        <li><strong>Бесплатно:</strong> нумерологический портрет после анкеты; мини-версии разборов (по одному разу на продукт); утренняя рассылка — <strong>7 дней</strong> с момента регистрации; еженедельный гороскоп по понедельникам.</li>
-        <li><strong>Полные разборы (разовая оплата):</strong> Любовь — <strong>550 ₽</strong>; Денежный код — <strong>390 ₽</strong>; Диагностика негатива — <strong>300 ₽</strong>; Личный прогноз — <strong>550 ₽</strong>; Ответ на вопрос — <strong>500 ₽</strong>.</li>
-        <li><strong>Пакет «Счастливая женщина»</strong> — <strong>1 290 ₽</strong>: три полных разбора (Любовь, Деньги, Прогноз).</li>
-        <li><strong>ЛЮБОВЬ+</strong> — <strong>990 ₽/мес</strong>: безлимитные полные разборы по теме «Любовь».</li>
-        <li><strong>VIP-пакет</strong> — <strong>2 490 ₽/мес</strong>: все полные разборы без дополнительной оплаты.</li>
-        <li>Актуальные цены и описания — в боте <a href="https://t.me/astro_leia_bot">@astro_leia_bot</a>.</li>
-        <li>Расчёты — в безналичной форме через платёжный сервис Platega; активация разбора или пакета после успешной оплаты.</li>
-      </ul>
-
-      <h3>4.1. Баланс, списания и возвраты</h3>
-      <ul>
-        <li><strong>Возврат денежных средств на банковскую карту или счёт не производится.</strong> Суммы, поступившие на Баланс при пополнении, остаются на Балансе Заказчика и могут быть использованы только для оплаты Услуг в Сервисе.</li>
-        <li><strong>Срок действия Баланса не ограничен</strong> — неиспользованные средства на Балансе не сгорают и не аннулируются по истечении времени, если иное прямо не предусмотрено новой редакцией Оферты для будущих пополнений.</li>
-        <li><strong>Списание</strong> производится только за <strong>успешно оказанные</strong> Услуги: сформированный полный разбор, активированный пакет после оплаты и иные операции, явно отмеченные в боте как оплачиваемые.</li>
-        <li>При <strong>ошибке внешнего AI-провайдера</strong>, техническом сбое Сервиса или ином неуспешном результате — <strong>списание с Баланса не производится</strong>.</li>
-        <li>Заказчик до списания видит ориентировочную стоимость в боте; фактическое списание соответствует успешно оказанной Услуге согласно тарифам.</li>
-      </ul>
-
-      <h3>4.2. Услуги с использованием ИИ</h3>
-      <p>Услуги с использованием алгоритмов искусственного интеллекта оказываются через внешних провайдеров (KIE API и др.) по запросу Заказчика, с применением системных инструкций Сервиса. Результат предоставляется «как есть». ИИ может ошибаться; интерпретации разборов и советы носят субъективный развлекательно-информационный характер. Исполнитель не гарантирует точность предсказаний и не несёт ответственности за решения, принятые Заказчиком на основе ответов Сервиса.</p>
-
-      <h3>4.3. Реферальная программа</h3>
-      <p>Заказчик может участвовать в реферальной программе и получать вознаграждение в размере <strong>40%</strong> от платежей привлечённых пользователей согласно условиям в боте. Вывод вознаграждения осуществляется в <strong>USDT</strong> на кошелёк, указанный Заказчиком, в порядке и сроки, определённые Исполнителем. Исполнитель вправе приостановить выплаты при подозрении на мошенничество или нарушение условий программы.</p>
-
-      <h3>5. Конфиденциальность</h3>
-      <p>Стороны обеспечивают защиту персональных данных в соответствии с 152-ФЗ и 149-ФЗ. Подробности — в Политике обработки персональных данных.</p>
-
-      <h3>6. Форс-мажор</h3>
-      <p>Стороны освобождаются от ответственности при обстоятельствах непреодолимой силы (стихийные бедствия, действия властей, сбои связи и т.п.) с уведомлением другой Стороны в разумный срок.</p>
-
-      <h3>7. Ответственность</h3>
-      <p>Стороны несут ответственность по законодательству РФ. Исполнитель не отвечает за содержание советов и интерпретаций, сгенерированных ИИ, и за перерывы работы по вине третьих лиц или Заказчика. Сервис не заменяет профессиональную помощь психолога, врача или юриста.</p>
-
-      <h3>8. Срок действия</h3>
-      <p>Оферта действует с момента публикации до отзыва. Договор действует до полного исполнения обязательств.</p>
-
-      <h3>9. Разрешение споров</h3>
-      <p>Споры решаются путём переговоров, обязателен досудебный порядок. Подсудность — по месту жительства Исполнителя, если иное не установлено императивными нормами ЗоЗПП.</p>
-
-      <div class="requisites">
-        <h3>Реквизиты Исполнителя</h3>
-        <p>
-          <strong>Карпова Елена Игоревна</strong><br>
-          Самозанятый (плательщик НПД)<br>
-          ИНН 234594723806<br>
-          E-mail: <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a>
-        </p>
-      </div>
+<p class="meta">Редакция от 25.09.2026</p>
+<h2>1. Термины</h2>
+<p>1.1. <strong>Исполнитель</strong> — Карпова Елена Игоревна, применяющая специальный налоговый режим «Налог на профессиональный доход» (самозанятая), ИНН 234594723806.</p>
+<p>1.2. <strong>Пользователь</strong> — дееспособное физическое лицо, достигшее 18 лет, которое пользуется Сайтом.</p>
+<p>1.3. <strong>Сайт</strong> — astro-leya.ru, включая Личный кабинет (astro-leya.ru/lk).</p>
+<p>1.4. <strong>Бот</strong> — Telegram-бот Лея (@astro_leia_bot). Использование Бота регулируется отдельными документами Бота.</p>
+<p>1.5. <strong>Лея</strong> — персонаж сервиса. Ответы Леи формирует программа с использованием технологий искусственного интеллекта (ИИ). Лея не является человеком, тарологом, астрологом или психологом.</p>
+<p>1.6. <strong>Разбор</strong> — текст, который Сайт формирует по выбранной Пользователем теме на основе ответов на вопросы, выбранных карт таро и/или даты рождения. <strong>Мини-разбор</strong> — сокращённая бесплатная версия. <strong>Полный разбор</strong> — расширенная платная версия.</p>
+<p>1.7. <strong>Пакет</strong> — набор разборов или доступ к функциям сервиса на срок, указанный в описании пакета.</p>
+<p>1.8. <strong>Подписка «Безлимит»</strong> — доступ к разборам на Сайте без ограничения количества на 30 дней с автоматическим продлением.</p>
+<p>1.9. <strong>Аккаунт</strong> — учётная запись Пользователя на Сайте. Создаётся при входе через Яндекс ID, VK ID или Telegram либо при указании адреса электронной почты.</p>
+<p>1.10. <strong>Платёжный сервис</strong> — ООО «Робокасса» (Robokassa), через которое принимаются платежи.</p>
+<h2>2. Общие положения и акцепт</h2>
+<p>2.1. Настоящая оферта — предложение Исполнителя заключить договор на указанных ниже условиях (п. 2 ст. 437 ГК РФ).</p>
+<p>2.2. Акцептом оферты является оплата любой платной услуги на Сайте. Пользование бесплатными функциями Сайта означает согласие с условиями оферты в части, применимой к бесплатным функциям.</p>
+<p>2.3. Сайт предназначен для лиц старше 18 лет.</p>
+<h2>3. Предмет договора</h2>
+<p>3.1. Исполнитель оказывает Пользователю информационно-развлекательные услуги: формирует разборы по таро, нумерологии (включая матрицу судьбы), совместимости по датам рождения, а также предоставляет возможность переписки с Леей.</p>
+<p>3.2. Разборы и ответы Леи создаются с использованием ИИ и носят развлекательный характер. Они не являются медицинской, психологической, юридической, финансовой или иной профессиональной консультацией, не являются прогнозом, на который можно полагаться при принятии решений, и не гарантируют наступления каких-либо событий.</p>
+<p>3.3. ИИ может выдавать неточные, неполные или противоречивые ответы. Исполнитель не гарантирует, что результат совпадёт с ожиданиями Пользователя.</p>
+<p>3.4. Если Пользователю нужна помощь в трудной жизненной ситуации, со здоровьем или деньгами, ему следует обратиться к профильному специалисту.</p>
+<h2>4. Доступ к Сайту и Аккаунт</h2>
+<p>4.1. Мини-разбор можно получить без регистрации. В этом случае история разборов привязывается к браузеру Пользователя и может быть потеряна при очистке данных браузера.</p>
+<p>4.2. Чтобы сохранить разбор, получить ссылку на него и оплатить полный разбор, Пользователь указывает адрес электронной почты или входит через Яндекс ID, VK ID или Telegram.</p>
+<p>4.3. При входе через Яндекс ID, VK ID или Telegram Исполнитель получает от соответствующего сервиса данные, которые Пользователь разрешил передать (состав указан в Политике обработки персональных данных). Условия работы этих сервисов определяют их владельцы.</p>
+<p>4.4. Пользователь может привязать к Аккаунту свой Telegram. После привязки профиль, переписка с Леей и история разборов в Боте и на Сайте становятся общими.</p>
+<p>4.5. Пользователь отвечает за сохранность доступа к своей почте и аккаунтам Яндекс, VK и Telegram. Действия, совершённые через Аккаунт, считаются совершёнными Пользователем.</p>
+<p>4.6. Ссылка на разбор, отправленная на почту, действует 1 год с момента создания разбора.</p>
+<h2>5. Услуги и цены</h2>
+<p>5.1. Бесплатно: мини-разбор по каждой теме; расклад «Одна карта» по теме «Есть ли у него другая?» и другие бесплатные расклады, отмеченные на Сайте.</p>
+<p>5.2. Полный разбор оплачивается разово. После оплаты Пользователь может задать Лее до 10 вопросов по этому разбору.</p>
+<p>5.3. Пакеты оплачиваются разово и не продлеваются автоматически. По окончании срока пакета Пользователь может оплатить его снова. Состав и срок каждого пакета указаны в его описании на Сайте.</p>
+<p>5.4. Подписка «Безлимит» даёт на 30 дней доступ к разборам на Сайте без ограничения количества. Подписка не открывает VIP-доступ в Боте. Условия автопродления — в разделе 6.</p>
+<p>5.5. Стоимость услуги указывается на Сайте перед оплатой. Цена, показанная Пользователю на странице оплаты, окончательная и изменению для этого заказа не подлежит.</p>
+<p>5.6. Цены на дату настоящей редакции:</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Услуга</th><th>Цена</th></tr></thead>
+<tbody>
+<tr><td>Полный разбор по картам таро, денежный канал, совместимость</td><td>590 ₽</td></tr>
+<tr><td>То же вместе с дополнительным разбором (вариант «Выгоднее»)</td><td>890 ₽</td></tr>
+<tr><td>Матрица судьбы</td><td>990 ₽</td></tr>
+<tr><td>Матрица судьбы вместе с дополнительным разбором (вариант «Выгоднее»)</td><td>1 290 ₽</td></tr>
+<tr><td>Пакет «Счастливая женщина» (три полных разбора: совместимость, денежный расчёт, прогноз на месяц)</td><td>990 ₽</td></tr>
+<tr><td>Пакет ЛЮБОВЬ+ (30 дней)</td><td>1 200 ₽</td></tr>
+<tr><td>VIP-пакет (30 дней)</td><td>2 300 ₽</td></tr>
+<tr><td>Подписка «Безлимит»</td><td>590 ₽ за 30 дней, с автопродлением</td></tr>
+</tbody></table></div>
+<p>5.7. Исполнитель применяет налоговый режим НПД, НДС не облагается. Чек формируется в приложении «Мой налог» и направляется Пользователю через Платёжный сервис.</p>
+<h2 id="subscription">6. Подписка «Безлимит»: автоматическое продление</h2>
+<p>6.1. Подписка оформляется только при отдельном согласии Пользователя на регулярные списания (отметка в чекбоксе перед оплатой). Факт и время согласия сохраняются.</p>
+<p>6.2. Первое списание происходит при оформлении. Далее 590 ₽ списываются каждые 30 дней с того же платёжного средства, пока Пользователь не отменит подписку.</p>
+<p>6.3. Не позднее чем за 1 сутки до очередного списания Исполнитель направляет Пользователю уведомление на электронную почту с суммой, датой списания и ссылкой на отмену.</p>
+<p>6.4. Отменить подписку и отказаться от использования платёжного средства можно в любой момент одним из способов:</p>
+<ul>
+<li>в Личном кабинете, кнопкой «Отменить подписку»;</li>
+<li>письмом на elenakarpva@gmail.com;</li>
+<li>через поддержку @leia_astro_help.</li>
+</ul>
+<p>6.5. Исполнитель прекращает списания с момента получения отказа. Если списание всё же произошло после отказа, Исполнитель возвращает всю сумму в течение 10 дней.</p>
+<p>6.6. После отмены доступ сохраняется до конца уже оплаченного периода.</p>
+<p>6.7. Если списание не прошло, подписка прекращается, доступ закрывается по окончании оплаченного периода.</p>
+<p>6.8. Об изменении цены подписки Исполнитель уведомляет Пользователя по почте не позднее чем за 7 дней. Если Пользователь не согласен, он отменяет подписку; до этого списывается прежняя цена.</p>
+<h2>7. Порядок оплаты</h2>
+<p>7.1. Оплата производится через Платёжный сервис по СБП или банковской картой.</p>
+<p>7.2. Исполнитель не получает и не хранит полные данные банковских карт. Их обрабатывает Платёжный сервис.</p>
+<p>7.3. Обязанность Пользователя по оплате считается исполненной с момента поступления подтверждения платежа от Платёжного сервиса.</p>
+<h2>8. Момент оказания услуги</h2>
+<p>8.1. Полный разбор считается оказанным с момента, когда его текст стал доступен Пользователю на Сайте или в Личном кабинете.</p>
+<p>8.2. Пакет и подписка считаются предоставленными с момента открытия доступа на соответствующий срок.</p>
+<p>8.3. Если после оплаты полный разбор не сформировался из-за технической ошибки, Исполнитель формирует его повторно или, по выбору Пользователя, возвращает оплату полностью.</p>
+<h2>9. Отказ от услуги и возврат денег</h2>
+<p>9.1. Пользователь вправе отказаться от услуги в любое время, оплатив Исполнителю фактически понесённые расходы (ст. 32 Закона «О защите прав потребителей»).</p>
+<p>9.2. Если полный разбор оплачен, но ещё не предоставлен, возвращается вся сумма.</p>
+<p>9.3. Полный разбор, текст которого уже предоставлен, считается оказанной услугой. Возврат за него производится, если разбор оказан ненадлежащим образом: текст пустой, обрывается, не соответствует оплаченной теме.</p>
+<p>9.4. При отказе от пакета или подписки возвращается стоимость неиспользованной части: для пакетов с набором разборов — стоимость неполученных разборов, для пакетов и подписки на срок — пропорционально неиспользованным дням, за вычетом фактически понесённых расходов.</p>
+<p>9.5. Несогласие Пользователя с содержанием разбора (с трактовкой карт, прогнозом, советами) не является недостатком услуги.</p>
+<p>9.6. Требование о возврате направляется письмом на elenakarpva@gmail.com. В письме указываются: почта или аккаунт, через который оплачивал, дата и сумма платежа, причина. Исполнитель отвечает в течение 10 дней. Деньги возвращаются тем же способом, которым была произведена оплата, в течение 10 дней с даты удовлетворения требования. Срок зачисления зависит от банка.</p>
+<h2>10. Правила пользования Сайтом</h2>
+<p>10.1. Пользователь обязуется:</p>
+<ul>
+<li>указывать о себе достоверные данные;</li>
+<li>не использовать Сайт в незаконных целях;</li>
+<li>не пытаться получить несанкционированный доступ к Сайту, не перегружать его автоматическими запросами, не обходить ограничения бесплатных функций;</li>
+<li>не отправлять Лее материалы, нарушающие права третьих лиц, оскорбительные или противоправные материалы.</li>
+</ul>
+<p>10.2. Указывая дату рождения другого человека (например, для расчёта совместимости), Пользователь подтверждает, что вправе сообщить эти данные, и указывает только дату, без имени и контактов.</p>
+<p>10.3. В переписке с Леей не следует сообщать сведения о здоровье, паспортные и платёжные данные, пароли, а также данные третьих лиц.</p>
+<p>10.4. При нарушении этих правил Исполнитель вправе ограничить доступ к Аккаунту. Если доступ ограничен к оплаченной услуге, Пользователь вправе потребовать возврат за неиспользованную часть в порядке раздела 9.</p>
+<h2>11. Ответственность</h2>
+<p>11.1. Исполнитель не отвечает за решения, которые Пользователь принял на основании разборов и ответов Леи.</p>
+<p>11.2. Исполнитель прилагает разумные усилия для бесперебойной работы Сайта, но не гарантирует работу без перерывов. Исполнитель не отвечает за перебои, вызванные действиями третьих лиц: хостинга, Платёжного сервиса, провайдеров ИИ, Яндекса, VK, Telegram, операторов связи.</p>
+<p>11.3. Ограничения ответственности в этом разделе применяются в пределах, допустимых законодательством о защите прав потребителей.</p>
+<h2>12. Интеллектуальная собственность</h2>
+<p>12.1. Права на программный код, дизайн, тексты и изображения Сайта принадлежат Исполнителю или используются им на законных основаниях.</p>
+<p>12.2. Пользователь может использовать полученные разборы для личных некоммерческих целей.</p>
+<h2>13. Персональные данные</h2>
+<p>13.1. Персональные данные обрабатываются в соответствии с Политикой обработки персональных данных, размещённой на astro-leya.ru/legal.</p>
+<h2>14. Изменение оферты</h2>
+<p>14.1. Исполнитель вправе изменять оферту. Новая редакция действует с момента публикации на Сайте. Изменения не распространяются на услуги, оплаченные до публикации новой редакции, за исключением случаев, когда новая редакция улучшает положение Пользователя.</p>
+<h2>15. Разрешение споров</h2>
+<p>15.1. Претензии направляются на elenakarpva@gmail.com. Срок ответа — 10 дней.</p>
+<p>15.2. Если спор не урегулирован, он рассматривается в суде в соответствии с законодательством РФ. Пользователь вправе обратиться в суд по своему месту жительства или пребывания (ст. 17 Закона «О защите прав потребителей»).</p>
+<h2>16. Реквизиты Исполнителя</h2>
+<p>Карпова Елена Игоревна Самозанятая (плательщик налога на профессиональный доход) ИНН 234594723806 E-mail: elenakarpva@gmail.com Телефон: +7 926 777-69-85 Поддержка: t.me/leia_astro_help Сайт: astro-leya.ru</p>
     </article>
-
-    <!-- ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ -->
-    <article id="terms" class="panel" role="tabpanel">
-      <h2>Пользовательское соглашение</h2>
-      <p class="meta">Редакция от 12.06.2026 · Сервис Лея · Telegram-бот Лея</p>
-
-      <h3>1. Общие положения</h3>
-      <p>1.1. Настоящее Соглашение регулирует отношения между правообладателем сервиса Лея и пользователями Telegram-бота.</p>
-      <p>1.2. Правообладатель:<br>
-        <strong>Карпова Елена Игоревна</strong>, физическое лицо — плательщик налога на профессиональный доход (самозанятый).<br>
-        ИНН 234594723806<br>
-        E-mail: <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a>
-      </p>
-      <p>1.3. Используя бот, Пользователь подтверждает, что ознакомился с настоящим Соглашением, офертой и юридической информацией на сайте, и принимает их условия.</p>
-
-      <h3>2. Предмет</h3>
-      <p>2.1. Правообладатель предоставляет доступ к платформе Лея (таро, нумерология, астрология), которая:</p>
-      <ul>
-        <li><strong>Таро-разборы:</strong> мини и полные версии по направлениям «Любовь», «Деньги», «Негатив», «Личный прогноз», «Ответ на вопрос»;</li>
-        <li><strong>Нумерология:</strong> персональный портрет, число дня, денежный код;</li>
-        <li><strong>Астрология:</strong> астросовет по знаку зодиака, еженедельный гороскоп;</li>
-        <li><strong>Рассылки:</strong> утренняя (карта дня, число, астросовет), вечернее напоминание;</li>
-        <li><strong>Пакеты:</strong> «Счастливая женщина», ЛЮБОВЬ+, VIP;</li>
-        <li>дополнительно: реферальная программа (40%, вывод в USDT), управление профилем и анкетой.</li>
-      </ul>
-      <p>2.2. Сервис предоставляется «как есть». Лея не является разработчиком моделей ИИ. Результаты разборов, рассылок и советов носят развлекательно-информационный характер и могут быть неточными.</p>
-
-      <h3>3. Ограничение ответственности</h3>
-      <ul>
-        <li>Сервис не предоставляет медицинских, психологических, юридических или финансовых консультаций.</li>
-        <li>Исполнитель не гарантирует бесперебойную работу 24/7, но стремится поддерживать доступность Сервиса.</li>
-        <li>ИИ-функции могут давать неточные, противоречивые или неполные результаты; Пользователь принимает решения на свой страх и риск.</li>
-        <li>Интерпретации таро и духовные советы — субъективны и не являются гарантией будущих событий.</li>
-      </ul>
-
-      <h3>4. Права и обязанности Пользователя</h3>
-      <p>Пользователь вправе использовать Сервис для личных целей в рамках функционала и тарифов; прекратить использование в любой момент.</p>
-      <p>Пользователь обязуется не использовать Сервис для незаконных целей; не отправлять контент, нарушающий права третьих лиц; не пытаться взломать или перегрузить Сервис; не обходить лимиты бесплатного доступа (мини-разборы, утренняя рассылка и иные ограничения, указанные в боте).</p>
-
-      <h3>5. Права Правообладателя</h3>
-      <p>Изменять функционал, тарифы и лимиты; приостанавливать доступ при нарушениях или технических работах; ограничивать доступ при злоупотреблениях бесплатным тарифом.</p>
-
-      <h3>6. Платные услуги</h3>
-      <ul>
-        <li><strong>Бесплатно:</strong> нумеропортрет, мини-разборы (по одному на продукт), утренняя рассылка 7 дней, гороскоп по понедельникам.</li>
-        <li><strong>Разовые разборы:</strong> Любовь 550 ₽, Деньги 390 ₽, Негатив 300 ₽, Прогноз 550 ₽, Вопрос 500 ₽.</li>
-        <li><strong>Пакеты:</strong> «Счастливая женщина» 1 290 ₽, ЛЮБОВЬ+ 990 ₽/мес, VIP 2 490 ₽/мес.</li>
-        <li>Цены отображаются в боте <a href="https://t.me/astro_leia_bot">@astro_leia_bot</a>.</li>
-        <li>Оплата через Platega означает согласие с условиями; разбор или пакет активируется после успешной оплаты.</li>
-        <li><strong>Возврат денежных средств на карту/счёт не производится.</strong> При ошибках AI-провайдеров и неуспешных генерациях оплата не взимается повторно.</li>
-      </ul>
-
-      <h3>7. Реферальная программа</h3>
-      <p>Пользователь может приглашать других пользователей по реферальной ссылке и получать 40% от их платежей. Вывод начислений — в USDT на указанный кошелёк. Условия, минимальная сумма вывода и сроки обработки — в боте. Правообладатель вправе отказать в выплате при нарушении правил программы.</p>
-
-      <h3>8. Интеллектуальная собственность</h3>
-      <p>Права на код, дизайн, тексты шаблонов и бренд Лея принадлежат Правообладателю. Контент, создаваемый Пользователем (сообщения, фото), остаётся его собственностью; Пользователь предоставляет Исполнителю право обрабатывать его для оказания Услуг.</p>
-
-      <h3>9. Персональные данные</h3>
-      <p>Обработка — по Политике ПДн и Согласию на обработку персональных данных.</p>
-
-      <h3>10. Изменение Соглашения</h3>
-      <p>Новая редакция вступает в силу с момента публикации на сайте.</p>
-
-      <h3>11. Контакты</h3>
-      <p>Карпова Елена Игоревна · <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a></p>
-    </article>
-
-    <!-- ПОЛИТИКА ПДн -->
     <article id="privacy" class="panel" role="tabpanel">
-      <h2>Политика обработки персональных данных</h2>
-      <p class="meta">152-ФЗ «О персональных данных» · Редакция от 12.06.2026</p>
-
-      <h3>1. Общие положения</h3>
-      <p>1.1. Политика определяет порядок обработки персональных данных пользователей Telegram-бота Лея (<a href="https://t.me/astro_leia_bot">@astro_leia_bot</a>).</p>
-      <p>1.2. Оператор: <strong>Карпова Елена Игоревна</strong>, самозанятый (плательщик НПД), ИНН 234594723806. E-mail: <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a></p>
-
-      <h3>2. Какие данные обрабатываются</h3>
-      <ul>
-        <li>идентификатор Telegram (user_id), имя пользователя (@username), имя из профиля Telegram;</li>
-        <li>данные анкеты: имя, дата и время рождения, город рождения, ответы на вопросы онбординга;</li>
-        <li>данные таро-разборов: вопросы, выбранные карты, сгенерированные интерпретации;</li>
-        <li>данные о платежах и пакетах (суммы, даты; без полных реквизитов карт — их обрабатывает Platega);</li>
-        <li>данные реферальной программы: реферальные ссылки, начисления, адрес USDT-кошелька для вывода;</li>
-        <li>технические данные: IP, user-agent при посещении сайта;</li>
-        <li>переписка с ботом и обращения в поддержку.</li>
-      </ul>
-
-      <h3>3. Цели обработки</h3>
-      <ul>
-        <li>регистрация и идентификация в Сервисе;</li>
-        <li>оказание услуг: таро-разборы, нумерология, астрология, рассылки, пакеты;</li>
-        <li>передача запросов и данных анкеты внешним AI-провайдерам (KIE API) по запросу Пользователя;</li>
-        <li>обработка платежей, активация пакетов, реферальная программа;</li>
-        <li>техподдержка и улучшение Сервиса;</li>
-        <li>исполнение требований законодательства РФ.</li>
-      </ul>
-
-      <h3>4. Правовые основания</h3>
-      <p>Согласие Пользователя; исполнение договора (оферты); законные интересы Оператора при соблюдении прав субъекта.</p>
-
-      <h3>5. Передача третьим лицам</h3>
-      <p>Данные могут передаваться:</p>
-      <ul>
-        <li>хостинг-провайдерам (VPS, облачное хранилище);</li>
-        <li>платёжным системам (Platega и др.);</li>
-        <li>провайдерам ИИ — KIE API (текстовые запросы и данные анкеты);</li>
-        <li>Telegram (как платформа бота).</li>
-      </ul>
-      <p>Передача иным лицам — только по закону или с согласия Пользователя.</p>
-
-      <h3>6. Хранение и удаление</h3>
-      <p>Данные хранятся до достижения целей обработки или удаления аккаунта. По запросу — удаление или обезличивание, если иное не требуется законом.</p>
-
-      <h3>7. Права Пользователя</h3>
-      <p>Запросить информацию об обработке, уточнение, блокирование, удаление, отозвать согласие — на <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a> или через службу поддержки (контакты — в футере сайта).</p>
-
-      <h3>8. Трансграничная передача</h3>
-      <p>Возможна при использовании зарубежных серверов и AI-провайдеров (KIE API, 302.AI, ElevenLabs) при наличии согласия Пользователя и соблюдении 152-ФЗ.</p>
-
-      <h3>9. Изменения Политики</h3>
-      <p>Актуальная версия — на сайте.</p>
+<p class="meta">Редакция от 25.09.2026. Составлена в соответствии с Федеральным законом от 27.07.2006 № 152-ФЗ «О персональных данных».</p>
+<h2>1. Оператор</h2>
+<p>Карпова Елена Игоревна, самозанятая, ИНН 234594723806, e-mail для обращений по персональным данным: elenakarpva@gmail.com.</p>
+<h2>2. Область действия</h2>
+<p>2.1. Политика применяется к данным, которые оператор получает через сайт astro-leya.ru и Личный кабинет.</p>
+<p>2.2. Если Пользователь привязал Telegram, данные Бота и Сайта объединяются в одном профиле. Обработка данных в Боте описана в политике Бота.</p>
+<h2>3. Чьи данные обрабатываются</h2>
+<ul>
+<li>посетители Сайта;</li>
+<li>пользователи, получающие разборы без регистрации (гости);</li>
+<li>пользователи, указавшие почту или вошедшие через Яндекс ID, VK ID или Telegram;</li>
+<li>лица, дату рождения которых Пользователь указал для расчёта совместимости (обрабатывается только дата, без имени).</li>
+</ul>
+<h2>4. Какие данные, зачем и на каком основании</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Цель</th><th>Данные</th><th>Основание</th></tr></thead>
+<tbody>
+<tr><td>Сформировать разбор</td><td>ответы на вопросы, выбранные карты, дата рождения, город и время рождения (если указаны), вторая дата рождения для совместимости, гостевой идентификатор браузера</td><td>исполнение договора (п. 5 ч. 1 ст. 6 152-ФЗ)</td></tr>
+<tr><td>Создать Аккаунт и сохранить разборы</td><td>адрес электронной почты; при входе через Яндекс ID, VK ID, Telegram — идентификатор в сервисе, имя, фамилия, username, аватар, а также дата рождения и почта, если Пользователь разрешил их передать</td><td>согласие; исполнение договора</td></tr>
+<tr><td>Профиль в Личном кабинете</td><td>имя, дата, город и время рождения</td><td>исполнение договора</td></tr>
+<tr><td>Переписка с Леей</td><td>тексты сообщений Пользователя и ответов</td><td>исполнение договора</td></tr>
+<tr><td>Приём оплаты, чеки, возвраты</td><td>почта, сумма, дата, номер заказа, статус платежа, способ оплаты (без полных данных карты)</td><td>исполнение договора; требования налогового законодательства</td></tr>
+<tr><td>Подписка «Безлимит»</td><td>всё из строки выше, а также факт и время согласия на автосписания, дата следующего списания, факт отказа</td><td>исполнение договора; требования ст. 16.1 Закона «О защите прав потребителей»</td></tr>
+<tr><td>Рассылка разборов и предложений</td><td>адрес электронной почты</td><td>отдельное согласие на рассылку</td></tr>
+<tr><td>Статистика посещаемости и оценка рекламы</td><td>cookie, идентификаторы Яндекс Метрики, IP-адрес, данные о браузере и устройстве, страницы и действия на Сайте, источник перехода и рекламные метки (UTM, yclid)</td><td>согласие (через cookie-баннер)</td></tr>
+<tr><td>Безопасность, поддержка, ответы на обращения</td><td>IP-адрес, технические журналы, текст обращений</td><td>законный интерес оператора; исполнение договора</td></tr>
+</tbody></table></div>
+<p>Специальные категории персональных данных (о здоровье, убеждениях, интимной жизни и т.п.) и биометрия не собираются. Пользователя просят не сообщать их в переписке с Леей.</p>
+<h2 id="cookies">5. Cookie и Яндекс Метрика</h2>
+<p>5.1. Сайт использует:</p>
+<ul>
+<li>необходимые данные браузера (localStorage): гостевой идентификатор, чтобы сохранить разбор до входа; сведения об источнике перехода; данные сессии входа. Без них Сайт не работает;</li>
+<li>Яндекс Метрику (сервис ООО «Яндекс»): cookie и аналогичные технологии, включая Вебвизор, для статистики посещений, анализа поведения на Сайте и оценки эффективности рекламы в Яндекс Директе.</li>
+</ul>
+<p>5.2. Метрика используется после согласия Пользователя в cookie-баннере. Отказаться можно в баннере, в настройках браузера или удалив cookie.</p>
+<p>5.3. В записях Вебвизора содержимое полей ввода (почта, дата рождения) скрыто.</p>
+<h2>6. Действия с данными</h2>
+<p>Сбор, запись, систематизация, накопление, хранение, уточнение, извлечение, использование, передача (предоставление, доступ), обезличивание, блокирование, удаление, уничтожение. Обработка автоматизированная.</p>
+<h2>7. Кому передаются данные</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Получатель</th><th>Что и зачем</th></tr></thead>
+<tbody>
+<tr><td>Хостинг-провайдер</td><td>хранение данных Сайта</td></tr>
+<tr><td>ООО «Робокасса»</td><td>приём платежей, чеки</td></tr>
+<tr><td>ООО «Яндекс»</td><td>вход через Яндекс ID; Яндекс Метрика</td></tr>
+<tr><td>ООО «ВК»</td><td>вход через VK ID</td></tr>
+<tr><td>Telegram</td><td>вход через Telegram, привязка к Боту</td></tr>
+<tr><td>Сервис отправки писем</td><td>почта, текст письма — для отправки ссылок на разборы, уведомлений о подписке, рассылки</td></tr>
+</tbody></table></div>
+<p>Данные не продаются и не передаются иным лицам, кроме случаев, предусмотренных законом.</p>
+<h2>8. Локализация</h2>
+<p>Запись, систематизация, накопление, хранение, уточнение и извлечение персональных данных граждан РФ осуществляются с использованием баз данных, находящихся на территории РФ.</p>
+<h2>9. Сроки хранения</h2>
+<ul>
+<li>данные гостя без Аккаунта — 1 год с момента последнего разбора;</li>
+<li>данные Аккаунта, профиль, разборы и переписка — до удаления Аккаунта или отзыва согласия; после этого удаляются или обезличиваются в течение 30 дней;</li>
+<li>данные о платежах — в сроки, установленные налоговым законодательством;</li>
+<li>почта для рассылки — до отзыва согласия на рассылку;</li>
+<li>данные Яндекс Метрики — по правилам Яндекса, но не дольше срока, установленного в настройках счётчика.</li>
+</ul>
+<h2>10. Права Пользователя</h2>
+<p>10.1. Пользователь вправе получить сведения об обработке своих данных, потребовать их уточнения, блокирования или удаления, отозвать согласие, обжаловать действия оператора в Роскомнадзоре или суде.</p>
+<p>10.2. Запрос направляется на elenakarpva@gmail.com с той почты или с указанием того аккаунта, к которым привязан профиль. Ответ — в течение 10 рабочих дней. Срок может быть продлён на 5 рабочих дней с уведомлением Пользователя.</p>
+<p>10.3. Отзыв согласия не лишает оператора права продолжить обработку по другим основаниям (например, для исполнения договора или требований налогового законодательства).</p>
+<h2>11. Защита данных</h2>
+<p>Оператор принимает правовые, организационные и технические меры: доступ к данным только у оператора, шифрование соединения (HTTPS), разграничение доступа к серверам, резервное копирование.</p>
+<h2>12. Изменение Политики</h2>
+<p>Действующая редакция размещена на astro-leya.ru/legal и действует с момента публикации.</p>
     </article>
-
-    <!-- СОГЛАСИЕ -->
     <article id="consent" class="panel" role="tabpanel">
-      <h2>Согласие на обработку персональных данных</h2>
-      <p class="meta">152-ФЗ · Редакция от 12.06.2026</p>
-
-      <p>Я, используя Telegram-бот <strong>Лея</strong> (<a href="https://t.me/astro_leia_bot">@astro_leia_bot</a>), даю согласие <strong>Карповой Елене Игоревне</strong> (самозанятый, плательщик НПД, ИНН 234594723806, e-mail: <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a>) на обработку моих персональных данных на условиях:</p>
-
-      <h3>1. Перечень данных</h3>
-      <p>Telegram user_id, @username, имя из профиля; данные анкеты (дата рождения, город и др.); тексты разборов и рассылок; данные о платежах и пакетах; данные реферальной программы и USDT-кошелька; переписка с ботом и поддержкой.</p>
-
-      <h3>2. Цели</h3>
-      <p>Предоставление функционала Лея: таро-разборы, нумерология, астрология, утренняя и вечерняя рассылка, пакеты ЛЮБОВЬ+ и VIP, комбо «Счастливая женщина», обращение к внешним AI-провайдерам (KIE API) по запросу Пользователя, реферальная программа (40%, вывод в USDT), поддержка.</p>
-
-      <h3>3. Действия с данными</h3>
-      <p>Сбор, запись, хранение, уточнение, использование, передача (в т.ч. хостинг, платежи Platega, AI-провайдеры KIE API, 302.AI, ElevenLabs), обезличивание, блокирование, удаление.</p>
-
-      <h3>4. Срок</h3>
-      <p>До отзыва согласия или достижения целей обработки. Отзыв — письмом на <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a> или через службу поддержки (контакты — в футере сайта).</p>
-
-      <h3>5. Подтверждение</h3>
-      <p>Нажатие «Start» / использование бота / отправка сообщения / заказ расклада означает ознакомление с Политикой ПДн, пользовательским соглашением, офертой и дачу настоящего согласия.</p>
+<p class="meta">Редакция от 25.09.2026</p>
+<p>Я, действуя свободно, своей волей и в своём интересе, даю согласие Карповой Елене Игоревне (самозанятая, ИНН 234594723806, e-mail elenakarpva@gmail.com) на обработку моих персональных данных на следующих условиях.</p>
+<p><strong>1. Цели:</strong> создание и ведение моего аккаунта на сайте astro-leya.ru, сохранение моих разборов и профиля, отправка ссылок на разборы и служебных писем на почту, объединение профиля с Telegram-ботом @astro_leia_bot (если я привяжу Telegram).</p>
+<p><strong>2. Перечень данных:</strong> адрес электронной почты; идентификатор, имя, фамилия, username, аватар, дата рождения и почта, полученные от Яндекс ID, VK ID или Telegram в объёме, который я разрешил передать; имя, дата, город и время рождения, указанные мной в профиле.</p>
+<p><strong>3. Действия:</strong> сбор, запись, систематизация, накопление, хранение, уточнение, извлечение, использование, передача (предоставление, доступ), обезличивание, блокирование, удаление, уничтожение. Обработка автоматизированная.</p>
+<p><strong>4. Передача третьим лицам:</strong> хостинг-провайдеру, сервису отправки писем, ООО «Робокасса» (при оплате), ООО «Яндекс», ООО «ВК» и Telegram (при входе через соответствующий сервис).</p>
+<p><strong>5. Срок:</strong> до удаления аккаунта или до отзыва согласия.</p>
+<p><strong>6. Отзыв:</strong> письмом на elenakarpva@gmail.com. После отзыва данные удаляются в течение 30 дней, за исключением данных, которые оператор обязан хранить по закону.</p>
+<p>Подробнее — в Политике обработки персональных данных на astro-leya.ru/legal.</p>
+<p>Согласие даётся отметкой в чекбоксе «Даю согласие на обработку персональных данных» перед отправкой почты или перед входом через Яндекс ID, VK ID или Telegram.</p>
     </article>
-
+    <article id="mailing" class="panel" role="tabpanel">
+<p class="meta">Редакция от 25.09.2026</p>
+<p>Я даю согласие Карповой Елене Игоревне (ИНН 234594723806) на получение на указанный мной адрес электронной почты писем с разборами, новостями сервиса Лея и рекламными предложениями (ч. 1 ст. 18 Федерального закона «О рекламе»).</p>
+<p>Для рассылки обрабатывается адрес электронной почты. Согласие действует до отзыва. Отозвать его можно по ссылке «Отписаться» в любом письме или письмом на elenakarpva@gmail.com. Отказ от рассылки не влияет на доступ к разборам и Личному кабинету.</p>
+<p>Согласие даётся отдельной отметкой в чекбоксе. Без этой отметки разбор доступен, но рассылка не приходит.</p>
+    </article>
+    <article id="requisites" class="panel" role="tabpanel">
+<p class="meta">Редакция от 25.09.2026</p>
+<p>Карпова Елена Игоревна</p>
+<p>Самозанятая (плательщик налога на профессиональный доход)</p>
+<p>ИНН 234594723806</p>
+<p>E-mail: <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a></p>
+<p>Телефон: +7 926 777-69-85</p>
+<p>Поддержка: <a href="https://t.me/leia_astro_help">t.me/leia_astro_help</a></p>
+    </article>
     <footer>
-      © Лея · <a href="/">Сайт</a> · <a href="https://t.me/astro_leia_bot">@astro_leia_bot</a> · <a href="https://t.me/OnePage_support">Поддержка</a>
+      Карпова Елена Игоревна, самозанятая, ИНН 234594723806 ·
+      <a href="mailto:elenakarpva@gmail.com">elenakarpva@gmail.com</a> · +7 926 777-69-85<br>
+      <a href="https://t.me/leia_astro_help">Поддержка</a>
     </footer>
   </div>
-
+  <div class="cookie-bar" id="cookie-bar" role="dialog" aria-label="Cookie">
+    <p>Мы используем cookie и Яндекс Метрику, чтобы понимать, как работает сайт и реклама. <a href="#cookies">Подробнее</a></p>
+    <div class="cookie-actions">
+      <button type="button" class="cookie-all" id="cookie-all">Принять</button>
+      <button type="button" class="cookie-needed" id="cookie-needed">Только необходимые</button>
+    </div>
+  </div>
   <script>
-    document.querySelectorAll('.tabs button').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var id = btn.getAttribute('data-tab');
-        document.querySelectorAll('.tabs button').forEach(function (b) { b.classList.remove('active'); });
-        document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
-        btn.classList.add('active');
-        document.getElementById(id).classList.add('active');
-        history.replaceState(null, '', '#' + id);
-      });
-    });
-    var hash = location.hash.replace('#', '');
-    if (hash && document.getElementById(hash)) {
-      document.querySelector('[data-tab="' + hash + '"]').click();
+    var nested = { cookies: "privacy", subscription: "offer" };
+    function openTab(id) {
+      var tabId = nested[id] || id;
+      var btn = document.querySelector('[data-tab="' + tabId + '"]');
+      if (!btn) return;
+      document.querySelectorAll(".tabs button").forEach(function (b) { b.classList.remove("active"); });
+      document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+      btn.classList.add("active");
+      var panel = document.getElementById(tabId);
+      if (panel) panel.classList.add("active");
+      var target = document.getElementById(id);
+      if (target && nested[id]) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      history.replaceState(null, "", "#" + id);
     }
+    document.querySelectorAll(".tabs button").forEach(function (btn) {
+      btn.addEventListener("click", function () { openTab(btn.getAttribute("data-tab")); });
+    });
+    var hash = location.hash.replace("#", "");
+    if (hash) openTab(hash);
+    window.addEventListener("hashchange", function () {
+      var next = location.hash.replace("#", "");
+      if (next) openTab(next);
+    });
+    var cookieKey = "leia_cookies";
+    var bar = document.getElementById("cookie-bar");
+    try { if (localStorage.getItem(cookieKey)) bar.style.display = "none"; } catch (e) {}
+    function chooseCookies(mode) {
+      try { localStorage.setItem(cookieKey, mode); } catch (e) {}
+      if (mode === "all") window.leiaInitMetrika();
+      bar.style.display = "none";
+    }
+    document.getElementById("cookie-all").onclick = function () { chooseCookies("all"); };
+    document.getElementById("cookie-needed").onclick = function () { chooseCookies("needed"); };
   </script>
 </body>
 </html>
