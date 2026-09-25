@@ -91,15 +91,51 @@ export function TelegramLogin({
 }) {
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const [waitToken, setWaitToken] = useState("");
+
+  useEffect(() => {
+    if (!waitToken) return;
+    let stop = false;
+    const tick = async () => {
+      if (stop) return;
+      try {
+        const status = await api<{ ok: boolean }>(`/api/web/auth/telegram/status?token=${encodeURIComponent(waitToken)}`);
+        if (!status.ok || stop) return;
+        stop = true;
+        const done = await api<{ ok: boolean; next?: string }>("/api/web/auth/telegram/complete", {
+          method: "POST",
+          body: JSON.stringify({ token: waitToken }),
+        });
+        window.location.assign(done.next || next);
+      } catch {
+        /* ещё не подтвердили в боте */
+      }
+    };
+    const interval = window.setInterval(() => void tick(), 1500);
+    void tick();
+    const timeout = window.setTimeout(() => {
+      stop = true;
+      setWaitToken("");
+      setUrl("");
+      onError?.("Время вышло. Нажми «Войти через Telegram» ещё раз.");
+    }, 180000);
+    return () => {
+      stop = true;
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [waitToken, next, onError]);
 
   async function openBot() {
     if (busy || disabled) return;
     setBusy(true);
+    setWaitToken("");
     try {
-      const r = await api<{ url?: string }>("/api/web/auth/telegram/start", {
+      const r = await api<{ url?: string; token?: string }>("/api/web/auth/telegram/start", {
         method: "POST",
         body: JSON.stringify({ next, guest_id: guestId() }),
       });
+      if (r.token) setWaitToken(r.token);
       if (r.url) setUrl(r.url);
     } catch (e) {
       onError?.(e instanceof Error ? e.message : "Не открылась ссылка в бота");
@@ -118,14 +154,15 @@ export function TelegramLogin({
               d="M21.5 3.3c.3-.9-.3-1.4-1.1-1.1L2.6 9.4c-.9.3-.9.8-.2 1l4.6 1.4 10.7-6.6c.5-.3.9-.1.5.2l-8.6 7.8-.3 4.6c.4 0 .7-.2.9-.4l2.2-2.1 4.5 3.3c.8.5 1.4.2 1.6-.7z"
             />
           </svg>
-          {busy ? "Открываю…" : label}
+          {busy ? "Открываю…" : waitToken ? "Жду Telegram…" : label}
         </span>
       </button>
+      {waitToken && !url && <p className="fine">Открой бота и вернись сюда — страница обновится сама.</p>}
       {url && (
         <div className="modal" onClick={() => setUrl("")}>
           <div className="mc" onClick={(e) => e.stopPropagation()}>
             <h4>Включи VPN перед переходом</h4>
-            <p>В России Telegram не открывается без VPN. Если бот не запустится — включи VPN и нажми ещё раз.</p>
+            <p>В России Telegram не открывается без VPN. Если бот не запустится — включи VPN и нажми ещё раз. После «Start» в боте вернись на эту вкладку.</p>
             <a className="btn" href={url}>Открыть бота</a>
             <button className="btn link" type="button" onClick={() => setUrl("")}>Позже</button>
           </div>

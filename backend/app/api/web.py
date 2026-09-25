@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -202,6 +202,79 @@ class ProfileIn(BaseModel):
     birth_time: str | None = None
 
 
+class TelegramCompleteIn(BaseModel):
+    token: str = Field(min_length=8, max_length=80)
+
+
+@router.post("/auth/telegram/start")
+async def telegram_login_start(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    from app.services.web.telegram_bind import create_login_link
+
+    current = await web_auth.user_from_request(request, session)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    next_path = str(body.get("next") or "/lk")
+    if not next_path.startswith("/"):
+        next_path = "/lk"
+    guest = str(body.get("guest_id") or "")
+    try:
+        return await create_login_link(
+            site_user_id=current.id if current else None,
+            next_path=next_path,
+            guest_id=guest or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/auth/telegram/status")
+async def telegram_login_status(token: str = Query(min_length=8, max_length=80)) -> dict:
+    from app.services.web.telegram_bind import login_ready
+
+    return {"ok": await login_ready(token)}
+
+
+@router.post("/auth/telegram/complete")
+async def telegram_login_complete_post(
+    body: TelegramCompleteIn,
+    session: AsyncSession = Depends(get_session),
+) -> JSONResponse:
+    from app.services.web.telegram_bind import finish_login_token, login_next_path
+
+    uid = await finish_login_token(session, body.token)
+    if not uid:
+        raise HTTPException(status_code=400, detail="Вход ещё не подтверждён в Telegram")
+    dest = await login_next_path(body.token)
+    response = JSONResponse({"ok": True, "next": dest or "/lk"})
+    web_auth.set_login_cookie(response, uid)
+    return response
+
+
+@router.get("/auth/telegram/complete")
+async def telegram_login_complete(
+    token: str,
+    session: AsyncSession = Depends(get_session),
+) -> RedirectResponse:
+    from app.services.web.telegram_bind import finish_login_token
+
+    uid = await finish_login_token(session, token)
+    if not uid:
+        return RedirectResponse("/lk?auth=fail")
+    from app.services.web.telegram_bind import login_next_path
+
+    dest = await login_next_path(token)
+    response = RedirectResponse(dest or "/lk")
+    web_auth.set_login_cookie(response, uid)
+    return response
+
+
 @router.get("/auth/{provider}")
 async def auth_start(
     provider: str,
@@ -316,52 +389,6 @@ async def patch_profile(
     payload = await web.cabinet_payload(session, user)
     payload["oauth"] = web_auth.oauth_ready()
     return payload
-
-
-@router.post("/auth/telegram/start")
-async def telegram_login_start(
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    from app.services.web.telegram_bind import create_login_link
-
-    current = await web_auth.user_from_request(request, session)
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    if not isinstance(body, dict):
-        body = {}
-    next_path = str(body.get("next") or "/lk")
-    if not next_path.startswith("/"):
-        next_path = "/lk"
-    guest = str(body.get("guest_id") or "")
-    try:
-        return await create_login_link(
-            site_user_id=current.id if current else None,
-            next_path=next_path,
-            guest_id=guest or None,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@router.get("/auth/telegram/complete")
-async def telegram_login_complete(
-    token: str,
-    session: AsyncSession = Depends(get_session),
-) -> RedirectResponse:
-    from app.services.web.telegram_bind import finish_login_token
-
-    uid = await finish_login_token(session, token)
-    if not uid:
-        return RedirectResponse("/lk?auth=fail")
-    from app.services.web.telegram_bind import login_next_path
-
-    dest = await login_next_path(token)
-    response = RedirectResponse(dest or "/lk")
-    web_auth.set_login_cookie(response, uid)
-    return response
 
 
 @router.post("/telegram/bind")
