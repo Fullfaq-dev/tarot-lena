@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.database.models import Payment
+from app.database.session import get_session
 
 router = APIRouter(tags=["payment-pages"])
 _templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -28,8 +32,43 @@ def _page_context(request: Request) -> dict:
     }
 
 
-@router.get("/payment/success", response_class=HTMLResponse)
-async def payment_success(request: Request) -> HTMLResponse:
+async def _params_from_request(request: Request) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for key, value in request.query_params.multi_items():
+        merged[key] = value
+    if request.method.upper() == "POST":
+        form = await request.form()
+        for key, value in form.multi_items():
+            merged[str(key)] = str(value)
+    return merged
+
+
+async def _web_reading_token(session: AsyncSession, params: dict[str, str]) -> str:
+    shp_id = (params.get("Shp_payment_id") or "").strip()
+    inv = (params.get("InvId") or "").strip()
+    payment = None
+    if shp_id:
+        payment = await session.get(Payment, shp_id)
+    if payment is None and inv:
+        payment = await session.scalar(
+            select(Payment)
+            .where(Payment.provider_payment_id == inv)
+            .order_by(Payment.created_at.desc())
+        )
+    if payment is None:
+        return ""
+    return str((payment.payload or {}).get("token") or "").strip()
+
+
+@router.api_route("/payment/success", methods=["GET", "POST"])
+async def payment_success(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> HTMLResponse | RedirectResponse:
+    params = await _params_from_request(request)
+    token = await _web_reading_token(session, params)
+    if token:
+        return RedirectResponse(f"/r/{token}", status_code=303)
     return _templates.TemplateResponse(
         request,
         "payment/success.html",

@@ -41,10 +41,27 @@ type Reading = {
   product_name: string;
   drawn: { name?: string; image?: string }[];
   paid?: boolean;
+  awaiting_pay?: boolean;
   paid_text?: string;
   includes?: string[];
   context?: string;
 };
+
+function fromRobokassaReturn() {
+  const params = new URLSearchParams(window.location.search);
+  return Boolean(params.get("InvId") || params.get("OutSum") || params.get("SignatureValue"));
+}
+
+function awaitingKey(token: string) {
+  return `leia_awaiting_${token}`;
+}
+
+function shouldWaitForPaid(token: string, reading: Reading) {
+  if (fromRobokassaReturn()) return true;
+  if (sessionStorage.getItem(awaitingKey(token)) === "1") return true;
+  const ref = document.referrer || "";
+  return Boolean(reading.awaiting_pay && /robokassa/i.test(ref));
+}
 
 function offerKind(context?: string, product?: string) {
   const blob = `${context || ""} ${product || ""}`.toLowerCase();
@@ -114,11 +131,9 @@ export function App() {
     bot_username: "astro_leia_bot",
     legal_url: "/legal",
     oauth: { yandex: false, vk: false, telegram: false },
-    test_payment: false,
-    test_payment_price: 10,
   });
   const [tab, setTab] = useState(page === "home" ? "rel" : "rel");
-  const [screen, setScreen] = useState(tokenFromPath ? 8 : 1);
+  const [screen, setScreen] = useState(tokenFromPath ? 5 : 1);
   const [sel, setSel] = useState<Card | null>(null);
   const [qi, setQi] = useState(0);
   const [answers, setAnswers] = useState<string[]>([]);
@@ -130,7 +145,7 @@ export function App() {
   const [partner, setPartner] = useState("");
   const [email, setEmail] = useState("");
   const [reading, setReading] = useState<Reading | null>(null);
-  const [tariff, setTariff] = useState<"base" | "bundle" | "test">("base");
+  const [tariff, setTariff] = useState<"base" | "bundle">("base");
   const [err, setErr] = useState("");
   const [vpn, setVpn] = useState(false);
   const [mkt, setMkt] = useState(false);
@@ -138,6 +153,7 @@ export function App() {
   const [recur, setRecur] = useState(false);
   const [stream, setStream] = useState("");
   const [paying, setPaying] = useState(false);
+  const [waitingPay, setWaitingPay] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
 
   const showLanding = screen === 1 && !tokenFromPath;
@@ -195,12 +211,14 @@ export function App() {
             return;
           }
           if (r.paid) {
+            sessionStorage.removeItem(awaitingKey(tokenFromPath));
+            window.history.replaceState({}, "", `/r/${tokenFromPath}`);
             setScreen(8);
             return;
           }
-          if (params.get("pay") === "test") {
-            setErr("Тестовые 10 ₽ прошли. Это проверка кассы — полный разбор за ними не открывается.");
-            setScreen(7);
+          if (shouldWaitForPaid(tokenFromPath, r)) {
+            setWaitingPay(true);
+            setScreen(5);
             return;
           }
           if (params.get("pay") === "1") {
@@ -212,6 +230,50 @@ export function App() {
         .catch(() => setErr("Ссылка не найдена или истекла"));
     }
   }, [tokenFromPath]);
+
+  useEffect(() => {
+    if (!waitingPay || !tokenFromPath) return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer = 0;
+    const tick = () => {
+      api<Reading>(`/api/web/readings/${tokenFromPath}`)
+        .then((r) => {
+          if (cancelled) return;
+          setReading(r);
+          if (r.paid) {
+            sessionStorage.removeItem(awaitingKey(tokenFromPath));
+            setWaitingPay(false);
+            window.history.replaceState({}, "", `/r/${tokenFromPath}`);
+            setScreen(8);
+            return;
+          }
+          attempts += 1;
+          if (attempts >= 24) {
+            setWaitingPay(false);
+            setErr("Оплата ещё подтверждается. Обнови страницу через минуту — полный разбор откроется по этой ссылке.");
+            setScreen(7);
+            return;
+          }
+          timer = window.setTimeout(tick, 1500);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          attempts += 1;
+          if (attempts >= 24) {
+            setWaitingPay(false);
+            setErr("Не получилось открыть разбор. Обнови страницу — ссылка та же.");
+            return;
+          }
+          timer = window.setTimeout(tick, 1500);
+        });
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [waitingPay, tokenFromPath]);
 
   useEffect(() => {
     if (screen === 7 && reading) track("paywall_view");
@@ -251,6 +313,7 @@ export function App() {
     setSel(null);
     setReading(null);
     setErr("");
+    setWaitingPay(false);
     window.history.replaceState({}, "", page === "home" ? "/" : `/${page}`);
   }
 
@@ -328,11 +391,11 @@ export function App() {
   async function pay() {
     if (!reading || paying) return;
     const mail = email.trim();
-    if (tariff !== "test" && !loggedIn && !mail) {
+    if (!loggedIn && !mail) {
       setErr("Укажи почту — или войди, чтобы разбор сохранился в кабинете");
       return;
     }
-    if (tariff !== "test" && !priv) {
+    if (!priv) {
       setErr("Нужно согласие на обработку персональных данных и оферту");
       return;
     }
@@ -357,17 +420,21 @@ export function App() {
         },
       );
       if (r.payment_url) {
+        sessionStorage.setItem(awaitingKey(reading.token), "1");
         window.location.href = r.payment_url;
-        return;
-      }
-      if (tariff === "test") {
-        setErr("Тестовые 10 ₽ прошли. Это проверка кассы — полный разбор за ними не открывается.");
         return;
       }
       const full = await api<Reading>(`/api/web/readings/${r.token}`);
       setReading(full);
       window.history.replaceState({}, "", `/r/${r.token}`);
-      setScreen(8);
+      if (full.paid) {
+        sessionStorage.removeItem(awaitingKey(r.token));
+        setScreen(8);
+      } else {
+        sessionStorage.setItem(awaitingKey(r.token), "1");
+        setWaitingPay(true);
+        setScreen(5);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Оплата не прошла");
     } finally {
@@ -405,6 +472,7 @@ export function App() {
         },
       );
       if (r.payment_url) {
+        sessionStorage.setItem(awaitingKey(reading.token), "1");
         window.location.href = r.payment_url;
         return;
       }
@@ -420,8 +488,7 @@ export function App() {
 
   const price = reading?.price_rub || 590;
   const bundle = price + 300;
-  const testPrice = cfg.test_payment_price || 10;
-  const payAmount = tariff === "test" ? testPrice : tariff === "bundle" ? bundle : price;
+  const payAmount = tariff === "bundle" ? bundle : price;
   const parts = reading?.includes?.filter(Boolean) || [];
   const kind = offerKind(reading?.context, reading?.product_name);
   const inCabinet = window.location.pathname.startsWith("/lk");
@@ -572,8 +639,18 @@ export function App() {
                 {screen === 5 && (
                   <>
                     <div className="spin" />
-                    <div className="h" style={{ textAlign: "center" }}>{sel?.branch === "taro" ? "Лея раскладывает карты" : "Лея считает по дате"}</div>
-                    <p className="fine">Сначала покажу мини-разбор — почту спросим, если захочешь полный</p>
+                    <div className="h" style={{ textAlign: "center" }}>
+                      {waitingPay
+                        ? "Готовлю полный разбор"
+                        : sel?.branch === "taro"
+                          ? "Лея раскладывает карты"
+                          : "Лея считает по дате"}
+                    </div>
+                    <p className="fine">
+                      {waitingPay
+                        ? "Оплата прошла — текст откроется на этой странице, вход не нужен"
+                        : "Сначала покажу мини-разбор — почту спросим, если захочешь полный"}
+                    </p>
                   </>
                 )}
 
@@ -675,55 +752,36 @@ export function App() {
                         </ul>
                       </div>
                     </div>
-                    {cfg.test_payment && (
-                      <div
-                        className={`tar offer ${tariff === "test" ? "on" : ""}`}
-                        onClick={() => setTariff("test")}
-                      >
-                        <span className="tag">Касса</span>
-                        <h4>Тестовый платёж</h4>
-                        <div className="pr">{testPrice} ₽</div>
-                        <div className="tar-copy">
-                          <p>Проверка Робокассы. Доступа не даёт, полный разбор не открывает, пакет не активирует.</p>
-                        </div>
-                      </div>
-                    )}
-                    {tariff !== "test" && (
+                    <div className="field">
+                      <label>{loggedIn ? "Почта — прислать копию разбора" : "Почта — чтобы не потерять разбор"}</label>
+                      <input
+                        className="inp"
+                        type="email"
+                        placeholder="ты@почта.ru"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+                    <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
+                    {!loggedIn && (
                       <>
-                        <div className="field">
-                          <label>{loggedIn ? "Почта — прислать копию разбора" : "Почта — чтобы не потерять разбор"}</label>
-                          <input
-                            className="inp"
-                            type="email"
-                            placeholder="ты@почта.ru"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                          />
-                        </div>
-                        <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
-                        {!loggedIn && (
-                          <>
-                            <p className="fine">Или войди — разбор сохранится в кабинете, и сразу откроется оплата</p>
-                            {!priv && <p className="fine">Сначала отметь согласие с офертой.</p>}
-                            <AuthWays
-                              next={`/r/${reading.token}?pay=1`}
-                              oauth={cfg.oauth}
-                              bot={cfg.bot_username}
-                              onError={setErr}
-                              disabled={!priv}
-                            />
-                          </>
-                        )}
+                        <p className="fine">Или войди — разбор сохранится в кабинете, и сразу откроется оплата</p>
+                        {!priv && <p className="fine">Сначала отметь согласие с офертой.</p>}
+                        <AuthWays
+                          next={`/r/${reading.token}?pay=1`}
+                          oauth={cfg.oauth}
+                          bot={cfg.bot_username}
+                          onError={setErr}
+                          disabled={!priv}
+                        />
                       </>
                     )}
-                    <button className="btn gold" disabled={paying || (tariff !== "test" && !priv)} onClick={pay}>
+                    <button className="btn gold" disabled={paying || !priv} onClick={pay}>
                       {paying ? "Открываю оплату…" : `Оплатить ${payAmount} ₽`}
                     </button>
                     {err && <p className="err">{err}</p>}
                     <p className="fine">
-                      {tariff === "test"
-                        ? "Тестовые 10 ₽ — только проверка кассы."
-                        : "Без подписок и автосписаний. Это разовый разбор с сайта."}
+                      Без подписок и автосписаний. Это разовый разбор с сайта.
                     </p>
                     <button className="btn link" type="button" onClick={() => setScreen(6)}>Назад к мини-разбору</button>
                   </>
