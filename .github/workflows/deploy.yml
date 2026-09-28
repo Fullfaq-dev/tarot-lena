@@ -153,4 +153,5 @@ jobs:
             git reset --hard origin/main
             VPS_IP="${VPS_HOST:-85.234.106.108}" HTTP_PORT=80 bash deploy/deploy.sh
 
-            curl -sf "http://127.0.0.1/health" && echo " health OK"
+            docker compose -f docker-compose.prod.yml exec -T api curl -sf http://127.0.0.1:8000/health
+            echo " health OK"
