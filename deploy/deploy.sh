@@ -137,12 +137,20 @@ fi
 docker compose -f "$COMPOSE_FILE" run --rm --no-deps api alembic upgrade head
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps api worker bot
 # Wait until API accepts connections before refreshing nginx DNS/upstreams.
+api_up=0
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   if docker compose -f "$COMPOSE_FILE" exec -T api curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
+    api_up=1
     break
   fi
   sleep 2
 done
+if [ "$api_up" -ne 1 ]; then
+  echo "ERROR: API did not become healthy"
+  docker compose -f "$COMPOSE_FILE" logs api --tail=80 || true
+  docker compose -f "$COMPOSE_FILE" ps -a
+  exit 1
+fi
 docker compose -f "$COMPOSE_FILE" up -d --force-recreate --no-deps admin web nginx
 if [ -f frontend-web/dist/index.html ]; then
   docker compose -f "$COMPOSE_FILE" cp frontend-web/dist/. web:/usr/share/nginx/html/

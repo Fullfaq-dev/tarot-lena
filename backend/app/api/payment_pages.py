@@ -60,11 +60,11 @@ async def _web_reading_token(session: AsyncSession, params: dict[str, str]) -> s
     return str((payment.payload or {}).get("token") or "").strip()
 
 
-@router.api_route("/payment/success", methods=["GET", "POST"])
+@router.api_route("/payment/success", methods=["GET", "POST"], response_model=None)
 async def payment_success(
     request: Request,
     session: AsyncSession = Depends(get_session),
-) -> HTMLResponse | RedirectResponse:
+):
     params = await _params_from_request(request)
     token = await _web_reading_token(session, params)
     if token:
