@@ -20,26 +20,18 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
-            cd /opt/arcane-ai
+            cd /opt/tarot-lena
             LINES="${{ github.event.inputs.lines }}"
             echo "=== docker compose ps ==="
-            docker compose -f docker-compose.prod.yml ps
-            echo "=== container health / restart counts ==="
-            docker compose -f docker-compose.prod.yml ps -a --format 'table {{.Name}}\t{{.Status}}\t{{.Health}}\t{{.RunningFor}}'
-            echo "=== recent api errors (last 50 lines) ==="
-            docker compose -f docker-compose.prod.yml logs api --tail=50 2>&1 \
-              | grep -iE "ERROR|Exception|startup failed|Traceback" | tail -20 || echo "(no recent api errors)"
-            echo "=== worker errors (last 30 lines) ==="
-            docker compose -f docker-compose.prod.yml logs worker --tail=30 2>&1 \
-              | grep -iE "ERROR|Exception|Traceback" | tail -10 || echo "(no recent worker errors)"
+            docker compose -f docker-compose.prod.yml ps -a
             echo "=== disk & memory ==="
-            df -h / /var/lib/docker 2>/dev/null | tail -n +2 || df -h /
+            df -h / | tail -n +1
             free -h | sed -n '1,2p'
-            echo "=== api logs (voice/kie/error) ==="
-            docker compose -f docker-compose.prod.yml logs api --tail="$LINES" 2>&1 \
-              | grep -iE "voice|KIE|302|upload|speech|bot\.error|exception|WARNING|ERROR" \
-              | tail -80 || true
-            echo "=== recent analytics voice errors (if psql available) ==="
-            docker compose -f docker-compose.prod.yml exec -T postgres psql -U tarot -d tarot -c \
-              "SELECT created_at, payload->>'error' AS error, left(payload->>'traceback', 400) AS traceback FROM analytics_events WHERE event_name='bot.error' AND payload->>'handler'='voice' ORDER BY created_at DESC LIMIT 5;" \
-              2>/dev/null || true
+            echo "=== api logs ==="
+            docker compose -f docker-compose.prod.yml logs api --tail="$LINES" 2>&1 || true
+            echo "=== nginx logs ==="
+            docker compose -f docker-compose.prod.yml logs nginx --tail=40 2>&1 || true
+            echo "=== bot logs (tail 40) ==="
+            docker compose -f docker-compose.prod.yml logs bot --tail=40 2>&1 || true
+            echo "=== in-container health ==="
+            docker compose -f docker-compose.prod.yml exec -T api curl -sv http://127.0.0.1:8000/health 2>&1 | tail -30 || true
