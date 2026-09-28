@@ -398,6 +398,7 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
         "includes": includes,
         "context": context,
         "paid": paid,
+        "awaiting_pay": bool(reading.payment_id) and not paid,
         "can_pay": (not paid) and int((reading.input_payload or {}).get("price_rub") or 0) > 0,
         "source": "web",
         "created_at": reading.created_at.isoformat() if reading.created_at else None,
@@ -504,22 +505,16 @@ async def checkout(
         raise ValueError("Сессия не найдена")
     user = await ensure_guest_user(session, web)
 
-    if tariff != "test" and web.unlimited_until and web.unlimited_until > datetime.now(UTC):
+    if tariff == "test":
+        raise ValueError("Тестовый платёж выключен")
+
+    if web.unlimited_until and web.unlimited_until > datetime.now(UTC):
         await fulfill_paid(session, reading)
         return {"ok": True, "unlimited": True, "token": reading.token}
 
     base = int(card.price_rub)
     bind_reading = True
-    if tariff == "test":
-        from app.services.products.packages import TEST_PAYMENT_ENABLED
-
-        if not TEST_PAYMENT_ENABLED:
-            raise ValueError("Тестовый платёж выключен")
-        amount = Decimal("10")
-        sku = "test_10"
-        title = "Тестовый платёж 10 ₽"
-        bind_reading = False
-    elif tariff == "bundle":
+    if tariff == "bundle":
         amount = Decimal(base + 300)
         sku = f"{card.sku}_bundle"
         title = f"{card.product_name} + доп. разбор"
@@ -544,10 +539,7 @@ async def checkout(
     if reading.status in {"paid", "ready"} and tariff in {"base", "bundle"}:
         return {"ok": True, "token": reading.token}
 
-    if tariff == "test":
-        purpose = "test_payment"
-        key = f"web_test:{user.id}:{reading.id}"
-    elif sku == "web_unlimited_month":
+    if sku == "web_unlimited_month":
         purpose = "web_unlimited"
         key = f"web_reading:{reading.id}:{tariff}"
     else:
