@@ -33,5 +33,55 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/tarot-lena
-            python3 /tmp/yclid-export-src/scripts/export_yclid.py 2>/dev/null \
-              || python3 /tmp/yclid-export-src/export_yclid.py
+            echo "=== web_sessions metrika_client_id 28.09 ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U tarot -d tarot -c "
+            SELECT
+              'utc_day' AS window,
+              count(*) AS sessions,
+              count(*) FILTER (
+                WHERE metrika_client_id IS NOT NULL AND btrim(metrika_client_id) <> ''
+              ) AS with_metrika_id,
+              count(*) FILTER (
+                WHERE metrika_client_id IS NULL OR btrim(metrika_client_id) = ''
+              ) AS without_metrika_id
+            FROM web_sessions
+            WHERE created_at >= TIMESTAMPTZ '2026-09-28 00:00:00+00'
+              AND created_at <  TIMESTAMPTZ '2026-09-29 00:00:00+00'
+            UNION ALL
+            SELECT
+              'msk_day',
+              count(*),
+              count(*) FILTER (
+                WHERE metrika_client_id IS NOT NULL AND btrim(metrika_client_id) <> ''
+              ),
+              count(*) FILTER (
+                WHERE metrika_client_id IS NULL OR btrim(metrika_client_id) = ''
+              )
+            FROM web_sessions
+            WHERE created_at >= TIMESTAMPTZ '2026-09-27 21:00:00+00'
+              AND created_at <  TIMESTAMPTZ '2026-09-28 21:00:00+00';
+            "
+            echo "=== sample empty ids utc ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U tarot -d tarot -c "
+            SELECT created_at AT TIME ZONE 'UTC' AS created_utc,
+                   utm->>'yclid' AS yclid,
+                   utm->>'utm_source' AS utm_source,
+                   left(coalesce(metrika_client_id,''), 24) AS metrika_id
+            FROM web_sessions
+            WHERE created_at >= TIMESTAMPTZ '2026-09-28 00:00:00+00'
+              AND created_at <  TIMESTAMPTZ '2026-09-29 00:00:00+00'
+            ORDER BY created_at
+            LIMIT 5;
+            "
+            echo "=== counts by metrika filled vs yclid utc ==="
+            docker compose -f docker-compose.prod.yml exec -T postgres psql -U tarot -d tarot -c "
+            SELECT
+              (metrika_client_id IS NOT NULL AND btrim(metrika_client_id) <> '') AS has_metrika,
+              (coalesce(utm->>'yclid','') <> '') AS has_yclid,
+              count(*)
+            FROM web_sessions
+            WHERE created_at >= TIMESTAMPTZ '2026-09-28 00:00:00+00'
+              AND created_at <  TIMESTAMPTZ '2026-09-29 00:00:00+00'
+            GROUP BY 1, 2
+            ORDER BY 1, 2;
+            "
