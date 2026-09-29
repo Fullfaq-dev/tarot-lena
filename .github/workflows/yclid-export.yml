@@ -1,0 +1,33 @@
+name: Export yclid clicks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy parser to VPS
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "scripts/export_yclid.py"
+          target: "/tmp/yclid-export-src"
+          overwrite: true
+
+      - name: Parse nginx yclid logs
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            cd /opt/tarot-lena
+            python3 /tmp/yclid-export-src/scripts/export_yclid.py 2>/dev/null \
+              || python3 /tmp/yclid-export-src/export_yclid.py

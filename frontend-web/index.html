@@ -11,12 +11,13 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <!-- Яндекс.Метрика 110607194: init только после согласия в cookie-баннере -->
+    <!-- Яндекс.Метрика 110607194: грузится сразу, отказ — «Только необходимые» -->
     <script>
       window.LEIA_METRIKA_ID = 110607194;
       window.leiaInitMetrika = function () {
         if (window.__leiaYm) return;
         window.__leiaYm = true;
+        window['disableYaCounter110607194'] = false;
         (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
         m[i].l=1*new Date();
         for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
@@ -24,9 +25,13 @@
         (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
         ym(110607194, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true, trackHash:true });
       };
+      window.leiaDisableMetrika = function () {
+        window['disableYaCounter110607194'] = true;
+        try { if (typeof ym === "function") ym(110607194, "disable"); } catch (e) {}
+      };
       try {
-        if (localStorage.getItem("leia_cookies") === "all") window.leiaInitMetrika();
-      } catch (e) {}
+        if (localStorage.getItem("leia_cookies") !== "needed") window.leiaInitMetrika();
+      } catch (e) { window.leiaInitMetrika(); }
     </script>
   </head>
   <body>

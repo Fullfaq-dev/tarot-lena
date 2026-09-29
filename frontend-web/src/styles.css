@@ -784,3 +784,12 @@ h1, h2, h3, h4, .h, .q, .c b, .lk-group-title, .lk-reading-head b { letter-spaci
 .cookie-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .cookie-actions .btn { width: auto; flex: 1; margin: 0; min-width: 140px; }
 .pay-auth.dim { opacity: 0.72; }
+
+.pay-window .tar.on { cursor: default; margin: 4px 0 14px; }
+.pay-window .tar.on h4 { margin: 0 0 4px; }
+.pay-window .btn.gold { margin-top: 4px; }
+.lk-offer {
+  margin: 22px 0 14px; padding: 20px 18px; border-radius: 20px;
+  border: 1.5px solid var(--line-strong); background: var(--surface);
+}
+.lk-offer .h { margin-bottom: 4px; }

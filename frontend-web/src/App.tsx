@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api, attribution, guestId, oauthStart, track } from "./api";
+import { api, attribution, guestId, oauthStart, pingSession, track } from "./api";
 import { Cabinet, TelegramLogin } from "./Cabinet";
 import { Landing, type LandingPage } from "./Landing";
 import { CookieBanner, ConsentBoxes, SiteFooter } from "./legal";
@@ -154,6 +154,7 @@ export function App() {
   const [stream, setStream] = useState("");
   const [paying, setPaying] = useState(false);
   const [waitingPay, setWaitingPay] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
 
   const showLanding = screen === 1 && !tokenFromPath;
@@ -178,15 +179,8 @@ export function App() {
     api<typeof cfg>("/api/web/config").then((d) =>
       setCfg((prev) => ({ ...prev, ...d, oauth: { ...prev.oauth, ...(d.oauth || {}) } })),
     );
-    const attr = attribution();
-    api("/api/web/sessions", {
-      method: "POST",
-      body: JSON.stringify({
-        guest_id: guestId(),
-        utm: attr.utm,
-        metrika_client_id: attr.metrika_client_id,
-      }),
-    }).catch(() => undefined);
+    pingSession();
+    [500, 2000, 5000].forEach((ms) => window.setTimeout(() => pingSession(), ms));
     api<{ profile?: { birth_date?: string; birth_city?: string; birth_time?: string }; user?: { email?: string } | null }>(
       "/api/web/me",
     )
@@ -314,6 +308,7 @@ export function App() {
     setReading(null);
     setErr("");
     setWaitingPay(false);
+    setPayOpen(false);
     window.history.replaceState({}, "", page === "home" ? "/" : `/${page}`);
   }
 
@@ -388,13 +383,15 @@ export function App() {
     }
   }
 
+  function openPay(next: "base" | "bundle") {
+    setTariff(next);
+    setErr("");
+    setPayOpen(true);
+  }
+
   async function pay() {
     if (!reading || paying) return;
     const mail = email.trim();
-    if (!loggedIn && !mail) {
-      setErr("Укажи почту — или войди, чтобы разбор сохранился в кабинете");
-      return;
-    }
     if (!priv) {
       setErr("Нужно согласие на обработку персональных данных и оферту");
       return;
@@ -696,7 +693,7 @@ export function App() {
                     {loggedIn ? (
                       <a className="btn ghost" href={`/lk?tab=history&reading=${reading.token}`}>Открыть в кабинете</a>
                     ) : (
-                      <p className="fine">Мини уже здесь. Полный — после оплаты: почта или вход, потом кнопка «Оплатить».</p>
+                      <p className="fine">Мини уже здесь. Полный откроется сразу после оплаты — без регистрации.</p>
                     )}
                   </>
                 )}
@@ -709,7 +706,7 @@ export function App() {
                     </p>
                     <div
                       className={`tar offer ${tariff === "base" ? "on" : ""}`}
-                      onClick={() => setTariff("base")}
+                      onClick={() => openPay("base")}
                     >
                       <h4>1 полный «{reading.product_name}»</h4>
                       <div className="pr">{price} ₽</div>
@@ -731,7 +728,7 @@ export function App() {
                     </div>
                     <div
                       className={`tar offer ${tariff === "bundle" ? "on" : ""}`}
-                      onClick={() => setTariff("bundle")}
+                      onClick={() => openPay("bundle")}
                     >
                       <span className="tag">Выгоднее</span>
                       <h4>«{reading.product_name}» + доп. разбор</h4>
@@ -752,38 +749,34 @@ export function App() {
                         </ul>
                       </div>
                     </div>
-                    <div className="field">
-                      <label>{loggedIn ? "Почта — прислать копию разбора" : "Почта — чтобы не потерять разбор"}</label>
-                      <input
-                        className="inp"
-                        type="email"
-                        placeholder="ты@почта.ru"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                      />
-                    </div>
-                    <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
-                    {!loggedIn && (
-                      <>
-                        <p className="fine">Или войди — разбор сохранится в кабинете, и сразу откроется оплата</p>
-                        {!priv && <p className="fine">Сначала отметь согласие с офертой.</p>}
-                        <AuthWays
-                          next={`/r/${reading.token}?pay=1`}
-                          oauth={cfg.oauth}
-                          bot={cfg.bot_username}
-                          onError={setErr}
-                          disabled={!priv}
-                        />
-                      </>
-                    )}
-                    <button className="btn gold" disabled={paying || !priv} onClick={pay}>
-                      {paying ? "Открываю оплату…" : `Оплатить ${payAmount} ₽`}
+                    <button className="btn gold" disabled={paying} onClick={() => openPay(tariff)}>
+                      {`Оплатить ${payAmount} ₽`}
                     </button>
-                    {err && <p className="err">{err}</p>}
                     <p className="fine">
                       Без подписок и автосписаний. Это разовый разбор с сайта.
                     </p>
-                    <button className="btn link" type="button" onClick={() => setScreen(6)}>Назад к мини-разбору</button>
+                    <button className="btn link" type="button" onClick={() => { setPayOpen(false); setScreen(6); }}>Назад к мини-разбору</button>
+                    {payOpen && (
+                      <div className="modal" onClick={() => !paying && setPayOpen(false)}>
+                        <div className="mc pay-window" role="dialog" aria-modal="true" aria-label="Оплата" onClick={(e) => e.stopPropagation()}>
+                          <div className="eyebrow">Оплата</div>
+                          <div className="tar on">
+                            <h4>{tariff === "bundle" ? `«${reading.product_name}» + доп. разбор` : `1 полный «${reading.product_name}»`}</h4>
+                            <div className="pr">
+                              {payAmount} ₽{tariff === "bundle" ? <> <s>{price + 590} ₽</s></> : null}
+                            </div>
+                          </div>
+                          <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} marketing={false} />
+                          <button className="btn gold" disabled={paying || !priv} onClick={pay}>
+                            {paying ? "Открываю оплату…" : `Перейти к оплате ${payAmount} ₽`}
+                          </button>
+                          {!priv && <p className="fine">Отметь согласие — и откроется страница оплаты.</p>}
+                          {err && <p className="err">{err}</p>}
+                          <p className="fine">Карта или СБП — на защищённой странице платёжного сервиса. Без подписок и автосписаний.</p>
+                          <button className="btn link" type="button" disabled={paying} onClick={() => setPayOpen(false)}>Изменить пакет</button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -795,17 +788,23 @@ export function App() {
                     {loggedIn ? (
                       <a className="btn" href={`/lk?tab=chat&chat=${reading.token}`}>Обсудить разбор с Леей</a>
                     ) : (
-                      <>
-                        <p className="sub">Чтобы спросить Лею по этому разбору — войди. До 10 сообщений, она держит контекст расклада.</p>
-                        <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
+                      <section className="lk-offer">
+                        <div className="eyebrow">Личный кабинет</div>
+                        <div className="h">Сохрани разбор в кабинете</div>
+                        <p className="sub">Вход в один клик — отдельная регистрация не нужна.</p>
+                        <div className="feat"><div><b>Разбор не потеряется</b><span> Откроешь с любого телефона или компьютера</span></div></div>
+                        <div className="feat"><div><b>Спроси Лею по разбору</b><span> До 10 вопросов — она помнит твой расклад</span></div></div>
+                        <div className="feat"><div><b>Все разборы в одном месте</b><span> Мини и полные — с историей</span></div></div>
+                        {!priv && <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />}
                         <AuthWays
-                          next={`/lk?tab=chat&chat=${reading.token}`}
+                          next={`/lk?tab=history&reading=${reading.token}`}
                           oauth={cfg.oauth}
                           bot={cfg.bot_username}
                           onError={setErr}
                           disabled={!priv}
                         />
-                      </>
+                        <p className="fine">Можно и без кабинета — ссылка на этот разбор работает год.</p>
+                      </section>
                     )}
                     <button className="btn ghost" onClick={() => { track("upsell_view"); setScreen(9); }}>Что дальше</button>
                   </>
