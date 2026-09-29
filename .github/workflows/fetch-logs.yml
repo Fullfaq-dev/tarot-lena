@@ -27,23 +27,24 @@ jobs:
             ls -la /var/log/nginx 2>/dev/null || echo "(no /var/log/nginx)"
             echo -n "host access.log exact: "
             grep "28/Sep/2026" /var/log/nginx/access.log 2>/dev/null | grep -c "yclid=" || echo 0
-            echo -n "host access.log* zgrep: "
-            zgrep -h "28/Sep/2026" /var/log/nginx/access.log* 2>/dev/null | grep -c "yclid=" || echo 0
-            echo "-- find access/yclid files --"
-            find /var/log /opt/tarot-lena /var/lib/docker/containers -name '*access*' -o -name '*nginx*' 2>/dev/null | head -80 || true
-            echo "-- docker nginx files --"
-            docker compose -f docker-compose.prod.yml exec -T nginx sh -c 'ls -la /var/log/nginx; echo ---; grep -c yclid= /var/log/nginx/access.log 2>/dev/null; echo ---; grep "28/Sep/2026" /var/log/nginx/access.log 2>/dev/null | grep -c yclid=' || true
-            echo "-- docker compose nginx logs 28.09 --"
-            echo -n "yclid in docker nginx logs (28/Sep/2026): "
-            docker compose -f docker-compose.prod.yml logs nginx --no-color 2>/dev/null | grep "28/Sep/2026" | grep -c "yclid=" || echo 0
-            echo -n "total nginx lines 28/Sep/2026: "
-            docker compose -f docker-compose.prod.yml logs nginx --no-color 2>/dev/null | grep -c "28/Sep/2026" || echo 0
-            echo -n "unique yclid values 28/Sep/2026: "
-            docker compose -f docker-compose.prod.yml logs nginx --no-color 2>/dev/null | grep "28/Sep/2026" | grep -oE 'yclid=[^[:space:]&"]+' | sort -u | wc -l
-            echo "-- sample yclid lines --"
-            docker compose -f docker-compose.prod.yml logs nginx --no-color 2>/dev/null | grep "28/Sep/2026" | grep "yclid=" | head -20 || true
-            echo "-- journalctl --"
-            journalctl --since "2026-09-28 00:00:00" --until "2026-09-29 00:00:00" -u nginx --no-pager 2>/dev/null | grep -c "yclid=" || echo "(no journal nginx)"
+            echo "-- nginx containers --"
+            docker ps -a --filter name=nginx --format 'table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}'
+            echo "-- current nginx log file --"
+            docker inspect tarot-lena-nginx-1 --format '{{.LogPath}} {{.Created}} {{.State.StartedAt}}'
+            echo "-- yclid in current docker nginx json log (28/Sep/2026) --"
+            NGINX_LOG="$(docker inspect tarot-lena-nginx-1 --format '{{.LogPath}}')"
+            echo "logpath=$NGINX_LOG"
+            echo -n "yclid requests: "
+            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | grep -c "yclid=" || echo 0
+            echo -n "total nginx requests that day: "
+            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | wc -l
+            echo -n "unique yclid=: "
+            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | grep -oE 'yclid=[^[:space:]&"\\]+' | sort -u | wc -l
+            echo "-- sample --"
+            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | grep "yclid=" | head -15 || true
+            echo "-- docker compose nginx logs (same container) --"
+            echo -n "yclid via compose logs: "
+            docker compose -f docker-compose.prod.yml logs nginx --no-color --since "2026-09-28T00:00:00" --until "2026-09-29T00:00:00" 2>/dev/null | grep -c "yclid=" || echo 0
             echo "=== docker compose ps ==="
             docker compose -f docker-compose.prod.yml ps -a
             echo "=== disk & memory ==="
