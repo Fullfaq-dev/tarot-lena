@@ -50,16 +50,33 @@ export function attribution(): Attr {
     }
   }
   if (changed) writeAttr(current);
-  const ym = (window as unknown as { ym?: (id: number, method: string, cb: (id: string) => void) => void }).ym;
-  if (!current.metrika_client_id && ym) {
-    ym(YM_ID, "getClientID", (clientID) => {
-      const fresh = readAttr();
-      if (fresh.metrika_client_id || !clientID) return;
-      fresh.metrika_client_id = clientID;
-      writeAttr(fresh);
-    });
-  }
+  captureMetrikaClientId();
   return current;
+}
+
+function captureMetrikaClientId() {
+  const current = readAttr();
+  if (current.metrika_client_id) return;
+  const ym = (window as unknown as { ym?: (id: number, method: string, cb: (id: string) => void) => void }).ym;
+  if (!ym) return;
+  ym(YM_ID, "getClientID", (clientID) => {
+    const fresh = readAttr();
+    if (fresh.metrika_client_id || !clientID) return;
+    fresh.metrika_client_id = clientID;
+    writeAttr(fresh);
+  });
+}
+
+export function pingSession() {
+  const attr = attribution();
+  return api("/api/web/sessions", {
+    method: "POST",
+    body: JSON.stringify({
+      guest_id: guestId(),
+      utm: attr.utm,
+      metrika_client_id: attr.metrika_client_id,
+    }),
+  }).catch(() => undefined);
 }
 
 export function utm(): Record<string, string> {

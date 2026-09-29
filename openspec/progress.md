@@ -57,3 +57,4 @@
 **Деплой:** push в `Fullfaq-dev/tarot-lena` → rsync/`deploy/deploy.sh` на VPS (`SKIP_GIT_PULL=1` при rsync).
 
 - [Completed] Сайт-квиз по ТЗ: `frontend-web`, `/api/web`, Robokassa, мини-шаблоны, апселл/безлимит 590, бот `web_<token>`, админка карточек, кэш матрицы, Метрика 110607194.
+- [Completed] Окно оплаты без почты/входа, новая колода 78 JPG, Метрика грузится сразу (отказ в баннере).

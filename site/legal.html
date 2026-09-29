@@ -11,6 +11,7 @@
     window.leiaInitMetrika = function () {
       if (window.__leiaYm) return;
       window.__leiaYm = true;
+      window['disableYaCounter110607194'] = false;
       (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
       m[i].l=1*new Date();
       for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
@@ -18,7 +19,13 @@
       (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
       ym(110607194, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true, trackHash:true });
     };
-    try { if (localStorage.getItem("leia_cookies") === "all") window.leiaInitMetrika(); } catch (e) {}
+    window.leiaDisableMetrika = function () {
+      window['disableYaCounter110607194'] = true;
+      try { if (typeof ym === "function") ym(110607194, "disable"); } catch (e) {}
+    };
+    try {
+      if (localStorage.getItem("leia_cookies") !== "needed") window.leiaInitMetrika();
+    } catch (e) { window.leiaInitMetrika(); }
   </script>
   <style>
     :root {
@@ -233,7 +240,7 @@
 <tr><td>Приём оплаты, чеки, возвраты</td><td>почта, сумма, дата, номер заказа, статус платежа, способ оплаты (без полных данных карты)</td><td>исполнение договора; требования налогового законодательства</td></tr>
 <tr><td>Подписка «Безлимит»</td><td>всё из строки выше, а также факт и время согласия на автосписания, дата следующего списания, факт отказа</td><td>исполнение договора; требования ст. 16.1 Закона «О защите прав потребителей»</td></tr>
 <tr><td>Рассылка разборов и предложений</td><td>адрес электронной почты</td><td>отдельное согласие на рассылку</td></tr>
-<tr><td>Статистика посещаемости и оценка рекламы</td><td>cookie, идентификаторы Яндекс Метрики, IP-адрес, данные о браузере и устройстве, страницы и действия на Сайте, источник перехода и рекламные метки (UTM, yclid)</td><td>согласие (через cookie-баннер)</td></tr>
+<tr><td>Статистика посещаемости и оценка рекламы</td><td>cookie, идентификаторы Яндекс Метрики, IP-адрес, данные о браузере и устройстве, страницы и действия на Сайте, источник перехода и рекламные метки (UTM, yclid)</td><td>согласие; отказ в cookie-баннере</td></tr>
 <tr><td>Безопасность, поддержка, ответы на обращения</td><td>IP-адрес, технические журналы, текст обращений</td><td>законный интерес оператора; исполнение договора</td></tr>
 </tbody></table></div>
 <p>Специальные категории персональных данных (о здоровье, убеждениях, интимной жизни и т.п.) и биометрия не собираются. Пользователя просят не сообщать их в переписке с Леей.</p>
@@ -243,7 +250,7 @@
 <li>необходимые данные браузера (localStorage): гостевой идентификатор, чтобы сохранить разбор до входа; сведения об источнике перехода; данные сессии входа. Без них Сайт не работает;</li>
 <li>Яндекс Метрику (сервис ООО «Яндекс»): cookie и аналогичные технологии, включая Вебвизор, для статистики посещений, анализа поведения на Сайте и оценки эффективности рекламы в Яндекс Директе.</li>
 </ul>
-<p>5.2. Метрика используется после согласия Пользователя в cookie-баннере. Отказаться можно в баннере, в настройках браузера или удалив cookie.</p>
+<p>5.2. Счётчик Яндекс Метрики загружается сразу при открытии Сайта. Отказаться можно кнопкой «Только необходимые» в cookie-баннере — тогда счётчик отключается. Также можно отказаться в настройках браузера или удалив cookie.</p>
 <p>5.3. В записях Вебвизора содержимое полей ввода (почта, дата рождения) скрыто.</p>
 <h2>6. Действия с данными</h2>
 <p>Сбор, запись, систематизация, накопление, хранение, уточнение, извлечение, использование, передача (предоставление, доступ), обезличивание, блокирование, удаление, уничтожение. Обработка автоматизированная.</p>
@@ -312,7 +319,7 @@
     </footer>
   </div>
   <div class="cookie-bar" id="cookie-bar" role="dialog" aria-label="Cookie">
-    <p>Мы используем cookie и Яндекс Метрику, чтобы понимать, как работает сайт и реклама. <a href="#cookies">Подробнее</a></p>
+    <p>Мы используем cookie и Яндекс Метрику, чтобы понимать, как работает сайт и реклама. «Только необходимые» отключает Метрику. <a href="#cookies">Подробнее</a></p>
     <div class="cookie-actions">
       <button type="button" class="cookie-all" id="cookie-all">Принять</button>
       <button type="button" class="cookie-needed" id="cookie-needed">Только необходимые</button>
@@ -348,6 +355,7 @@
     function chooseCookies(mode) {
       try { localStorage.setItem(cookieKey, mode); } catch (e) {}
       if (mode === "all") window.leiaInitMetrika();
+      if (mode === "needed") window.leiaDisableMetrika();
       bar.style.display = "none";
     }
     document.getElementById("cookie-all").onclick = function () { chooseCookies("all"); };

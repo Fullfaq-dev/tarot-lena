@@ -5,6 +5,7 @@ const COOKIE_KEY = "leia_cookies";
 declare global {
   interface Window {
     leiaInitMetrika?: () => void;
+    leiaDisableMetrika?: () => void;
   }
 }
 
@@ -45,6 +46,7 @@ export function CookieBanner() {
       /* ignore */
     }
     if (mode === "all") window.leiaInitMetrika?.();
+    if (mode === "needed") window.leiaDisableMetrika?.();
     setOpen(false);
   }
 
@@ -52,7 +54,8 @@ export function CookieBanner() {
   return (
     <div className="cookie-bar" role="dialog" aria-label="Cookie">
       <p>
-        Мы используем cookie и Яндекс Метрику, чтобы понимать, как работает сайт и реклама.{" "}
+        Мы используем cookie и Яндекс Метрику, чтобы понимать, как работает сайт и реклама.
+        «Только необходимые» отключает Метрику.{" "}
         <a href="/legal#cookies">Подробнее</a>
       </p>
       <div className="cookie-actions">
@@ -68,11 +71,14 @@ export function ConsentBoxes({
   mkt,
   setPriv,
   setMkt,
+  marketing = true,
 }: {
   priv: boolean;
   mkt: boolean;
   setPriv: (value: boolean) => void;
   setMkt: (value: boolean) => void;
+  /** Показывать галочку рассылки. В окне оплаты её нет — почту там не собираем. */
+  marketing?: boolean;
 }) {
   return (
     <>
@@ -83,12 +89,14 @@ export function ConsentBoxes({
           {" "}и принимаю <a href="/legal#offer" onClick={(e) => e.stopPropagation()}>оферту</a>
         </span>
       </label>
-      <label className={`chk ${mkt ? "on" : ""}`} onClick={() => setMkt(!mkt)}>
-        <i />
-        <span>
-          Согласна получать разборы и предложения на почту (<a href="/legal#mailing" onClick={(e) => e.stopPropagation()}>условия рассылки</a>). Отписаться можно в любом письме
-        </span>
-      </label>
+      {marketing && (
+        <label className={`chk ${mkt ? "on" : ""}`} onClick={() => setMkt(!mkt)}>
+          <i />
+          <span>
+            Согласна получать разборы и предложения на почту (<a href="/legal#mailing" onClick={(e) => e.stopPropagation()}>условия рассылки</a>). Отписаться можно в любом письме
+          </span>
+        </label>
+      )}
     </>
   );
 }
