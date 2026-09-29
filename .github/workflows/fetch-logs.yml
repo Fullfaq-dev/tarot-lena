@@ -12,6 +12,18 @@ jobs:
   logs:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy yclid parser
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "scripts/export_yclid.py"
+          target: "/tmp/yclid-export-src"
+          overwrite: true
+
       - name: Fetch API logs over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -21,40 +33,5 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/tarot-lena
-            LINES="${{ github.event.inputs.lines }}"
-            echo "=== yclid 28/Sep/2026 ==="
-            echo "-- host /var/log/nginx --"
-            ls -la /var/log/nginx 2>/dev/null || echo "(no /var/log/nginx)"
-            echo -n "host access.log exact: "
-            grep "28/Sep/2026" /var/log/nginx/access.log 2>/dev/null | grep -c "yclid=" || echo 0
-            echo "-- nginx containers --"
-            docker ps -a --filter name=nginx --format 'table {{.Names}}\t{{.Status}}\t{{.CreatedAt}}'
-            echo "-- current nginx log file --"
-            docker inspect tarot-lena-nginx-1 --format '{{.LogPath}} {{.Created}} {{.State.StartedAt}}'
-            echo "-- yclid in current docker nginx json log (28/Sep/2026) --"
-            NGINX_LOG="$(docker inspect tarot-lena-nginx-1 --format '{{.LogPath}}')"
-            echo "logpath=$NGINX_LOG"
-            echo -n "yclid requests: "
-            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | grep -c "yclid=" || echo 0
-            echo -n "total nginx requests that day: "
-            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | wc -l
-            echo -n "unique yclid=: "
-            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | grep -oE 'yclid=[^[:space:]&"\\]+' | sort -u | wc -l
-            echo "-- sample --"
-            (grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null || sudo grep "28/Sep/2026" "$NGINX_LOG" 2>/dev/null) | grep "yclid=" | head -15 || true
-            echo "-- docker compose nginx logs (same container) --"
-            echo -n "yclid via compose logs: "
-            docker compose -f docker-compose.prod.yml logs nginx --no-color --since "2026-09-28T00:00:00" --until "2026-09-29T00:00:00" 2>/dev/null | grep -c "yclid=" || echo 0
-            echo "=== docker compose ps ==="
-            docker compose -f docker-compose.prod.yml ps -a
-            echo "=== disk & memory ==="
-            df -h / | tail -n +1
-            free -h | sed -n '1,2p'
-            echo "=== api logs ==="
-            docker compose -f docker-compose.prod.yml logs api --tail="$LINES" 2>&1 || true
-            echo "=== nginx logs ==="
-            docker compose -f docker-compose.prod.yml logs nginx --tail=40 2>&1 || true
-            echo "=== bot logs (tail 40) ==="
-            docker compose -f docker-compose.prod.yml logs bot --tail=40 2>&1 || true
-            echo "=== in-container health ==="
-            docker compose -f docker-compose.prod.yml exec -T api curl -sv http://127.0.0.1:8000/health 2>&1 | tail -30 || true
+            python3 /tmp/yclid-export-src/scripts/export_yclid.py 2>/dev/null \
+              || python3 /tmp/yclid-export-src/export_yclid.py
