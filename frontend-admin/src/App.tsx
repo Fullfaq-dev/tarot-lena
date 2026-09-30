@@ -1311,7 +1311,7 @@ function TarotPage() {
       <section className="panel cards-grid">
         {cards.map((c) => (
           <article key={c.id} className="tarot-card-preview">
-            <img src={`/static/tarot_cards/${c.image_path.split("/").pop()}`} alt={c.name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            <img src={`/static/tarot_cards/${c.image_path.split("/").pop()}?v=20260930s`} alt={c.name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
             <div>{c.number}. {c.name}</div>
             <small>{c.slug}</small>
           </article>

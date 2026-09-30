@@ -371,9 +371,7 @@ h1, h2, h3, h4, .h, .q, .c b, .lk-group-title, .lk-reading-head b { letter-spaci
 .arc { position: relative; height: 200px; margin: 6px 0 10px; }
 .back {
   position: absolute; width: 62px; height: 98px; border-radius: 10px; overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(230, 210, 178, 0.35), transparent 55%),
-    linear-gradient(150deg, #8a5ce6, #4a2a91);
+  background: #0a0614 url("/static/tarot_cards/CardBacks.jpg?v=20260930s") center / cover no-repeat;
   left: 50%; top: 50%;
   border: 1.5px solid var(--gold-light); color: var(--gold-light); cursor: pointer; font-size: 18px;
   box-shadow: 0 6px 14px rgba(40, 30, 60, 0.25);

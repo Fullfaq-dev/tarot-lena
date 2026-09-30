@@ -30,6 +30,7 @@ from app.database.models import (
 )
 from app.services.ai.kie_client import KieClient
 from app.services.billing.robokassa_client import RobokassaNotConfiguredError, build_payment_url, next_invoice_id
+from app.services.tarot.cards import tarot_static_url
 from app.services.web.catalog import CARDS, WebCard, apply_override, public_card
 from app.services.web.mini import build_mini
 
@@ -152,10 +153,7 @@ async def backfill_profile_from_readings(session: AsyncSession, user: User) -> S
 
 
 def _card_image_url(path: str | None) -> str | None:
-    if not path:
-        return None
-    name = Path(path).name
-    return f"/static/tarot_cards/{name}"
+    return tarot_static_url(path)
 
 
 async def resolved_cards(session: AsyncSession) -> dict[str, WebCard]:
