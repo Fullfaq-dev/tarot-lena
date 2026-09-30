@@ -11,6 +11,7 @@ services:
       - media_data:/app/backend/static/generated
       - ./backend:/app/backend:ro
       - ./prompts:/app/prompts:ro
+      - ./Cards-jpg:/app/Cards-jpg:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -28,6 +29,7 @@ services:
     volumes:
       - ./backend:/app/backend:ro
       - ./prompts:/app/prompts:ro
+      - ./Cards-jpg:/app/Cards-jpg:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,6 +48,7 @@ services:
       - media_data:/app/backend/static/generated
       - ./backend:/app/backend:ro
       - ./prompts:/app/prompts:ro
+      - ./Cards-jpg:/app/Cards-jpg:ro
     depends_on:
       postgres:
         condition: service_healthy

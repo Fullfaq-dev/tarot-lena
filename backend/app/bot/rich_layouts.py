@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from urllib.parse import quote
-
 from app.bot.i18n import normalize_language, t
 from app.core.config import get_settings
+from app.services.tarot.cards import tarot_static_url
 from app.services.energy.catalog import Stone
 from app.services.energy.localize import localize_rune, localize_stone
 from app.services.energy.service import DrawnRune
@@ -102,8 +101,7 @@ def card_image_public_url(card: dict) -> str | None:
     image_file = card.get("image_file")
     if not image_file:
         return None
-    base = get_settings().public_base_url.rstrip("/")
-    return f"{base}/static/tarot_cards/{quote(str(image_file))}"
+    return tarot_static_url(str(image_file), public_base=get_settings().public_base_url)
 
 
 def reading_position_labels(reading_type: str, count: int, lang: str) -> list[str]:

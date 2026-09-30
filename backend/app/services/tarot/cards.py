@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import quote
 
 RANK_NAMES: dict[int, str] = {
     1: "Туз",
@@ -102,6 +103,9 @@ FULL_DECK: list[dict[str, str | int]] = [
     {**card, "arcana": "major"} for card in MAJOR_ARCANA
 ] + MINOR_ARCANA
 
+# Меняем вместе с файлами колоды — Telegram и браузер иначе держат старые JPG по тому же URL.
+TAROT_ASSET_VERSION = "20260930s"
+
 
 def image_path_for(card: dict[str, str | int], cards_dir: Path) -> str:
     return str(cards_dir / str(card["image_file"]))
@@ -109,3 +113,13 @@ def image_path_for(card: dict[str, str | int], cards_dir: Path) -> str:
 
 def storage_image_path(card: dict[str, str | int], cards_dir: Path) -> str:
     return image_path_for(card, cards_dir)
+
+
+def tarot_static_url(image_file: str | None, *, public_base: str | None = None) -> str | None:
+    if not image_file:
+        return None
+    name = Path(str(image_file)).name
+    path = f"/static/tarot_cards/{quote(name)}?v={TAROT_ASSET_VERSION}"
+    if public_base:
+        return f"{public_base.rstrip('/')}{path}"
+    return path

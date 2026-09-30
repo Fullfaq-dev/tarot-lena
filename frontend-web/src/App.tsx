@@ -706,7 +706,11 @@ export function App() {
                     </p>
                     <div
                       className={`tar offer ${tariff === "base" ? "on" : ""}`}
-                      onClick={() => openPay("base")}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={tariff === "base"}
+                      onClick={() => { setTariff("base"); setErr(""); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTariff("base"); setErr(""); } }}
                     >
                       <h4>1 полный «{reading.product_name}»</h4>
                       <div className="pr">{price} ₽</div>
@@ -728,7 +732,11 @@ export function App() {
                     </div>
                     <div
                       className={`tar offer ${tariff === "bundle" ? "on" : ""}`}
-                      onClick={() => openPay("bundle")}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={tariff === "bundle"}
+                      onClick={() => { setTariff("bundle"); setErr(""); }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTariff("bundle"); setErr(""); } }}
                     >
                       <span className="tag">Выгоднее</span>
                       <h4>«{reading.product_name}» + доп. разбор</h4>
