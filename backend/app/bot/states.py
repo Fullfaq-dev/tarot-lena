@@ -19,3 +19,4 @@ class BotStates(StatesGroup):
     waiting_chat_collect = State()
     waiting_chat_role = State()
     waiting_reading_followup = State()
+    waiting_web_mini_question = State()

@@ -15,6 +15,13 @@ from app.services.web import auth as web_auth
 router = APIRouter(prefix="/api/web", tags=["web"])
 
 
+def _client_ip(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
+    return request.client.host if request.client else ""
+
+
 class SessionIn(BaseModel):
     guest_id: str = Field(min_length=8, max_length=64)
     utm: dict[str, str] = Field(default_factory=dict)
@@ -32,6 +39,12 @@ class ReadingIn(BaseModel):
     partner_birth: str | None = None
     utm: dict[str, str] = Field(default_factory=dict)
     metrika_client_id: str | None = None
+    quiz_done: bool = False
+
+
+class AskIn(BaseModel):
+    text: str
+    guest_id: str | None = None
 
 
 class CheckoutIn(BaseModel):
@@ -63,6 +76,10 @@ async def web_config() -> dict:
         "legal_url": "/legal",
         "unlimited_price": 590,
         "oauth": web_auth.oauth_ready(),
+        "show_strike_price": settings.show_strike_price,
+        "question_price_rub": settings.question_price_rub,
+        "question_pack5_price_rub": settings.question_pack5_price_rub,
+        "question_free_limit": settings.web_question_free_limit,
     }
 
 
@@ -115,11 +132,45 @@ async def create_reading(
             utm=body.utm,
             metrika_client_id=body.metrika_client_id,
             user=user,
+            user_agent=request.headers.get("user-agent"),
+            quiz_done=body.quiz_done,
+            client_ip=_client_ip(request),
         )
         await session.commit()
+    except web.MiniLimitExceeded as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return web.public_reading(reading, include_paid=reading.status in {"paid", "ready"})
+
+
+@router.post("/readings/{token}/retry-mini")
+async def retry_mini(token: str, session: AsyncSession = Depends(get_session)) -> dict:
+    reading = await session.scalar(select(WebReading).where(WebReading.token == token))
+    if reading is None:
+        raise HTTPException(status_code=404, detail="Ссылка не найдена или истекла")
+    reading = await web.retry_mini(session, reading)
+    await session.commit()
+    return web.public_reading(reading, include_paid=reading.status in {"paid", "ready"})
+
+
+@router.post("/readings/{token}/ask")
+async def ask_reading(
+    token: str,
+    body: AskIn,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    reading = await session.scalar(select(WebReading).where(WebReading.token == token))
+    if reading is None:
+        raise HTTPException(status_code=404, detail="Ссылка не найдена или истекла")
+    user = await web_auth.user_from_request(request, session)
+    try:
+        result = await web.ask_about_reading(session, reading, text=body.text, user=user)
+        await session.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
 
 
 @router.get("/readings/{token}")
@@ -417,13 +468,16 @@ async def chat_history(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     if reading_token:
+        budget = web.READING_CHAT_LIMIT
+        if not reading_token.startswith(("tg:", "pu:", "msg:")):
+            reading = await session.scalar(select(WebReading).where(WebReading.token == reading_token))
+            if reading is not None:
+                budget = web._question_budget(reading)
+        used = await web._count_reading_user_msgs(session, user.id, reading_token)
         return {
             "chat": await web.load_reading_thread(session, user, reading_token),
-            "chat_left": max(
-                0,
-                web.READING_CHAT_LIMIT
-                - await web._count_reading_user_msgs(session, user.id, reading_token),
-            ),
+            "chat_left": max(0, budget - used),
+            "question_budget": budget,
         }
     return {"chat": await web.load_chat_history(session, user)}
 

@@ -292,32 +292,37 @@ class KieClient:
         messages: list[dict],
         *,
         reasoning_effort: str,
+        model: str | None = None,
+        max_output_tokens: int | None = None,
+        timeout: float = 120,
     ) -> str:
-        model = self._openai_model()
+        chosen = (model or self._openai_model()).strip()
         instructions, input_items = _messages_to_responses_input(_normalize_messages(messages))
         if not input_items:
             input_items = [{"role": "user", "content": [{"type": "input_text", "text": "Продолжи."}]}]
         payload: dict[str, Any] = {
-            "model": model,
+            "model": chosen,
             "stream": False,
             "input": input_items,
-            "reasoning": {"effort": _map_reasoning_effort(reasoning_effort, model=model)},
+            "reasoning": {"effort": _map_reasoning_effort(reasoning_effort, model=chosen)},
         }
         if instructions:
             payload["instructions"] = instructions
+        if max_output_tokens:
+            payload["max_output_tokens"] = int(max_output_tokens)
         client = get_async_client()
         response = await client.post(
             f"{self.settings.openai_base_url.rstrip('/')}/responses",
             headers=self._openai_headers(),
             json=payload,
-            timeout=120,
+            timeout=timeout,
         )
         response.raise_for_status()
         data = response.json()
         if isinstance(data.get("error"), dict):
             err = data["error"]
             raise ValueError(err.get("message") or str(err))
-        self._remember_usage(data, model=str(data.get("model") or model), provider="openai")
+        self._remember_usage(data, model=str(data.get("model") or chosen), provider="openai")
         text = _extract_responses_text(data)
         if not text:
             raise ValueError("OpenAI вернул пустой ответ")
@@ -358,21 +363,29 @@ class KieClient:
         messages: list[dict],
         *,
         reasoning_effort: str = "low",
+        model: str | None = None,
+        max_output_tokens: int | None = None,
+        timeout: float | None = None,
+        max_attempts: int = 2,
     ) -> str:
         self.last_usage = None
         last_error: Exception | None = None
 
         if self._openai_configured():
-            for attempt in range(2):
+            for attempt in range(max(1, max_attempts)):
                 try:
                     return await self._chat_once_openai(
-                        messages, reasoning_effort=reasoning_effort
+                        messages,
+                        reasoning_effort=reasoning_effort,
+                        model=model,
+                        max_output_tokens=max_output_tokens,
+                        timeout=timeout or 120,
                     )
                 except Exception as exc:
                     last_error = exc
                     logger.warning(
                         "OpenAI chat failed model=%s attempt=%s: %s",
-                        self._openai_model(),
+                        model or self._openai_model(),
                         attempt + 1,
                         exc,
                     )

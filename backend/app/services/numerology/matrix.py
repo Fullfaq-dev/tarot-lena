@@ -140,3 +140,19 @@ def week_arcana_number(birth: date, for_day: date) -> int:
 def weekly_patron_arcana(birth: date, for_day: date) -> tuple[str, str]:
     num = week_arcana_number(birth, for_day)
     return arcana_name(num), arcana_meaning(num)
+
+
+def matrix_chart(birth: date) -> dict[str, int]:
+    """9 точек схемы: 4 стороны, 4 угла, центр."""
+    m = destiny_matrix(birth)
+    return {
+        "center": m.soul,
+        "top": m.day,
+        "right": m.month,
+        "bottom": m.year,
+        "left": m.social,
+        "tr": m.personality,
+        "br": m.comfort,
+        "bl": m.talent,
+        "tl": m.purpose,
+    }

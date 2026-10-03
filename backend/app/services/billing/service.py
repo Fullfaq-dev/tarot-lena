@@ -1176,6 +1176,21 @@ class BillingService:
                     )
                     payload["fulfill_empty"] = True
                     payment.payload = payload
+        elif payment.purpose == "web_questions":
+            from app.database.models import WebReading
+            from app.services.web.service import grant_question_credits
+
+            payload = dict(payment.payload or {})
+            reading = None
+            reading_id = payload.get("reading_id")
+            token = payload.get("token")
+            if reading_id:
+                reading = await session.scalar(select(WebReading).where(WebReading.id == reading_id))
+            if reading is None and token:
+                reading = await session.scalar(select(WebReading).where(WebReading.token == token))
+            pack = int(payload.get("question_pack") or (5 if "5" in str(payload.get("sku") or "") else 1))
+            if reading:
+                grant_question_credits(reading, pack)
         elif payment.purpose in {"web_reading", "web_unlimited"}:
             from app.database.models import WebReading, WebSession
             from app.services.web.service import fulfill_paid

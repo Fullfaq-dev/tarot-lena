@@ -123,6 +123,7 @@ _FEATURE_WAIT_STATES = frozenset(
         BotStates.waiting_rune_question.state,
         BotStates.waiting_stone_query.state,
         BotStates.waiting_bracelet_query.state,
+        BotStates.waiting_web_mini_question.state,
     }
 )
 
@@ -777,24 +778,12 @@ async def start(message: Message, command: CommandObject, state: FSMContext) -> 
 
         if command.args and command.args.startswith("web_"):
             token = command.args.removeprefix("web_")
-            try:
-                from app.database.models import WebReading, WebSession
-                from app.database.session import AsyncSessionLocal
+            from app.bot.web_start import handle_web_start
 
-                async with AsyncSessionLocal() as db:
-                    reading = await db.scalar(select(WebReading).where(WebReading.token == token))
-                    if reading:
-                        web = await db.scalar(select(WebSession).where(WebSession.id == reading.session_id))
-                        if web and user_id:
-                            web.user_id = user_id
-                            await db.commit()
-                        body = reading.paid_text or (reading.mini or {}).get("mirror") or "Разбор с сайта сохранён."
-                        await message.answer(
-                            "Это разбор с сайта Леи.\n\n" + str(body)[:3500],
-                            parse_mode=None,
-                        )
-            except Exception:
-                logger.exception("web reading start failed")
+            handled = await handle_web_start(message, token, user_id, state)
+            if handled:
+                logger.info("bot_open web_token=%s card_start", token)
+                return
 
         referrer_name: str | None = None
         if command.args and command.args.startswith("login_"):
@@ -1890,6 +1879,12 @@ async def fallback_message(message: Message, state: FSMContext) -> None:
             normalized = text.lower()
             if not text or normalized in _CHAT_ESCAPE_WORDS:
                 await state.clear()
+                return
+
+        if current_state == BotStates.waiting_web_mini_question.state:
+            from app.bot.web_start import handle_web_free_question
+
+            if await handle_web_free_question(message, text, state):
                 return
 
         if current_state == BotStates.waiting_profile_field.state:

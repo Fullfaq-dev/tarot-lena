@@ -4,11 +4,11 @@ import hashlib
 import json
 import logging
 import secrets
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,12 +32,18 @@ from app.services.ai.kie_client import KieClient
 from app.services.billing.robokassa_client import RobokassaNotConfiguredError, build_payment_url, next_invoice_id
 from app.services.tarot.cards import tarot_static_url
 from app.services.web.catalog import CARDS, WebCard, apply_override, public_card
-from app.services.web.mini import build_mini
+from app.services.web.mini import build_mini, mini_plain
+from app.services.web.mini_ai import generate_ai_mini, pending_mini
+from app.services.web.mini_spec import is_crawler, offer_payload
 
 logger = logging.getLogger(__name__)
 
 READING_TTL = timedelta(days=366)
-READING_CHAT_LIMIT = 10
+READING_CHAT_LIMIT = 3
+
+
+class MiniLimitExceeded(ValueError):
+    """Бесплатные мини на сегодня закончились."""
 BANNED = ("суицид", "беремен", "диагноз", "смерть", "юридическ", "лечение", "аборт")
 
 
@@ -266,6 +272,120 @@ def _topic_blocked(answers: list[str]) -> bool:
     return any(word in blob for word in BANNED)
 
 
+def _answers_key(answers: list[str]) -> str:
+    blob = "\n".join(str(item) for item in answers)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _matrix_cache_key(card: WebCard, birth: date, partner: date | None, answers: list[str]) -> str:
+    partner_part = partner.isoformat() if partner else ""
+    return f"{card.id}:{birth.isoformat()}:{partner_part}:{_answers_key(answers)}"
+
+
+def _log_mini(reading_id: str, card_id: str, mini: dict, *, cached: bool) -> None:
+    usage = mini.get("usage") if isinstance(mini.get("usage"), dict) else {}
+    logger.info(
+        "web_mini reading_id=%s card=%s model=%s in=%s out=%s cached=%s source=%s",
+        reading_id,
+        card_id,
+        usage.get("model") or "",
+        usage.get("input_tokens") or 0,
+        usage.get("output_tokens") or 0,
+        cached,
+        mini.get("source") or "",
+    )
+
+
+def _moscow_day_start() -> datetime:
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("Europe/Moscow")
+    except Exception:
+        tz = UTC
+    now = datetime.now(tz)
+    return datetime.combine(now.date(), time.min, tzinfo=tz).astimezone(UTC)
+
+
+def _question_budget(reading: WebReading) -> int:
+    extra = int((reading.input_payload or {}).get("question_credits") or 0)
+    return get_settings().web_question_free_limit + max(0, extra)
+
+
+async def _mini_quota(session: AsyncSession, *, guest_id: str, ip: str) -> None:
+    settings = get_settings()
+    start = _moscow_day_start()
+    device_n = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(WebReading)
+            .join(WebSession, WebReading.session_id == WebSession.id)
+            .where(WebSession.guest_id == guest_id, WebReading.created_at >= start)
+        )
+        or 0
+    )
+    if device_n >= settings.mini_per_device_day:
+        raise MiniLimitExceeded("На сегодня бесплатные разборы закончились. Твои прошлые разборы в кабинете")
+    if not ip:
+        return
+    rows = list((await session.scalars(select(WebReading).where(WebReading.created_at >= start))).all())
+    ip_n = sum(1 for row in rows if str((row.input_payload or {}).get("ip") or "") == ip)
+    if ip_n >= settings.mini_per_ip_day:
+        raise MiniLimitExceeded("На сегодня бесплатные разборы закончились. Твои прошлые разборы в кабинете")
+
+
+async def _notify_admins(text: str) -> None:
+    from app.services.telegram_notify import notify_owner
+
+    try:
+        await notify_owner(text)
+    except Exception:
+        logger.exception("admin notify failed")
+
+
+async def _store_matrix_mini(session: AsyncSession, cache_key: str, mini: dict) -> None:
+    if mini.get("source") not in {"ai", "library"}:
+        return
+    existing = await session.scalar(select(WebMatrixCache).where(WebMatrixCache.cache_key == cache_key))
+    if existing:
+        existing.payload = {"mini": mini}
+        return
+    session.add(WebMatrixCache(cache_key=cache_key, payload={"mini": mini}))
+
+
+async def _compose_reading_mini(
+    session: AsyncSession,
+    card: WebCard,
+    answers: list[str],
+    *,
+    drawn: list[dict],
+    birth_d: date | None,
+    partner_d: date | None,
+    user_agent: str | None,
+) -> tuple[dict, bool]:
+    shell = build_mini(card, answers, drawn=drawn, birth=birth_d, partner_birth=partner_d)
+    cache_key = None
+    if card.branch in {"date", "pair"} and birth_d:
+        cache_key = _matrix_cache_key(card, birth_d, partner_d, answers)
+        cached = await session.scalar(select(WebMatrixCache).where(WebMatrixCache.cache_key == cache_key))
+        payload = (cached.payload or {}).get("mini") if cached else None
+        if isinstance(payload, dict) and payload.get("source") in {"ai", "library"} and payload.get("verdict"):
+            return payload, True
+    if is_crawler(user_agent):
+        return pending_mini(shell), False
+    mini = await generate_ai_mini(
+        card,
+        answers,
+        drawn=drawn,
+        birth=birth_d,
+        partner_birth=partner_d,
+        shell=shell,
+    )
+    if cache_key and mini.get("source") in {"ai", "library"}:
+        await _store_matrix_mini(session, cache_key, mini)
+    return mini, False
+
+
 async def create_reading(
     session: AsyncSession,
     *,
@@ -280,13 +400,21 @@ async def create_reading(
     utm: dict | None = None,
     metrika_client_id: str | None = None,
     user: User | None = None,
+    user_agent: str | None = None,
+    quiz_done: bool = False,
+    client_ip: str | None = None,
 ) -> WebReading:
     if _topic_blocked(answers):
         raise ValueError("Эта тема закрыта. Выбери соседний вопрос — про чувства, деньги или работу.")
+    if not quiz_done:
+        raise ValueError("Сначала пройди квиз")
     cards = await resolved_cards(session)
     card = cards.get(card_id)
     if card is None:
         raise ValueError("Неизвестная карточка")
+    if is_crawler(user_agent):
+        raise ValueError("Сначала пройди квиз")
+    await _mini_quota(session, guest_id=guest_id, ip=(client_ip or "").strip())
     web = await ensure_session(
         session, guest_id, utm=utm, metrika_client_id=metrika_client_id, user=user
     )
@@ -300,23 +428,15 @@ async def create_reading(
     if card.branch == "taro" and len(drawn) < card.cards_n:
         raise ValueError("Выбери карты")
 
-    cache_payload = None
-    if card.branch in {"date", "pair"} and birth_d:
-        cache_key = f"{card.sku}:{birth_d.isoformat()}:{partner_d.isoformat() if partner_d else ''}"
-        cached = await session.scalar(select(WebMatrixCache).where(WebMatrixCache.cache_key == cache_key))
-        if cached:
-            cache_payload = cached.payload
-
-    mini = cache_payload.get("mini") if cache_payload else None
-    if not mini:
-        mini = build_mini(card, answers, drawn=drawn, birth=birth_d, partner_birth=partner_d)
-        if card.branch in {"date", "pair"} and birth_d and not cache_payload:
-            session.add(
-                WebMatrixCache(
-                    cache_key=f"{card.sku}:{birth_d.isoformat()}:{partner_d.isoformat() if partner_d else ''}",
-                    payload={"mini": mini},
-                )
-            )
+    mini, cached = await _compose_reading_mini(
+        session,
+        card,
+        answers,
+        drawn=drawn,
+        birth_d=birth_d,
+        partner_d=partner_d,
+        user_agent=user_agent,
+    )
 
     token = secrets.token_urlsafe(16)
     reading = WebReading(
@@ -338,6 +458,8 @@ async def create_reading(
             "product_name": card.product_name,
             "context": card.context,
             "includes": list(card.positions or card.open_blocks) + list(card.closed_blocks),
+            "ip": (client_ip or "").strip()[:64],
+            "quiz_done": True,
         },
         mini=mini,
         paid_text=None if card.price_rub else _free_full_text(mini),
@@ -345,6 +467,7 @@ async def create_reading(
     )
     session.add(reading)
     await session.flush()
+    _log_mini(reading.id, card.id, mini, cached=cached)
     owner = user or await ensure_guest_user(session, web)
     await upsert_soul_profile(
         session,
@@ -357,7 +480,40 @@ async def create_reading(
     return reading
 
 
+async def retry_mini(session: AsyncSession, reading: WebReading) -> WebReading:
+    current = reading.mini or {}
+    if current.get("source") in {"ai", "library"} and current.get("verdict"):
+        return reading
+    cards = await resolved_cards(session)
+    card = cards.get(reading.card_id)
+    if card is None:
+        return reading
+    payload = reading.input_payload or {}
+    drawn = list(payload.get("drawn") or [])
+    birth_d = _parse_date(payload.get("birth"))
+    partner_d = _parse_date(payload.get("partner_birth"))
+    mini, cached = await _compose_reading_mini(
+        session,
+        card,
+        list(reading.answers or []),
+        drawn=drawn,
+        birth_d=birth_d,
+        partner_d=partner_d,
+        user_agent=None,
+    )
+    reading.mini = mini
+    if card.price_rub == 0:
+        reading.paid_text = _free_full_text(mini)
+        reading.status = "ready"
+    await session.flush()
+    _log_mini(reading.id, card.id, mini, cached=cached)
+    return reading
+
+
 def _free_full_text(mini: dict) -> str:
+    text = mini_plain(mini)
+    if text:
+        return text
     parts = [mini.get("mirror") or ""]
     for block in mini.get("blocks") or []:
         parts.append(str(block.get("text") or ""))
@@ -383,22 +539,36 @@ def _offer_meta(reading: WebReading) -> tuple[list[str], str]:
 def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
     paid = bool(reading.status in {"paid", "ready"} and reading.paid_text)
     includes, context = _offer_meta(reading)
+    mini = dict(reading.mini or {})
+    mini.pop("usage", None)
+    settings = get_settings()
+    price = int((reading.input_payload or {}).get("price_rub") or 0)
+    budget = _question_budget(reading)
     payload = {
         "token": reading.token,
         "card_id": reading.card_id,
         "branch": reading.branch,
         "sku": reading.sku,
         "status": reading.status,
-        "mini": reading.mini,
-        "price_rub": int((reading.input_payload or {}).get("price_rub") or 0),
+        "mini": mini,
+        "price_rub": price,
         "product_name": (reading.input_payload or {}).get("product_name"),
         "drawn": (reading.input_payload or {}).get("drawn") or [],
         "includes": includes,
         "context": context,
         "paid": paid,
+        "generating": reading.status == "generating",
         "awaiting_pay": bool(reading.payment_id) and not paid,
-        "can_pay": (not paid) and int((reading.input_payload or {}).get("price_rub") or 0) > 0,
+        "can_pay": (not paid) and price > 0 and reading.status != "generating",
         "source": "web",
+        "offer": offer_payload(
+            reading.card_id,
+            price_rub=price,
+            show_strike=settings.show_strike_price,
+            question_price=settings.question_price_rub,
+            mini=mini,
+        ),
+        "question_budget": budget,
         "created_at": reading.created_at.isoformat() if reading.created_at else None,
         "expires_at": reading.expires_at.isoformat() if reading.expires_at else None,
     }
@@ -506,30 +676,56 @@ async def checkout(
     if tariff == "test":
         raise ValueError("Тестовый платёж выключен")
 
-    if web.unlimited_until and web.unlimited_until > datetime.now(UTC):
+    settings = get_settings()
+    if web.unlimited_until and web.unlimited_until > datetime.now(UTC) and tariff not in {"q1", "questions_1", "q5", "questions_5"}:
         await fulfill_paid(session, reading)
         return {"ok": True, "unlimited": True, "token": reading.token}
 
     base = int(card.price_rub)
     bind_reading = True
-    if tariff == "bundle":
+    pack_n = 0
+    if tariff in {"q1", "questions_1", "q5", "questions_5"}:
+        if reading.status not in {"paid", "ready"} or not reading.paid_text:
+            raise ValueError("Сначала открой полный разбор")
+        bind_reading = False
+        if tariff in {"q5", "questions_5"}:
+            amount = Decimal(settings.question_pack5_price_rub)
+            sku = "web_questions_5"
+            title = "5 вопросов Лее"
+            pack_n = 5
+        else:
+            amount = Decimal(settings.question_price_rub)
+            sku = "web_questions_1"
+            title = "1 вопрос Лее"
+            pack_n = 1
+        purpose = "web_questions"
+        key = f"web_questions:{reading.id}:{sku}"
+    elif tariff == "bundle":
         amount = Decimal(base + 300)
         sku = f"{card.sku}_bundle"
         title = f"{card.product_name} + доп. разбор"
+        purpose = "web_reading"
+        key = f"web_reading:{reading.id}:{tariff}"
     elif tariff == "unlimited":
         if not recur_consent:
             raise ValueError("Нужно согласие на подписку")
         amount = Decimal("590")
         sku = "web_unlimited_month"
         title = "Безлимит на месяц"
+        purpose = "web_unlimited"
+        key = f"web_reading:{reading.id}:{tariff}"
     elif tariff == "upsell":
         amount = Decimal("690") if card.branch == "taro" else Decimal("390")
         sku = "web_upsell"
         title = "Апселл"
+        purpose = "web_reading"
+        key = f"web_reading:{reading.id}:{tariff}"
     else:
         amount = Decimal(base)
         sku = card.sku
         title = card.product_name
+        purpose = "web_reading"
+        key = f"web_reading:{reading.id}:base"
     if amount <= 0:
         await fulfill_paid(session, reading)
         return {"ok": True, "token": reading.token}
@@ -537,13 +733,6 @@ async def checkout(
     if reading.status in {"paid", "ready"} and tariff in {"base", "bundle"}:
         return {"ok": True, "token": reading.token}
 
-    if sku == "web_unlimited_month":
-        purpose = "web_unlimited"
-        key = f"web_reading:{reading.id}:{tariff}"
-    else:
-        purpose = "web_reading"
-        key = f"web_reading:{reading.id}:{tariff}"
-    settings = get_settings()
     # Robokassa GET Success/Fail URL cannot contain query string.
     success_url = f"{settings.public_base_url.rstrip('/')}/r/{reading.token}"
     fail_url = f"{settings.public_base_url.rstrip('/')}/payment/failed"
@@ -571,6 +760,8 @@ async def checkout(
         payload["reading_id"] = reading.id
         payload["metrika_client_id"] = web.metrika_client_id
         payload["yclid"] = (web.utm or {}).get("yclid")
+        if pack_n:
+            payload["question_pack"] = pack_n
         payment.payload = payload
         result = await _open_robokassa(
             session, payment, amount=amount, title=title, success_url=success_url, fail_url=fail_url
@@ -592,6 +783,7 @@ async def checkout(
             "idempotency_key": key,
             "metrika_client_id": web.metrika_client_id,
             "yclid": (web.utm or {}).get("yclid"),
+            "question_pack": pack_n or None,
         },
     )
     session.add(payment)
@@ -612,34 +804,95 @@ async def fulfill_paid(session: AsyncSession, reading: WebReading) -> None:
     card = cards.get(reading.card_id)
     if card is None:
         return
+    reading.status = "generating"
+    await session.flush()
     drawn = (reading.input_payload or {}).get("drawn") or []
     answers = reading.answers or []
-    cards_txt = ", ".join(f"{item.get('name')}" for item in drawn) or "—"
-    prompt = (
-        "Ты Лея. Пиши на «ты», без жаргона арканов в ветке дат, без гарантий. "
-        "Не отвечай всегда «да» на «вернётся ли он». "
-        "Запрещены здоровье, беременность, диагнозы, смерть, суицид, юриспруденция. "
-        "Это разбор с сайта, не выдавай себя за живого таролога.\n\n"
+    cards_txt = ", ".join(f"{item.get('name')}" for item in drawn) or "-"
+    mini = reading.mini or {}
+    bullets = mini.get("paywall_bullets") or []
+    bullets_txt = "\n".join(f"- {item}" for item in bullets) or "-"
+    from app.services.products.prompts import assemble_system
+
+    block = {
+        "feels": "full_love",
+        "marry": "full_love",
+        "return": "full_love",
+        "other": "full_love",
+        "alone": "full_matrix",
+        "stuck": "full_matrix",
+        "purpose": "full_matrix",
+        "compat": "full_love",
+        "money": "full_wealth",
+        "soon": "full_tarot",
+        "job": "full_tarot",
+    }.get(card.id, "full_tarot")
+    paid_block = ""
+    paid_path = Path(__file__).resolve().parents[4] / "prompts" / "leia" / "web_paid.md"
+    if paid_path.exists():
+        paid_block = paid_path.read_text(encoding="utf-8").strip()
+    system = assemble_system(block, {"question": card.title, "cards": cards_txt, "name": "ты"})
+    if paid_block:
+        system = f"{system}\n\n{paid_block}"
+    user_prompt = (
         f"Карточка: {card.title}\n"
         f"Продукт: {card.product_name}\n"
         f"Ответы квиза: {answers}\n"
         f"Карты: {cards_txt}\n"
         f"Дата: {(reading.input_payload or {}).get('birth')}\n"
         f"Партнёр: {(reading.input_payload or {}).get('partner_birth')}\n\n"
-        "Дай полный разбор 8–12 абзацев. В конце — одно конкретное действие на неделю."
+        "Мини уже сказано, не повторяй его. Раскрой каждый пункт полностью:\n"
+        f"{mini_plain(mini)}\n\n"
+        "Обязательные блоки полного разбора:\n"
+        f"{bullets_txt}\n\n"
+        "Дай полный разбор 8-12 абзацев. В конце - одно конкретное действие на неделю."
     )
-    try:
-        text = await KieClient().chat_completion(
-            [{"role": "user", "content": prompt}],
-            reasoning_effort="low",
-        )
-    except Exception:
-        logger.exception("web paid generation failed token=%s", reading.token)
-        text = _free_full_text(reading.mini or {})
-        text += "\n\nПолный разбор допишется, когда модель ответит. Ссылка уже твоя."
-    reading.paid_text = text
-    reading.status = "paid"
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_prompt},
+    ]
+    last_error: Exception | None = None
+    text = ""
+    for attempt in range(3):
+        try:
+            text = await KieClient().chat_completion(messages, reasoning_effort="low")
+            if text and text.strip():
+                reading.paid_text = text.strip()
+                reading.status = "paid"
+                await session.flush()
+                return
+            last_error = ValueError("empty paid text")
+        except Exception as exc:
+            last_error = exc
+            logger.exception("web paid generation failed token=%s attempt=%s", reading.token, attempt + 1)
+    await _notify_admins(
+        f"Полный разбор не сгенерировался. token={reading.token} card={reading.card_id} err={last_error}"
+    )
+    reading.status = "generating"
     await session.flush()
+
+
+def grant_question_credits(reading: WebReading, pack: int) -> None:
+    from sqlalchemy.orm.attributes import flag_modified
+
+    payload = dict(reading.input_payload or {})
+    payload["question_credits"] = int(payload.get("question_credits") or 0) + max(0, int(pack))
+    reading.input_payload = payload
+    flag_modified(reading, "input_payload")
+
+
+async def ask_about_reading(
+    session: AsyncSession,
+    reading: WebReading,
+    *,
+    text: str,
+    user: User | None,
+) -> dict:
+    web = await session.scalar(select(WebSession).where(WebSession.id == reading.session_id))
+    if web is None:
+        raise ValueError("Сессия не найдена")
+    owner = user or await ensure_guest_user(session, web)
+    return await chat_reply(session, owner, text=text, reading_token=reading.token)
 
 
 async def save_contact(
@@ -958,7 +1211,8 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
         item["can_chat"] = bool(paid or plan)
         if item["can_chat"] and token:
             used = await _count_reading_user_msgs(session, user.id, token)
-            item["chat_left"] = max(0, READING_CHAT_LIMIT - used)
+            budget = int(item.get("question_budget") or READING_CHAT_LIMIT)
+            item["chat_left"] = max(0, budget - used)
         else:
             item["chat_left"] = 0
     ent = EntitlementService()
@@ -1080,8 +1334,20 @@ async def chat_reply(
         if not paid and not plan:
             raise ValueError("Сначала оплати полный разбор — потом можно спросить Лею про него.")
         used = await _count_reading_user_msgs(session, user.id, reading_token)
-        if used >= READING_CHAT_LIMIT:
-            raise ValueError(f"По этому разбору уже {READING_CHAT_LIMIT} сообщений. Новый вопрос — новый разбор или пакет.")
+        budget = _question_budget(reading) if reading else READING_CHAT_LIMIT
+        if used >= budget:
+            settings = get_settings()
+            return {
+                "need_pack": True,
+                "reply": "",
+                "chat": await load_reading_thread(session, user, reading_token),
+                "chat_left": 0,
+                "question_budget": budget,
+                "packs": [
+                    {"id": "q1", "n": 1, "price_rub": settings.question_price_rub},
+                    {"id": "q5", "n": 5, "price_rub": settings.question_pack5_price_rub},
+                ],
+            }
     elif not bound and not vip:
         raise ValueError("Свободный чат — с VIP или после привязки Telegram. По оплаченному разбору — кнопка «Обсудить».")
 
@@ -1151,7 +1417,15 @@ async def chat_reply(
         if allowed:
             billing_mode = await billing.reserve_chat_slot(session, user, billing_mode)
 
-    reply = await KieClient().chat_completion(messages, reasoning_effort="low")
+    reply = await KieClient().chat_completion(
+        messages,
+        reasoning_effort="low",
+        max_output_tokens=400 if reading_thread else None,
+    )
+    if reading_thread:
+        reply = (reply or "").strip()
+        if len(reply) > 800:
+            reply = reply[:797].rstrip(" .,;") + "…"
     meta = {
         "channel": "web",
         "reading_token": reading_token,
@@ -1169,10 +1443,12 @@ async def chat_reply(
     await session.flush()
     if reading_thread and reading_token:
         used = await _count_reading_user_msgs(session, user.id, reading_token)
+        budget = _question_budget(reading) if reading else READING_CHAT_LIMIT
         return {
             "reply": reply,
             "chat": await load_reading_thread(session, user, reading_token),
-            "chat_left": max(0, READING_CHAT_LIMIT - used),
+            "chat_left": max(0, budget - used),
+            "question_budget": budget,
         }
     return {"reply": reply, "chat": await load_chat_history(session, user)}
 
