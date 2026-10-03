@@ -11,10 +11,11 @@ type Reading = {
   can_pay?: boolean;
   can_chat?: boolean;
   chat_left?: number;
+  question_budget?: number;
   price_rub?: number;
   source?: string;
   created_at?: string;
-  mini?: { title?: string; lead?: string };
+  mini?: { title?: string; lead?: string; verdict?: string; body?: string[]; hook?: string };
   paid_text?: string;
   html?: string | null;
 };
@@ -29,6 +30,13 @@ type Profile = {
 };
 
 type ChatRow = { id?: string; role: string; text: string; html?: string | null };
+
+function miniPlain(mini?: { lead?: string; verdict?: string; body?: string[]; hook?: string }) {
+  if (!mini) return "";
+  const parts = [mini.verdict, ...(mini.body || []), mini.hook].filter(Boolean);
+  if (parts.length) return parts.join("\n\n");
+  return mini.lead || "";
+}
 
 function LeiaText({ text, html }: { text: string; html?: string | null }) {
   if (html) {
@@ -273,9 +281,9 @@ function ReadingCard({
           </button>
         ) : null}
         {reading.can_chat ? (
-          <button className="btn" type="button" disabled={reading.chat_left === 0} onClick={onDiscuss}>
+          <button className="btn" type="button" onClick={onDiscuss}>
             {reading.chat_left === 0
-              ? "Лимит обсуждения"
+              ? "Докупить вопросы"
               : `Обсудить${typeof reading.chat_left === "number" ? ` · ${reading.chat_left}` : ""}`}
           </button>
         ) : null}
@@ -288,7 +296,7 @@ function ReadingCard({
       {open && (
         <div className="lk-reading-body">
           <LeiaText
-            text={reading.paid_text || reading.mini?.lead || "Текст разбора не сохранился."}
+            text={reading.paid_text || miniPlain(reading.mini) || "Текст разбора не сохранился."}
             html={reading.html}
           />
         </div>
@@ -314,6 +322,9 @@ export function Cabinet() {
   const [threadLog, setThreadLog] = useState<ChatRow[]>([]);
   const [readingThread, setReadingThread] = useState<string>(params.get("chat") || "");
   const [chatLeft, setChatLeft] = useState<number | null>(null);
+  const [questionBudget, setQuestionBudget] = useState(3);
+  const [needPack, setNeedPack] = useState(false);
+  const [qCfg, setQCfg] = useState({ question_price_rub: 99, question_pack5_price_rub: 199, question_free_limit: 3 });
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -337,14 +348,19 @@ export function Cabinet() {
     api<{ cards: QuizCard[] }>("/api/web/cards")
       .then((d) => setQuizCards(d.cards || []))
       .catch(() => undefined);
+    api<{ question_price_rub?: number; question_pack5_price_rub?: number; question_free_limit?: number }>("/api/web/config")
+      .then((d) => setQCfg((prev) => ({ ...prev, ...d })))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
     if (tab !== "chat" || !readingThread || !me?.user) return;
-    api<{ chat?: ChatRow[]; chat_left?: number }>(`/api/web/chat?reading_token=${encodeURIComponent(readingThread)}`)
+    api<{ chat?: ChatRow[]; chat_left?: number; question_budget?: number }>(`/api/web/chat?reading_token=${encodeURIComponent(readingThread)}`)
       .then((d) => {
         setThreadLog(d.chat || []);
         if (typeof d.chat_left === "number") setChatLeft(d.chat_left);
+        if (typeof d.question_budget === "number") setQuestionBudget(d.question_budget);
+        setNeedPack(typeof d.chat_left === "number" && d.chat_left <= 0);
       })
       .catch(() => undefined);
   }, [tab, readingThread, me?.user]);
@@ -363,6 +379,7 @@ export function Cabinet() {
       url.searchParams.delete("chat");
       setReadingThread("");
       setChatLeft(null);
+      setNeedPack(false);
     }
     window.history.replaceState({}, "", url);
   }
@@ -376,16 +393,26 @@ export function Cabinet() {
     const target = readingThread && tab === "chat" ? setThreadLog : setLog;
     target((rows) => [...rows, { role: "user", text: mine }]);
     try {
-      const r = await api<{ reply: string; chat?: ChatRow[]; chat_left?: number }>("/api/web/chat", {
+      const r = await api<{ reply: string; chat?: ChatRow[]; chat_left?: number; need_pack?: boolean; question_budget?: number }>("/api/web/chat", {
         method: "POST",
         body: JSON.stringify({
           text: mine,
           reading_token: readingThread && tab === "chat" ? readingThread : undefined,
         }),
       });
+      if (r.need_pack) {
+        setNeedPack(true);
+        setChatLeft(0);
+        if (r.chat) target(r.chat);
+        return;
+      }
       if (r.chat) target(r.chat);
       else target((rows) => [...rows, { role: "leia", text: r.reply }]);
-      if (typeof r.chat_left === "number") setChatLeft(r.chat_left);
+      if (typeof r.chat_left === "number") {
+        setChatLeft(r.chat_left);
+        if (r.chat_left <= 0) setNeedPack(true);
+      }
+      if (typeof r.question_budget === "number") setQuestionBudget(r.question_budget);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Чат не ответил");
     } finally {
@@ -420,15 +447,41 @@ export function Cabinet() {
     }
   }
 
-  function discussReading(token: string, left?: number) {
+  function discussReading(token: string, left?: number, budget?: number) {
     setReadingThread(token);
     setErr("");
     setChatLeft(typeof left === "number" ? left : null);
+    setQuestionBudget(typeof budget === "number" ? budget : qCfg.question_free_limit);
+    setNeedPack(typeof left === "number" && left <= 0);
     setTab("chat");
     const url = new URL(window.location.href);
     url.searchParams.set("tab", "chat");
     url.searchParams.set("chat", token);
     window.history.replaceState({}, "", url);
+  }
+
+  function webThread(token: string) {
+    return Boolean(token) && !token.startsWith("tg:") && !token.startsWith("pu:") && !token.startsWith("msg:");
+  }
+
+  async function buyQuestions(pack: "q1" | "q5") {
+    if (!readingThread || paying || !webThread(readingThread)) return;
+    setErr("");
+    setPaying(true);
+    try {
+      const r = await api<{ payment_url?: string; token: string }>(
+        `/api/web/readings/${readingThread}/checkout`,
+        { method: "POST", body: JSON.stringify({ tariff: pack, privacy: true }) },
+      );
+      if (r.payment_url) {
+        window.location.href = r.payment_url;
+        return;
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Не получилось");
+    } finally {
+      setPaying(false);
+    }
   }
 
   async function buy(packageId: string) {
@@ -693,11 +746,12 @@ export function Cabinet() {
                   {readingThread ? (
                     <p className="sub">
                       Отдельный чат по этому разбору
-                      {chatLeft != null ? ` · осталось ${chatLeft} из 10 сообщений` : " · до 10 сообщений"}.
+                      {chatLeft != null ? ` · осталось ${chatLeft} из ${questionBudget}` : ` · ${questionBudget} вопроса в подарок`}.
                       {" "}
                       <button className="btn link" type="button" onClick={() => {
                         setReadingThread("");
                         setChatLeft(null);
+                        setNeedPack(false);
                         setThreadLog([]);
                         const url = new URL(window.location.href);
                         url.searchParams.set("tab", "chat");
@@ -737,25 +791,41 @@ export function Cabinet() {
                     )}
                     <div ref={chatEnd} />
                   </div>
+                  {needPack || (readingThread && chatLeft === 0) ? (
+                    <div className="q-packs">
+                      {webThread(readingThread) ? (
+                        <>
+                          <p className="sub">Бесплатные вопросы закончились. Можно докупить.</p>
+                          <button className="btn" type="button" disabled={paying} onClick={() => buyQuestions("q1")}>
+                            1 вопрос за {qCfg.question_price_rub} ₽
+                          </button>
+                          <button className="btn gold" type="button" disabled={paying} onClick={() => buyQuestions("q5")}>
+                            5 вопросов за {qCfg.question_pack5_price_rub} ₽
+                          </button>
+                        </>
+                      ) : (
+                        <p className="sub">Лимит вопросов по этому разбору исчерпан.</p>
+                      )}
+                    </div>
+                  ) : (
                   <div className="chat-compose">
                     <input
                       className="inp"
                       value={text}
-                      disabled={busy || (!!readingThread && chatLeft === 0)}
+                      disabled={busy}
                       placeholder={
                         busy
                           ? "Лея ещё отвечает…"
-                          : readingThread && chatLeft === 0
-                            ? "Лимит по этому разбору исчерпан"
-                            : "Напиши Лее…"
+                          : "Напиши Лее…"
                       }
                       onChange={(e) => setText(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && !busy && send()}
                     />
-                    <button className="btn" type="button" disabled={busy || !text.trim() || (!!readingThread && chatLeft === 0)} onClick={send}>
+                    <button className="btn" type="button" disabled={busy || !text.trim()} onClick={send}>
                       {busy ? "Пишет…" : "Отправить"}
                     </button>
                   </div>
+                  )}
                   {err && <p className="err">{err}</p>}
                 </section>
               )}
@@ -790,7 +860,7 @@ export function Cabinet() {
                           paying={paying}
                           onToggle={() => setOpenReading(openReading === r.token ? "" : r.token)}
                           onPay={() => payReading(r.token)}
-                          onDiscuss={() => discussReading(r.token, r.chat_left)}
+                          onDiscuss={() => discussReading(r.token, r.chat_left, r.question_budget)}
                         />
                       ));
                     return (

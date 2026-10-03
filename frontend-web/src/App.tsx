@@ -20,9 +20,50 @@ type Card = {
   free: boolean;
 };
 
+type MiniBlock = {
+  title: string;
+  text: string;
+  image?: string;
+  name?: string;
+  closed?: boolean;
+};
+
+type MiniStats = {
+  percent?: number;
+  life_paths?: string;
+  signs?: string;
+  elements?: string;
+  life_path?: string | number;
+  year_arcana?: string;
+  chart?: Record<string, number>;
+};
+
+type Offer = {
+  eyebrow?: string;
+  title?: string;
+  subtitle?: string;
+  cta?: string;
+  gift?: string;
+  compare?: string;
+  price_rub?: number;
+  strike_rub?: number;
+  show_strike?: boolean;
+  fine?: string;
+};
+
 type Mini = {
+  source?: string;
+  pending?: boolean;
+  verdict?: string;
+  body?: string[];
+  hook?: string;
+  paywall_title?: string;
+  paywall_bullets?: string[];
+  question_example?: string;
+  tg_question_example?: string;
   mirror: string;
-  blocks: { title: string; text: string; image?: string; name?: string }[];
+  blocks: MiniBlock[];
+  stats?: MiniStats;
   cut: string;
   fade: boolean;
   cta: string;
@@ -45,6 +86,9 @@ type Reading = {
   paid_text?: string;
   includes?: string[];
   context?: string;
+  offer?: Offer;
+  generating?: boolean;
+  question_budget?: number;
 };
 
 function fromRobokassaReturn() {
@@ -63,18 +107,63 @@ function shouldWaitForPaid(token: string, reading: Reading) {
   return Boolean(reading.awaiting_pay && /robokassa/i.test(ref));
 }
 
-function offerKind(context?: string, product?: string) {
-  const blob = `${context || ""} ${product || ""}`.toLowerCase();
-  if (blob.includes("деньг") || blob.includes("богат") || blob.includes("канал")) {
-    return { one: "финансовый", many: "финансовых" };
-  }
-  if (blob.includes("работ") || blob.includes("предназнач")) {
-    return { one: "про работу", many: "про работу" };
-  }
-  if (blob.includes("совмест") || blob.includes("отношен") || blob.includes("замуж") || blob.includes("возврат")) {
-    return { one: "про отношения", many: "про отношения" };
-  }
-  return { one: "", many: "таких" };
+function readingTrack(reading: Reading) {
+  return {
+    product_name: reading.product_name || "",
+    price_rub: reading.price_rub || 0,
+    branch: reading.branch || "",
+    card_id: reading.card_id || "",
+  };
+}
+
+function miniParagraphs(mini: Mini): string[] {
+  const parts = [mini.verdict, ...(mini.body || []), mini.hook].map((item) => (item || "").trim()).filter(Boolean);
+  if (parts.length) return parts;
+  const fallback = [mini.mirror, mini.lead].map((item) => (item || "").trim()).filter(Boolean);
+  return fallback;
+}
+
+function mark(text: string) {
+  return text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+}
+
+function MatrixChart({ chart }: { chart: Record<string, number> }) {
+  const pts: { key: string; x: number; y: number }[] = [
+    { key: "top", x: 50, y: 10 },
+    { key: "tr", x: 78, y: 22 },
+    { key: "right", x: 90, y: 50 },
+    { key: "br", x: 78, y: 78 },
+    { key: "bottom", x: 50, y: 90 },
+    { key: "bl", x: 22, y: 78 },
+    { key: "left", x: 10, y: 50 },
+    { key: "tl", x: 22, y: 22 },
+    { key: "center", x: 50, y: 50 },
+  ];
+  return (
+    <svg className="matrix-svg" viewBox="0 0 100 100" aria-hidden="true">
+      <rect x="18" y="18" width="64" height="64" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <rect x="32" y="32" width="36" height="36" fill="none" stroke="currentColor" strokeWidth="1.2" transform="rotate(45 50 50)" />
+      {pts.map((p) => (
+        <g key={p.key}>
+          <circle cx={p.x} cy={p.y} r={p.key === "center" ? 8 : 6.2} className={p.key === "center" ? "on" : undefined} />
+          <text x={p.x} y={p.y + 1.2} textAnchor="middle" dominantBaseline="middle">{chart[p.key] ?? ""}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function todayMiniKey() {
+  const d = new Date();
+  return `leia_mini_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function deviceMiniCount() {
+  return Number(localStorage.getItem(todayMiniKey()) || 0);
+}
+
+function bumpDeviceMini() {
+  localStorage.setItem(todayMiniKey(), String(deviceMiniCount() + 1));
 }
 
 function landingPage(): LandingPage {
@@ -131,6 +220,10 @@ export function App() {
     bot_username: "astro_leia_bot",
     legal_url: "/legal",
     oauth: { yandex: false, vk: false, telegram: false },
+    show_strike_price: false,
+    question_price_rub: 99,
+    question_pack5_price_rub: 199,
+    question_free_limit: 3,
   });
   const [tab, setTab] = useState(page === "home" ? "rel" : "rel");
   const [screen, setScreen] = useState(tokenFromPath ? 5 : 1);
@@ -156,6 +249,11 @@ export function App() {
   const [waitingPay, setWaitingPay] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [askText, setAskText] = useState("");
+  const [askLog, setAskLog] = useState<{ role: string; text: string }[]>([]);
+  const [askLeft, setAskLeft] = useState<number | null>(null);
+  const [needPack, setNeedPack] = useState(false);
+  const [exitFrom, setExitFrom] = useState<"mini" | "paywall">("mini");
 
   const showLanding = screen === 1 && !tokenFromPath;
 
@@ -210,7 +308,7 @@ export function App() {
             setScreen(8);
             return;
           }
-          if (shouldWaitForPaid(tokenFromPath, r)) {
+          if (r.generating || shouldWaitForPaid(tokenFromPath, r)) {
             setWaitingPay(true);
             setScreen(5);
             return;
@@ -270,7 +368,7 @@ export function App() {
   }, [waitingPay, tokenFromPath]);
 
   useEffect(() => {
-    if (screen === 7 && reading) track("paywall_view");
+    if (screen === 7 && reading) track("paywall_view", readingTrack(reading));
     if (screen === 8 && reading?.paid) {
       const key = `leia_purchase_${reading.token}`;
       if (!sessionStorage.getItem(key)) {
@@ -293,6 +391,17 @@ export function App() {
     }
     return undefined;
   }, [screen, reading?.paid_text]);
+
+  useEffect(() => {
+    if (!reading) return;
+    setAskLeft(reading.question_budget ?? cfg.question_free_limit);
+    setNeedPack(false);
+  }, [reading?.token, reading?.question_budget, cfg.question_free_limit]);
+
+  useEffect(() => {
+    setAskLog([]);
+    setAskText("");
+  }, [reading?.token]);
 
   const q = sel?.questions[qi];
   const visible = useMemo(() => {
@@ -355,8 +464,14 @@ export function App() {
 
   async function calculate() {
     if (!sel) return;
+    if (deviceMiniCount() >= 5) {
+      track("mini_limit");
+      setScreen(14);
+      return;
+    }
     setErr("");
     setScreen(5);
+    const started = Date.now();
     try {
       const r = await api<Reading>("/api/web/readings", {
         method: "POST",
@@ -371,19 +486,104 @@ export function App() {
           partner_birth: partner,
           utm: attribution().utm,
           metrika_client_id: attribution().metrika_client_id,
+          quiz_done: true,
         }),
       });
+      bumpDeviceMini();
       setReading(r);
-      track("calc_done");
-      await new Promise((res) => setTimeout(res, 1600));
+      track("calc_done", readingTrack(r));
+      const wait = 1600 - (Date.now() - started);
+      if (wait > 0) await new Promise((res) => setTimeout(res, wait));
       setScreen(6);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Не получилось");
+      const msg = e instanceof Error ? e.message : "Не получилось";
+      if (/закончились/i.test(msg)) {
+        track("mini_limit");
+        setScreen(14);
+        return;
+      }
+      setErr(msg);
       setScreen(4);
     }
   }
 
-  function openPay(next: "base" | "bundle") {
+  async function retryMini() {
+    if (!reading) return;
+    setErr("");
+    setScreen(5);
+    try {
+      const r = await api<Reading>(`/api/web/readings/${reading.token}/retry-mini`, { method: "POST" });
+      setReading(r);
+      setScreen(6);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Не получилось дописать разбор");
+      setScreen(6);
+    }
+  }
+
+  function goTelegramExit(from: "mini" | "paywall") {
+    setExitFrom(from);
+    if (reading) track("exit_click", { card_id: reading.card_id, from });
+    setScreen(13);
+  }
+
+  async function askLeia() {
+    if (!reading || !askText.trim() || paying) return;
+    const mine = askText.trim();
+    setAskText("");
+    setAskLog((rows) => [...rows, { role: "user", text: mine }]);
+    setPaying(true);
+    try {
+      const r = await api<{
+        reply?: string;
+        chat?: { role: string; text: string }[];
+        chat_left?: number;
+        need_pack?: boolean;
+      }>(`/api/web/readings/${reading.token}/ask`, {
+        method: "POST",
+        body: JSON.stringify({ text: mine, guest_id: guestId() }),
+      });
+      if (r.need_pack) {
+        setNeedPack(true);
+        setAskLeft(0);
+        if (r.chat) setAskLog(r.chat.map((row) => ({ role: row.role, text: row.text })));
+        return;
+      }
+      track("question_free", { card_id: reading.card_id, n: (reading.question_budget || 3) - (r.chat_left || 0) });
+      if (r.chat) setAskLog(r.chat.map((row) => ({ role: row.role, text: row.text })));
+      else if (r.reply) setAskLog((rows) => [...rows, { role: "leia", text: r.reply || "" }]);
+      if (typeof r.chat_left === "number") {
+        setAskLeft(r.chat_left);
+        if (r.chat_left <= 0) setNeedPack(true);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Чат не ответил");
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  async function buyQuestions(pack: "q1" | "q5") {
+    if (!reading || paying) return;
+    setPaying(true);
+    try {
+      const r = await api<{ payment_url?: string; token: string }>(
+        `/api/web/readings/${reading.token}/checkout`,
+        { method: "POST", body: JSON.stringify({ tariff: pack, privacy: true }) },
+      );
+      track("question_paid", { card_id: reading.card_id, pack: pack === "q5" ? 5 : 1 });
+      if (r.payment_url) {
+        window.location.href = r.payment_url;
+        return;
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Не получилось");
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  function openPay(next: "base" | "bundle" = "base") {
     setTariff(next);
     setErr("");
     setPayOpen(true);
@@ -402,7 +602,7 @@ export function App() {
     }
     setErr("");
     setPaying(true);
-    track("checkout_start");
+    track("checkout_start", readingTrack(reading));
     try {
       const r = await api<{ payment_url?: string; demo?: boolean; token: string }>(
         `/api/web/readings/${reading.token}/checkout`,
@@ -484,10 +684,10 @@ export function App() {
   }
 
   const price = reading?.price_rub || 590;
-  const bundle = price + 300;
-  const payAmount = tariff === "bundle" ? bundle : price;
+  const payAmount = price;
+  const offer = reading?.offer;
   const parts = reading?.includes?.filter(Boolean) || [];
-  const kind = offerKind(reading?.context, reading?.product_name);
+  const miniParas = reading ? miniParagraphs(reading.mini) : [];
   const inCabinet = window.location.pathname.startsWith("/lk");
 
   if (inCabinet) {
@@ -532,7 +732,7 @@ export function App() {
 
         {!showLanding && (
           <div className="quiz-focus">
-            <div className="quiz-layout">
+            <div className={`quiz-layout${screen >= 6 ? " reading" : ""}`}>
               <aside className="quiz-aside">
                 <img src="/avatar.png" alt="" />
                 <div>
@@ -547,7 +747,7 @@ export function App() {
                   </p>
                 </div>
               </aside>
-              <div className={`quiz-frame${screen === 7 ? " offer-frame" : ""}`}>
+              <div className={`quiz-frame${screen === 7 ? " offer-frame" : ""}${screen === 6 ? " mini-frame" : ""}`}>
                 {screen === 2 && sel && q && (
                   <>
                     <div className="bar"><i style={{ width: `${((qi + 1) / sel.questions.length) * 100}%` }} /></div>
@@ -646,25 +846,57 @@ export function App() {
                     <p className="fine">
                       {waitingPay
                         ? "Оплата прошла — текст откроется на этой странице, вход не нужен"
-                        : "Сначала покажу мини-разбор — почту спросим, если захочешь полный"}
+                        : "Пишу мини-разбор по твоим ответам. Это займёт несколько секунд."}
                     </p>
                   </>
                 )}
 
                 {screen === 6 && reading && (
                   <>
-                    <div className="eyebrow">{reading.branch === "taro" ? "Твой расклад готов" : "Расчёт готов"}</div>
-                    <div className="h">{reading.mini.title}</div>
-                    <p className="sub">{reading.mini.lead}</p>
+                    <div className="eyebrow">
+                      {reading.branch === "taro"
+                        ? `Твой расклад · ${(() => {
+                            const n = (reading.mini.blocks || []).length || reading.drawn?.length || 0;
+                            if (n === 1) return "1 карта";
+                            if (n >= 2 && n <= 4) return `${n} карты`;
+                            return n ? `${n} карт` : "карты";
+                          })()}`
+                        : reading.mini.title || reading.product_name}
+                    </div>
                     {reading.branch === "taro" ? (
                       <div className="rc">
                         {(reading.mini.blocks || []).map((b) => (
-                          <figure key={b.title}>
-                            {b.image && <img src={b.image} alt="" />}
-                            <figcaption>{b.title}</figcaption>
+                          <figure key={b.title} className={b.closed ? "closed" : undefined}>
+                            {b.closed ? (
+                              <div className="rc-back" aria-hidden="true">
+                                <span>закрыта</span>
+                              </div>
+                            ) : (
+                              b.image && <img src={b.image} alt="" />
+                            )}
+                            <figcaption>
+                              {b.title}
+                              {b.name ? <em>{b.name}</em> : null}
+                            </figcaption>
                           </figure>
                         ))}
                       </div>
+                    ) : reading.mini.stats?.percent ? (
+                      <div className="mini-stats">
+                        <div><b>{reading.mini.stats.percent}%</b><span>совместимость</span></div>
+                        <div><b>{reading.mini.stats.life_paths}</b><span>числа пути</span></div>
+                        <div><b>{reading.mini.stats.signs}</b><span>{reading.mini.stats.elements}</span></div>
+                      </div>
+                    ) : reading.mini.stats?.life_path ? (
+                      <>
+                        {reading.mini.stats.chart ? <MatrixChart chart={reading.mini.stats.chart} /> : null}
+                        <div className="mini-stats">
+                          <div><b>{reading.mini.stats.life_path}</b><span>число пути</span></div>
+                          {reading.mini.stats.year_arcana ? (
+                            <div><b>{reading.mini.stats.year_arcana}</b><span>аркан года</span></div>
+                          ) : null}
+                        </div>
+                      </>
                     ) : (
                       <div className="mxn">
                         {(reading.mini.blocks || []).map((b) => (
@@ -672,116 +904,84 @@ export function App() {
                         ))}
                       </div>
                     )}
-                    <div className="txt">
-                      <p>{reading.mini.mirror}</p>
-                      {(reading.mini.blocks || []).slice(0, 2).map((b, i) => (
-                        <div key={b.title} className={i === 1 && reading.mini.fade ? "fade" : undefined}>
-                          <p dangerouslySetInnerHTML={{ __html: b.text.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>") }} />
-                        </div>
-                      ))}
-                    </div>
-                    {!reading.mini.free && <div className="lock">{reading.mini.cut}</div>}
+                    {reading.mini.pending ? (
+                      <div className="mini-read pending">
+                        <p>Лея дописывает разбор, загляни через минуту</p>
+                        <button className="btn" type="button" onClick={retryMini}>Попробовать ещё раз</button>
+                      </div>
+                    ) : (
+                      <article className="mini-read">
+                        {miniParas.map((p, i) => (
+                          <p
+                            key={`${i}-${p.slice(0, 24)}`}
+                            className={i === 0 ? "verdict" : i === miniParas.length - 1 && reading.mini.hook ? "hook" : undefined}
+                            dangerouslySetInnerHTML={{ __html: mark(p) }}
+                          />
+                        ))}
+                      </article>
+                    )}
+                    {!reading.mini.pending && !reading.mini.free && (
+                      <div className="mini-cta">
+                        <button className="btn gold" type="button" onClick={() => setScreen(7)}>{reading.mini.cta}</button>
+                        <button className="btn link" type="button" onClick={() => goTelegramExit("mini")}>Пока не готова</button>
+                      </div>
+                    )}
                     {reading.mini.free && reading.card_id === "daily" && (
-                      <button className="btn" onClick={() => setScreen(10)}>{reading.mini.cut}</button>
+                      <button className="btn" type="button" onClick={() => goTelegramExit("mini")}>{reading.mini.cta}</button>
                     )}
-                    {!reading.mini.free && (
-                      <button className="btn" onClick={() => setScreen(7)}>{reading.mini.cta}</button>
-                    )}
-                    {reading.mini.free && reading.card_id === "other" && (
-                      <button className="btn" onClick={() => setScreen(7)}>Открыть полный разбор</button>
+                    {reading.mini.free && reading.card_id === "other" && !reading.mini.pending && (
+                      <button className="btn" type="button" onClick={() => goTelegramExit("mini")}>{reading.mini.cta}</button>
                     )}
                     {loggedIn ? (
                       <a className="btn ghost" href={`/lk?tab=history&reading=${reading.token}`}>Открыть в кабинете</a>
                     ) : (
                       <p className="fine">Мини уже здесь. Полный откроется сразу после оплаты — без регистрации.</p>
                     )}
+                    {err && <p className="err">{err}</p>}
                   </>
                 )}
 
                 {screen === 7 && reading && (
                   <>
-                    <div className="h">Полный разбор</div>
-                    <p className="sub">
-                      Мини уже готов. Выбери пакет — внутри написано, что именно открывается.
-                    </p>
-                    <div
-                      className={`tar offer ${tariff === "base" ? "on" : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      aria-pressed={tariff === "base"}
-                      onClick={() => { setTariff("base"); setErr(""); }}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTariff("base"); setErr(""); } }}
-                    >
-                      <h4>1 полный «{reading.product_name}»</h4>
-                      <div className="pr">{price} ₽</div>
-                      <div className="tar-copy">
-                        <p>
-                          Пакет содержит один полный {kind.one ? `${kind.one} ` : ""}разбор «{reading.product_name}»
-                          {parts.length
-                            ? ` — ${parts.length} ${kind.many === "финансовых" ? "финансовых " : ""}${parts.length === 1 ? "блок" : "блока"}:`
-                            : "."}
-                        </p>
-                        {parts.length ? (
-                          <ul>
-                            {parts.map((item) => (
-                              <li key={item}>{item}</li>
-                            ))}
-                          </ul>
-                        ) : null}
+                    <div className="eyebrow">{offer?.eyebrow || "Полный разбор"}</div>
+                    <div className="h">{offer?.title || reading.mini.paywall_title || `Узнай полный «${reading.product_name}»`}</div>
+                    <p className="sub">{offer?.subtitle || "Расклад откроется целиком, а потом ты задаёшь Лее вопросы по нему."}</p>
+                    <ul className="pay-bullets">
+                      {(reading.mini.paywall_bullets || parts).map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                    <p className="gift">{offer?.gift || "В подарок: 3 вопроса Лее по твоему раскладу"}</p>
+                    {reading.mini.question_example ? <p className="q-ex">«{reading.mini.question_example}»</p> : null}
+                    {offer?.compare ? <p className="fine">{offer.compare}</p> : null}
+                    <div className="mini-cta">
+                      <div className="pr pay-pr">
+                        {offer?.show_strike && offer.strike_rub ? <s>{offer.strike_rub} ₽</s> : null}
+                        <b>{price} ₽</b>
+                        {offer?.show_strike ? <span>разбор + 3 вопроса по {cfg.question_price_rub} ₽</span> : null}
                       </div>
+                      <button className="btn gold" type="button" disabled={paying} onClick={() => openPay("base")}>
+                        {offer?.cta || `Открыть разбор за ${price} ₽`}
+                      </button>
+                      <p className="fine">{offer?.fine || "СБП или карта · без подписки · откроется сразу здесь"}</p>
+                      <button className="btn link" type="button" onClick={() => goTelegramExit("paywall")}>Пока не готова</button>
                     </div>
-                    <div
-                      className={`tar offer ${tariff === "bundle" ? "on" : ""}`}
-                      role="button"
-                      tabIndex={0}
-                      aria-pressed={tariff === "bundle"}
-                      onClick={() => { setTariff("bundle"); setErr(""); }}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTariff("bundle"); setErr(""); } }}
-                    >
-                      <span className="tag">Выгоднее</span>
-                      <h4>«{reading.product_name}» + доп. разбор</h4>
-                      <div className="pr">{bundle} ₽ <s>{price + 590} ₽</s></div>
-                      <div className="tar-copy">
-                        <p>
-                          Пакет содержит этот полный {kind.one ? `${kind.one} ` : ""}разбор
-                          {parts.length ? ` из ${parts.length} блоков` : ""} и ещё один полный разбор на сайте.
-                          После оплаты можно спросить Лею в отдельном чате — до 10 вопросов по разбору.
-                        </p>
-                        <ul>
-                          <li>Полный «{reading.product_name}» по этому мини</li>
-                          {parts.map((item) => (
-                            <li key={`b-${item}`}>{item}</li>
-                          ))}
-                          <li>Ещё один полный разбор на выбор</li>
-                          <li>Чат с Леей по разбору — до 10 вопросов</li>
-                        </ul>
-                      </div>
-                    </div>
-                    <button className="btn gold" disabled={paying} onClick={() => openPay(tariff)}>
-                      {`Оплатить ${payAmount} ₽`}
-                    </button>
-                    <p className="fine">
-                      Без подписок и автосписаний. Это разовый разбор с сайта.
-                    </p>
-                    <button className="btn link" type="button" onClick={() => { setPayOpen(false); setScreen(6); }}>Назад к мини-разбору</button>
                     {payOpen && (
                       <div className="modal" onClick={() => !paying && setPayOpen(false)}>
                         <div className="mc pay-window" role="dialog" aria-modal="true" aria-label="Оплата" onClick={(e) => e.stopPropagation()}>
                           <div className="eyebrow">Оплата</div>
                           <div className="tar on">
-                            <h4>{tariff === "bundle" ? `«${reading.product_name}» + доп. разбор` : `1 полный «${reading.product_name}»`}</h4>
-                            <div className="pr">
-                              {payAmount} ₽{tariff === "bundle" ? <> <s>{price + 590} ₽</s></> : null}
-                            </div>
+                            <h4>{reading.product_name}</h4>
+                            <div className="pr">{payAmount} ₽</div>
                           </div>
                           <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} marketing={false} />
                           <button className="btn gold" disabled={paying || !priv} onClick={pay}>
                             {paying ? "Открываю оплату…" : `Перейти к оплате ${payAmount} ₽`}
                           </button>
-                          {!priv && <p className="fine">Отметь согласие — и откроется страница оплаты.</p>}
+                          {!priv && <p className="fine">Отметь согласие - и откроется страница оплаты.</p>}
                           {err && <p className="err">{err}</p>}
-                          <p className="fine">Карта или СБП — на защищённой странице платёжного сервиса. Без подписок и автосписаний.</p>
-                          <button className="btn link" type="button" disabled={paying} onClick={() => setPayOpen(false)}>Изменить пакет</button>
+                          <p className="fine">Карта или СБП - на защищённой странице платёжного сервиса. Без подписок.</p>
+                          <button className="btn link" type="button" disabled={paying} onClick={() => setPayOpen(false)}>Назад</button>
                         </div>
                       </div>
                     )}
@@ -793,28 +993,38 @@ export function App() {
                     <div className="eyebrow">Разбор готов</div>
                     <div className="h">{reading.mini.title}</div>
                     <div className="stream">{stream || "Готовлю текст…"}<span className="cursor" /></div>
+                    {reading.paid_text && stream.length >= reading.paid_text.length ? (
+                    <section className="ask-leia">
+                      <div className="eyebrow">Спроси Лею по разбору</div>
+                      <div className="chat-log">
+                        {askLog.map((row, i) => (
+                          <div key={i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>{row.text}</div>
+                        ))}
+                      </div>
+                      {needPack || askLeft === 0 ? (
+                        <div className="q-packs">
+                          <p className="sub">Бесплатные вопросы закончились. Можно докупить.</p>
+                          <button className="btn" type="button" disabled={paying} onClick={() => buyQuestions("q1")}>
+                            1 вопрос за {cfg.question_price_rub} ₽
+                          </button>
+                          <button className="btn gold" type="button" disabled={paying} onClick={() => buyQuestions("q5")}>
+                            5 вопросов за {cfg.question_pack5_price_rub} ₽
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="chat-compose">
+                          <input className="inp" value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="Спроси по разбору" />
+                          <button className="btn" type="button" disabled={paying || !askText.trim()} onClick={askLeia}>Спросить</button>
+                        </div>
+                      )}
+                      {askLeft != null ? <p className="fine">Осталось {askLeft} из {reading.question_budget || cfg.question_free_limit}</p> : null}
+                    </section>
+                    ) : null}
                     {loggedIn ? (
-                      <a className="btn" href={`/lk?tab=chat&chat=${reading.token}`}>Обсудить разбор с Леей</a>
+                      <a className="btn ghost" href={`/lk?tab=chat&chat=${reading.token}`}>Открыть в кабинете</a>
                     ) : (
-                      <section className="lk-offer">
-                        <div className="eyebrow">Личный кабинет</div>
-                        <div className="h">Сохрани разбор в кабинете</div>
-                        <p className="sub">Вход в один клик — отдельная регистрация не нужна.</p>
-                        <div className="feat"><div><b>Разбор не потеряется</b><span> Откроешь с любого телефона или компьютера</span></div></div>
-                        <div className="feat"><div><b>Спроси Лею по разбору</b><span> До 10 вопросов — она помнит твой расклад</span></div></div>
-                        <div className="feat"><div><b>Все разборы в одном месте</b><span> Мини и полные — с историей</span></div></div>
-                        {!priv && <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />}
-                        <AuthWays
-                          next={`/lk?tab=history&reading=${reading.token}`}
-                          oauth={cfg.oauth}
-                          bot={cfg.bot_username}
-                          onError={setErr}
-                          disabled={!priv}
-                        />
-                        <p className="fine">Можно и без кабинета — ссылка на этот разбор работает год.</p>
-                      </section>
+                      <p className="fine">Ссылка на этот разбор работает год. Кабинет - чтобы не потерять.</p>
                     )}
-                    <button className="btn ghost" onClick={() => { track("upsell_view"); setScreen(9); }}>Что дальше</button>
                   </>
                 )}
 
@@ -880,14 +1090,14 @@ export function App() {
                     <div className="feat"><div><b>Разберёт вашу переписку</b><span> Скриншот — и подтекст его слов</span></div></div>
                     <div className="feat"><div><b>Всегда на связи</b><span> Ночью и в выходные</span></div></div>
                     <div className="feat"><div><b>Карта дня каждое утро</b><span> Короткая подсказка приходит сама</span></div></div>
-                    <button className="btn" onClick={() => { track("bot_open"); setVpn(true); }}>Открыть Лею в Telegram</button>
+                    <button className="btn" onClick={() => { track("bot_open", reading ? readingTrack(reading) : undefined); setVpn(true); }}>Открыть в Telegram</button>
                     <button className="btn link" onClick={() => setScreen(12)}>Позже</button>
                     {vpn && (
                       <div className="modal" onClick={() => setVpn(false)}>
                         <div className="mc" onClick={(e) => e.stopPropagation()}>
                           <h4>Включи VPN перед переходом</h4>
-                          <p>В России Telegram не открывается без VPN. Если приложение не запустится — включи VPN и нажми ещё раз.</p>
-                          <a className="btn" href={`https://t.me/${cfg.bot_username}?start=web_${reading?.token || ""}`}>Всё равно открыть</a>
+                          <p>В России Telegram не открывается без VPN. Если приложение не запустится - включи VPN и нажми ещё раз.</p>
+                          <a className="btn" href={`https://t.me/${cfg.bot_username}?start=web_${reading?.token || ""}`}>Открыть в Telegram</a>
                           <button className="btn link" onClick={() => setVpn(false)}>Вернусь позже</button>
                         </div>
                       </div>
@@ -920,6 +1130,49 @@ export function App() {
                     </button>
                     <p className="fine">Первая галочка обязательна, чтобы отправить разбор на почту. Рассылка — только если отметишь вторую.</p>
                     <button className="btn link" type="button" onClick={goHome}>Открыть без почты</button>
+                  </>
+                )}
+
+                {screen === 13 && (
+                  <>
+                    <div className="eyebrow">Лея в Telegram</div>
+                    <div className="h">{exitFrom === "paywall" ? "Разбор подождёт. Бот уже знает запрос" : "Бот уже знает твой запрос"}</div>
+                    <p className="sub">Это ИИ-бот Лея, не живой таролог. Он помнит историю и отвечает ночью.</p>
+                    {reading?.mini.tg_question_example ? <p className="q-ex">{reading.mini.tg_question_example}</p> : null}
+                    <button className="btn" type="button" onClick={() => { track("bot_open", reading ? readingTrack(reading) : undefined); setVpn(true); }}>
+                      Открыть в Telegram
+                    </button>
+                    <a className="btn ghost" href="/lk" onClick={() => track("cabinet_click")}>Личный кабинет</a>
+                    {vpn && (
+                      <div className="modal" onClick={() => setVpn(false)}>
+                        <div className="mc" onClick={(e) => e.stopPropagation()}>
+                          <h4>Включи VPN перед переходом</h4>
+                          <p>В России Telegram не открывается без VPN. Если приложение не запустится - включи VPN и нажми ещё раз.</p>
+                          <a className="btn" href={`https://t.me/${cfg.bot_username}?start=web_${reading?.token || ""}`}>Открыть в Telegram</a>
+                          <button className="btn link" onClick={() => setVpn(false)}>Вернусь позже</button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {screen === 14 && (
+                  <>
+                    <div className="eyebrow">Лимит на сегодня</div>
+                    <div className="h">Сегодня уже пять мини-разборов с этого телефона</div>
+                    <p className="sub">Полный разбор и вопросы Лее остаются. Завтра мини снова будут доступны.</p>
+                    <button className="btn" type="button" onClick={() => { track("bot_open"); setVpn(true); }}>Открыть в Telegram</button>
+                    <a className="btn ghost" href="/lk" onClick={() => track("cabinet_click")}>Личный кабинет</a>
+                    {vpn && (
+                      <div className="modal" onClick={() => setVpn(false)}>
+                        <div className="mc" onClick={(e) => e.stopPropagation()}>
+                          <h4>Включи VPN перед переходом</h4>
+                          <p>В России Telegram не открывается без VPN.</p>
+                          <a className="btn" href={`https://t.me/${cfg.bot_username}`}>Открыть в Telegram</a>
+                          <button className="btn link" onClick={() => setVpn(false)}>Вернусь позже</button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
 

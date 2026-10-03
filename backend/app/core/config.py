@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     openai_api_key: str = "replace-me"
     openai_base_url: str = "https://api.openai.com/v1"
     openai_chat_model: str = "gpt-6-luna"
+    openai_mini_model: str = "gpt-6-luna"
+    show_strike_price: bool = False
+    question_price_rub: int = 99
+    question_pack5_price_rub: int = 199
+    web_question_free_limit: int = 3
+    mini_per_device_day: int = 5
+    mini_per_ip_day: int = 20
     openai_stt_model: str = "gpt-transcribe"
     openai_tts_model: str = "gpt-4o-mini-tts"
     openai_tts_voice: str = "nova"
