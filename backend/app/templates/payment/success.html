@@ -226,8 +226,7 @@
         <li><span class="num">3</span><span>Потом можно сохранить разбор в кабинете или спросить Лею в Telegram.</span></li>
       </ol>
       <div class="actions">
-        <a class="btn btn-primary" id="open-reading" href="{{ site_url }}/lk?tab=history">Открыть разбор</a>
-        <a class="btn btn-ghost" href="{{ site_url }}/lk?tab=history">Личный кабинет</a>
+        <a class="btn btn-primary" id="open-reading" href="{{ site_url }}/">Открыть разбор</a>
       </div>
       <p class="note">
         Если разбор не открылся в течение минуты — напиши в
@@ -241,14 +240,18 @@
   </main>
   <script>
     (function () {
-      var token = "";
-      try { token = localStorage.getItem("leia_last_reading") || ""; } catch (e) {}
       var params = new URLSearchParams(window.location.search);
-      token = token || params.get("Shp_token") || "";
+      var token = params.get("Shp_token") || params.get("shp_token") || "";
+      if (!token) {
+        try { token = localStorage.getItem("leia_last_reading") || ""; } catch (e) {}
+      }
       if (!token) return;
-      var url = "/r/" + encodeURIComponent(token);
+      var url = "/r/" + encodeURIComponent(token) + "?paid=1";
       var link = document.getElementById("open-reading");
-      if (link) link.setAttribute("href", url);
+      if (link) {
+        link.setAttribute("href", url);
+        link.textContent = "Открыть этот разбор";
+      }
       window.location.replace(url);
     })();
   </script>

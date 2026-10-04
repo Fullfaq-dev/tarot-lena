@@ -96,7 +96,12 @@ type Reading = {
 
 function fromRobokassaReturn() {
   const params = new URLSearchParams(window.location.search);
-  return Boolean(params.get("InvId") || params.get("OutSum") || params.get("SignatureValue"));
+  return Boolean(
+    params.get("paid") === "1" ||
+      params.get("InvId") ||
+      params.get("OutSum") ||
+      params.get("SignatureValue"),
+  );
 }
 
 function awaitingKey(token: string) {
@@ -106,6 +111,12 @@ function awaitingKey(token: string) {
 function rememberReading(token: string) {
   try {
     localStorage.setItem("leia_last_reading", token);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `leia_last_reading=${encodeURIComponent(token)}; Path=/; Max-Age=2592000; SameSite=Lax${secure}`;
   } catch {
     /* ignore */
   }
@@ -120,7 +131,7 @@ function shouldWaitForPaid(token: string, reading: Reading) {
   if (sessionStorage.getItem(awaitingKey(token)) === "1") return true;
   if (reading.awaiting_pay || reading.generating) return true;
   const ref = document.referrer || "";
-  return /robokassa|auth\.robokassa/i.test(ref);
+  return /robokassa|auth\.robokassa|\/payment\/success/i.test(ref);
 }
 
 function readingTrack(reading: Reading) {
