@@ -218,22 +218,19 @@
       <div class="brand">Лея · Таро и Нумерология</div>
       <h1 id="title">Спасибо! Оплата прошла успешно</h1>
       <p class="lead">
-        Доступ к разбору или пакету откроется автоматически — обычно это занимает несколько секунд.
-        Я уже отправлю подтверждение в Telegram.
+        Сейчас открою полный разбор на сайте. Вход не нужен — ссылка уже есть.
       </p>
       <ol class="steps">
-        <li><span class="num">1</span><span>Платёжная система передала нам успешный статус.</span></li>
-        <li><span class="num">2</span><span>В боте придёт сообщение с подтверждением и доступом к продукту.</span></li>
-        <li><span class="num">3</span><span>Вернись в чат с ботом — можно сразу открыть полный разбор.</span></li>
+        <li><span class="num">1</span><span>Платёж принят. Текст разбора пишется на той же странице.</span></li>
+        <li><span class="num">2</span><span>Если страница не открылась сама — нажми кнопку ниже. Тот же телефон, тот же браузер.</span></li>
+        <li><span class="num">3</span><span>Потом можно сохранить разбор в кабинете или спросить Лею в Telegram.</span></li>
       </ol>
       <div class="actions">
-        {% if bot_url %}
-        <a class="btn btn-primary" href="{{ bot_url }}">Открыть бота в Telegram</a>
-        {% endif %}
-        <a class="btn btn-ghost" href="{{ site_url }}/">На сайт Леи</a>
+        <a class="btn btn-primary" id="open-reading" href="{{ site_url }}/lk?tab=history">Открыть разбор</a>
+        <a class="btn btn-ghost" href="{{ site_url }}/lk?tab=history">Личный кабинет</a>
       </div>
       <p class="note">
-        Если уведомление не пришло в течение минуты — открой бота вручную или напиши в
+        Если разбор не открылся в течение минуты — напиши в
         <a href="{{ support_url }}">поддержку</a>.
       </p>
       <footer>
@@ -242,5 +239,18 @@
       </footer>
     </section>
   </main>
+  <script>
+    (function () {
+      var token = "";
+      try { token = localStorage.getItem("leia_last_reading") || ""; } catch (e) {}
+      var params = new URLSearchParams(window.location.search);
+      token = token || params.get("Shp_token") || "";
+      if (!token) return;
+      var url = "/r/" + encodeURIComponent(token);
+      var link = document.getElementById("open-reading");
+      if (link) link.setAttribute("href", url);
+      window.location.replace(url);
+    })();
+  </script>
 </body>
 </html>

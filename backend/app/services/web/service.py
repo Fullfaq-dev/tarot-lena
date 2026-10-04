@@ -163,12 +163,26 @@ def _card_image_url(path: str | None) -> str | None:
 
 
 async def resolved_cards(session: AsyncSession) -> dict[str, WebCard]:
+    from dataclasses import replace
+
     rows = await session.execute(select(WebCardOverride))
     overrides = {row.card_id: row.payload for row in rows.scalars()}
     out: dict[str, WebCard] = {}
     for card_id, card in CARDS.items():
         payload = overrides.get(card_id) or {}
-        out[card_id] = apply_override(card, payload) if payload else card
+        merged = apply_override(card, payload) if payload else card
+        if card_id == "other":
+            merged = replace(
+                merged,
+                cards_n=3,
+                price_rub=merged.price_rub or 590,
+                positions=merged.positions
+                if len(merged.positions or []) >= 3
+                else ["Что происходит", "Его сторона", "Есть ли другая"],
+            )
+            if merged.price_rub <= 0:
+                merged = replace(merged, price_rub=590)
+        out[card_id] = merged
     return out
 
 
@@ -567,6 +581,7 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
             show_strike=settings.show_strike_price,
             question_price=settings.question_price_rub,
             mini=mini,
+            branch=reading.branch,
         ),
         "question_budget": budget,
         "created_at": reading.created_at.isoformat() if reading.created_at else None,
@@ -636,6 +651,7 @@ async def _open_robokassa(
             description=f"Лея · {title}"[:100],
             success_url=success_url,
             fail_url=fail_url,
+            reading_token=str((payment.payload or {}).get("token") or ""),
         )
     except RobokassaNotConfiguredError as exc:
         raise ValueError("Оплата временно недоступна") from exc

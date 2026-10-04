@@ -29,6 +29,7 @@ class WebCard:
     positions: list[str] = field(default_factory=list)
     open_blocks: list[str] = field(default_factory=list)
     closed_blocks: list[str] = field(default_factory=list)
+    fallback_question: str = ""
 
 
 CARDS: dict[str, WebCard] = {}
@@ -76,15 +77,15 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="other", tab="rel", title="Есть ли у него другая?", icon="◉",
-    branch="taro", cards_n=1, price_rub=0, sku="web_other",
-    product_name="Одна карта", context="отношения",
+    branch="taro", cards_n=3, price_rub=590, sku="web_other",
+    product_name="Расклад: есть ли другая", context="отношения",
     lead="Ты почувствовала дистанцию — смотрим, что за ней",
     questions=[
         QuizQuestion("Что тебя насторожило?", ["Стал отдаляться", "Постоянно занят", "Прячет телефон", "Просто чувствую"]),
         QuizQuestion("Что мучает больше всего?", ["Неизвестность", "Боюсь спросить", "Он всё отрицает", "Уже находила следы"]),
         QuizQuestion("Чего ты хочешь сама?", ["Знать правду", "Понять, что делать", "Убедиться, что накручиваю", "Решиться на разговор"]),
     ],
-    positions=["Состояние ситуации"],
+    positions=["Что происходит", "Его сторона", "Есть ли другая"],
 ))
 _add(WebCard(
     id="alone", tab="rel", title="Почему я одна?", icon="✦",
@@ -186,6 +187,24 @@ _add(WebCard(
     positions=["Карта дня"],
 ))
 
+FALLBACK_QUESTIONS = {
+    "feels": "А если я напишу ему первой?",
+    "marry": "Что ускорит это для меня?",
+    "return": "Стоит ли мне написать ему сейчас?",
+    "soon": "В какой месяц ждать перемен?",
+    "job": "А если уйти в своё дело?",
+    "money": "Почему я зарабатываю, но деньги не остаются?",
+    "alone": "Что мне поменять в первую очередь?",
+    "stuck": "С чего начать, чтобы выйти из круга?",
+    "purpose": "А если совмещать с работой?",
+    "compat": "А если мы съедемся?",
+}
+
+for _card_id, _question in FALLBACK_QUESTIONS.items():
+    _card = CARDS.get(_card_id)
+    if _card is not None:
+        _card.fallback_question = _question
+
 
 def public_card(card: WebCard) -> dict:
     data = {
@@ -201,13 +220,14 @@ def public_card(card: WebCard) -> dict:
         "open_blocks": card.open_blocks,
         "closed_blocks": card.closed_blocks,
         "free": card.price_rub == 0,
+        "fallback_question": card.fallback_question,
     }
     return data
 
 
 def apply_override(card: WebCard, payload: dict) -> WebCard:
     merged = deepcopy(card)
-    for key in ("title", "lead", "price_rub", "product_name", "context"):
+    for key in ("title", "lead", "price_rub", "product_name", "context", "fallback_question"):
         if key in payload and payload[key] is not None:
             setattr(merged, key, payload[key])
     if "questions" in payload and isinstance(payload["questions"], list):

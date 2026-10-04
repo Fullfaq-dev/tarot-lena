@@ -123,11 +123,6 @@ def build_mini(
             if blocks:
                 blocks[0]["text"] = text
             cut = "Карта дня приходит каждое утро в боте - бесплатно."
-        if card.id == "other":
-            cut = (
-                "Одна карта показывает настроение. Чтобы понять, есть ли там кто-то "
-                "и насколько это серьёзно, нужен расклад из трёх карт."
-            )
     else:
         nums = NumerologyService()
         vars_ = nums.prompt_vars(

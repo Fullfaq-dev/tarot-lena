@@ -81,6 +81,7 @@ def build_payment_url(
     description: str,
     success_url: str | None = None,
     fail_url: str | None = None,
+    reading_token: str | None = None,
 ) -> str:
     settings = get_settings()
     if not settings.robokassa_configured:
@@ -88,6 +89,8 @@ def build_payment_url(
 
     out_sum = format_out_sum(amount_rub)
     shp = {"Shp_payment_id": payment_id}
+    if reading_token:
+        shp["Shp_token"] = reading_token
     signature = payment_signature(
         merchant_login=settings.robokassa_merchant_login,
         out_sum=out_sum,
@@ -104,6 +107,8 @@ def build_payment_url(
         "Culture": "ru",
         "Shp_payment_id": payment_id,
     }
+    if reading_token:
+        params["Shp_token"] = reading_token
     if settings.robokassa_is_test:
         params["IsTest"] = "1"
     if success_url:
