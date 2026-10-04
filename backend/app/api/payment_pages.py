@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.database.models import Payment
+from app.database.models import Payment, WebReading
 from app.database.session import get_session
+from app.services.web.pay_return import pick_return_token, reading_return_path
 
 router = APIRouter(tags=["payment-pages"])
 _templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
@@ -43,10 +44,7 @@ async def _params_from_request(request: Request) -> dict[str, str]:
     return merged
 
 
-async def _web_reading_token(session: AsyncSession, params: dict[str, str]) -> str:
-    direct = (params.get("Shp_token") or params.get("shp_token") or "").strip()
-    if direct:
-        return direct
+async def _payment_token(session: AsyncSession, params: dict[str, str]) -> str:
     shp_id = (params.get("Shp_payment_id") or params.get("shp_payment_id") or "").strip()
     inv = (params.get("InvId") or params.get("InvID") or params.get("invid") or "").strip()
     payment = None
@@ -63,15 +61,41 @@ async def _web_reading_token(session: AsyncSession, params: dict[str, str]) -> s
     return str((payment.payload or {}).get("token") or "").strip()
 
 
+async def _existing_reading_token(session: AsyncSession, token: str) -> str:
+    token = (token or "").strip()
+    if not token:
+        return ""
+    found = await session.scalar(select(WebReading.token).where(WebReading.token == token))
+    return str(found or "").strip()
+
+
+async def _web_reading_token(
+    session: AsyncSession,
+    params: dict[str, str],
+    *,
+    cookie_token: str = "",
+) -> str:
+    raw = pick_return_token(
+        shp_token=params.get("Shp_token") or params.get("shp_token") or "",
+        payment_token=await _payment_token(session, params),
+        cookie_token=cookie_token,
+    )
+    return await _existing_reading_token(session, raw)
+
+
 @router.api_route("/payment/success", methods=["GET", "POST"], response_model=None)
 async def payment_success(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
     params = await _params_from_request(request)
-    token = await _web_reading_token(session, params)
+    token = await _web_reading_token(
+        session,
+        params,
+        cookie_token=request.cookies.get("leia_last_reading") or "",
+    )
     if token:
-        return RedirectResponse(f"/r/{token}", status_code=303)
+        return RedirectResponse(reading_return_path(token), status_code=303)
     return _templates.TemplateResponse(
         request,
         "payment/success.html",

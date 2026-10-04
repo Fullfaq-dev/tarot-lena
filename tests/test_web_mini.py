@@ -209,3 +209,15 @@ def test_other_card_is_paid_three_spread():
     )
     assert mini["free"] is False
     assert mini["blocks"][2]["closed"] is True
+
+
+def test_pay_return_uses_paid_reading_token_not_cabinet():
+    from app.services.web.pay_return import pick_return_token, reading_return_path
+
+    paid = "reading-paid-abc"
+    other = "reading-other-xyz"
+    assert pick_return_token(shp_token=paid, payment_token=other, cookie_token=other) == paid
+    assert pick_return_token(shp_token="", payment_token=paid, cookie_token=other) == paid
+    assert pick_return_token(shp_token="", payment_token="", cookie_token=paid) == paid
+    assert pick_return_token() == ""
+    assert reading_return_path(paid) == "/r/reading-paid-abc?paid=1"
