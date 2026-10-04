@@ -43,7 +43,7 @@ SPECS: dict[str, MiniSpec] = {
             "{q3}",
             "Четвёртая карта: что ускоряет, а что тормозит",
         ),
-        fallback_question="Это вообще будет?",
+        fallback_question="Что ускорит это для меня?",
         cta="Открыть {c3_acc}",
         closed_from=2,
         interpret="Что мешает",
@@ -59,7 +59,7 @@ SPECS: dict[str, MiniSpec] = {
             "{q3}",
             "Что делать на этой неделе",
         ),
-        fallback_question="Он правда вернётся, если я подожду?",
+        fallback_question="Стоит ли мне написать ему сейчас?",
         cta="Открыть {c3_acc}",
         closed_from=2,
         interpret="Его сторона",
@@ -69,19 +69,25 @@ SPECS: dict[str, MiniSpec] = {
         ),
     ),
     "other": MiniSpec(
-        fallback_title="",
-        fallback_bullets=(),
-        fallback_question="",
-        cta="Что дальше",
-        closed_from=None,
-        interpret="Состояние ситуации",
-        rule="Одна карта — целиком. Без экрана оплаты, paywall-поля оставь пустыми.",
-        max_tokens=400,
+        fallback_title="Узнай, есть ли там кто-то ещё",
+        fallback_bullets=(
+            "{c3}: есть ли другая и насколько это серьёзно",
+            "{q3}",
+            "Что делать с этим знанием на этой неделе",
+        ),
+        fallback_question="Мне вообще спрашивать его?",
+        cta="Открыть {c3_acc}",
+        closed_from=2,
+        interpret="Его сторона",
+        rule=(
+            "Трактуй карту на позиции «его сторона». "
+            "Карту на «есть ли другая» только назови в hook, не толкуй."
+        ),
     ),
     "alone": MiniSpec(
         fallback_title="Узнай, почему сценарий повторяется",
         fallback_bullets=("{q3}", "Что тянется из семьи", "Главная задача и этот год"),
-        fallback_question="Когда я встречу своего?",
+        fallback_question="Что мне поменять в первую очередь?",
         cta="Открыть полный разбор",
         interpret="Какая ты, Отношения",
         rule="Открой блоки «какая ты» и «отношения». Деньги, семья, задача года — только назови в hook.",
@@ -105,7 +111,7 @@ SPECS: dict[str, MiniSpec] = {
     "stuck": MiniSpec(
         fallback_title="Узнай, откуда это тянется",
         fallback_bullets=("{q3}", "Что тянется из семьи", "Главная задача и этот год"),
-        fallback_question="Это когда-нибудь закончится?",
+        fallback_question="С чего начать, чтобы выйти из круга?",
         cta="Открыть полный разбор",
         interpret="Какая ты, Отношения",
         rule="Открой «какая ты» и «отношения». Семья, задача и этот год — в hook.",
@@ -117,7 +123,7 @@ SPECS: dict[str, MiniSpec] = {
             "Где утечка повторяется и как её закрыть",
             "Что открывает канал",
         ),
-        fallback_question="С чего начать, чтобы оставалось?",
+        fallback_question="Почему я зарабатываю, но деньги не остаются?",
         cta="Открыть денежный канал",
         interpret="Как ты обращаешься с деньгами",
         rule=(
@@ -147,7 +153,7 @@ SPECS: dict[str, MiniSpec] = {
             "{c3}: в какой последовательности",
             "Карта-совет",
         ),
-        fallback_question="Что делать в первую очередь?",
+        fallback_question="В какой месяц ждать перемен?",
         cta="Открыть {c2_acc}",
         closed_from=1,
         interpret="Что есть",
@@ -162,7 +168,7 @@ SPECS: dict[str, MiniSpec] = {
             "{c3}: что решает",
             "Карта-совет про «{q2}»",
         ),
-        fallback_question="Если уйду сейчас — не пожалею?",
+        fallback_question="А если уйти в своё дело?",
         cta="Открыть {c2_acc}",
         closed_from=1,
         interpret="Если остаться",
@@ -315,27 +321,39 @@ def pair_percent(*, life_a: int, life_b: int, element_a: str, element_b: str) ->
     return max(38, min(86, score))
 
 
+GIFT_TITLE = "В подарок: 3 уточняющих вопроса к твоему разбору"
+
+PAYWALL_COPY = {
+    "taro": {
+        "algorithm": "Карты раскладывает алгоритм, без ручных ошибок. Ответ через минуту",
+        "price_caption": "индивидуальный разбор + 3 вопроса",
+    },
+    "date": {
+        "algorithm": "Числа считает алгоритм, без ручных ошибок. Ответ через минуту",
+        "price_caption": "индивидуальный расчёт + 3 вопроса",
+    },
+    "pair": {
+        "algorithm": "Числа считает алгоритм, без ручных ошибок. Ответ через минуту",
+        "price_caption": "индивидуальный расчёт + 3 вопроса",
+    },
+}
+
+
 @dataclass(frozen=True)
 class PayOffer:
-    compare: str
     subtitle: str
     cta: str
-    gift: str
     eyebrow: str
 
 
 _TARO_OFFER = PayOffer(
-    compare="Консультация таролога: 1 500-2 000 ₽, вопрос сверху 200-500 ₽",
     subtitle="Расклад откроется целиком, а потом ты задаёшь Лее вопросы по нему.",
     cta="Открыть расклад за {price} ₽",
-    gift="В подарок: 3 вопроса Лее по твоему раскладу",
     eyebrow="Полный расклад",
 )
 _MATRIX_OFFER = PayOffer(
-    compare="Автоматические расшифровки: 580-950 ₽, на вопросы они не отвечают. У специалиста: от 1 490 ₽",
     subtitle="Матрица уже посчитана. Откроешь трактовку и спросишь Лею про работу и деньги.",
     cta="Открыть матрицу за {price} ₽",
-    gift="В подарок: 3 вопроса Лее по твоей матрице",
     eyebrow="Матрица судьбы",
 )
 
@@ -343,20 +361,17 @@ OFFERS: dict[str, PayOffer] = {
     "feels": _TARO_OFFER,
     "marry": _TARO_OFFER,
     "return": _TARO_OFFER,
+    "other": _TARO_OFFER,
     "soon": _TARO_OFFER,
     "job": _TARO_OFFER,
     "money": PayOffer(
-        compare="Консультация специалиста: от 1 500 ₽",
         subtitle="Канал уже читается. Откроешь, где утечка и что его открывает.",
         cta="Открыть канал за {price} ₽",
-        gift="В подарок: 3 вопроса Лее по деньгам",
         eyebrow="Денежный канал",
     ),
     "compat": PayOffer(
-        compare="Консультация специалиста: от 1 500 ₽",
         subtitle="Откроешь разбор пары и задашь Лее вопросы про вас двоих.",
         cta="Открыть совместимость за {price} ₽",
-        gift="В подарок: 3 вопроса Лее про вашу пару",
         eyebrow="Полная совместимость",
     ),
     "alone": _MATRIX_OFFER,
@@ -364,24 +379,52 @@ OFFERS: dict[str, PayOffer] = {
     "purpose": _MATRIX_OFFER,
 }
 
+_DATE_IDS = {"money", "alone", "stuck", "purpose"}
+
 
 def pay_offer(card_id: str) -> PayOffer:
     return OFFERS.get(card_id) or _TARO_OFFER
 
 
-def offer_payload(card_id: str, *, price_rub: int, show_strike: bool, question_price: int, mini: dict | None = None) -> dict:
+def paywall_copy(branch: str) -> dict[str, str]:
+    return PAYWALL_COPY.get(branch) or PAYWALL_COPY["taro"]
+
+
+def offer_branch(card_id: str, branch: str = "") -> str:
+    if branch in PAYWALL_COPY:
+        return branch
+    if card_id == "compat":
+        return "pair"
+    if card_id in _DATE_IDS:
+        return "date"
+    return "taro"
+
+
+def offer_payload(
+    card_id: str,
+    *,
+    price_rub: int,
+    show_strike: bool,
+    question_price: int,
+    mini: dict | None = None,
+    branch: str = "",
+) -> dict:
     offer = pay_offer(card_id)
     spec = spec_for(card_id)
     mini = mini or {}
+    copy = paywall_copy(offer_branch(card_id, branch))
     strike = price_rub + 3 * question_price if show_strike and price_rub > 0 else 0
     title = str(mini.get("paywall_title") or spec.paywall_title_static or spec.fallback_title or offer.eyebrow)
+    question_example = str(mini.get("question_example") or "").strip() or spec.fallback_question
     return {
         "eyebrow": offer.eyebrow,
         "title": title,
         "subtitle": offer.subtitle,
         "cta": offer.cta.format(price=price_rub),
-        "gift": offer.gift,
-        "compare": offer.compare,
+        "gift": GIFT_TITLE,
+        "algorithm": copy["algorithm"],
+        "price_caption": copy["price_caption"],
+        "question_example": question_example,
         "price_rub": price_rub,
         "strike_rub": strike,
         "show_strike": bool(show_strike and strike > price_rub),

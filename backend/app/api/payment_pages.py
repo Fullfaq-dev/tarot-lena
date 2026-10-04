@@ -44,8 +44,11 @@ async def _params_from_request(request: Request) -> dict[str, str]:
 
 
 async def _web_reading_token(session: AsyncSession, params: dict[str, str]) -> str:
-    shp_id = (params.get("Shp_payment_id") or "").strip()
-    inv = (params.get("InvId") or "").strip()
+    direct = (params.get("Shp_token") or params.get("shp_token") or "").strip()
+    if direct:
+        return direct
+    shp_id = (params.get("Shp_payment_id") or params.get("shp_payment_id") or "").strip()
+    inv = (params.get("InvId") or params.get("InvID") or params.get("invid") or "").strip()
     payment = None
     if shp_id:
         payment = await session.get(Payment, shp_id)

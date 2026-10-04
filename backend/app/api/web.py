@@ -69,6 +69,8 @@ class EventIn(BaseModel):
 
 @router.get("/config")
 async def web_config() -> dict:
+    from app.services.web.mini_spec import GIFT_TITLE, PAYWALL_COPY
+
     settings = get_settings()
     return {
         "metrika_id": settings.yandex_metrika_id,
@@ -80,6 +82,11 @@ async def web_config() -> dict:
         "question_price_rub": settings.question_price_rub,
         "question_pack5_price_rub": settings.question_pack5_price_rub,
         "question_free_limit": settings.web_question_free_limit,
+        "paywall_gift": GIFT_TITLE,
+        "paywall_algorithm_taro": PAYWALL_COPY["taro"]["algorithm"],
+        "paywall_algorithm_date": PAYWALL_COPY["date"]["algorithm"],
+        "paywall_price_caption_taro": PAYWALL_COPY["taro"]["price_caption"],
+        "paywall_price_caption_date": PAYWALL_COPY["date"]["price_caption"],
     }
 
 
@@ -402,6 +409,7 @@ async def auth_logout() -> Response:
 async def me(
     request: Request,
     session: AsyncSession = Depends(get_session),
+    guest_id: str | None = Query(default=None, max_length=64),
 ) -> dict:
     user = await web_auth.user_from_request(request, session)
     if user is None:
@@ -410,6 +418,8 @@ async def me(
             "oauth": web_auth.oauth_ready(),
             "bot_username": get_settings().telegram_bot_username,
         }
+    if guest_id and len(guest_id) >= 8:
+        await web.ensure_session(session, guest_id, user=user)
     payload = await web.cabinet_payload(session, user)
     payload["oauth"] = web_auth.oauth_ready()
     payload["bot_username"] = get_settings().telegram_bot_username

@@ -337,7 +337,7 @@ export function Cabinet() {
   const chatEnd = useRef<HTMLDivElement | null>(null);
 
   async function reload() {
-    const data = await api<Me>("/api/web/me");
+    const data = await api<Me>(`/api/web/me?guest_id=${encodeURIComponent(guestId())}`);
     setMe(data);
     if (data.profile) setProfile({ ...emptyProfile, ...data.profile });
     if (data.chat) setLog(data.chat);

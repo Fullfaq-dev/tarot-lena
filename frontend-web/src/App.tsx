@@ -18,6 +18,7 @@ type Card = {
   open_blocks: string[];
   closed_blocks: string[];
   free: boolean;
+  fallback_question?: string;
 };
 
 type MiniBlock = {
@@ -44,7 +45,9 @@ type Offer = {
   subtitle?: string;
   cta?: string;
   gift?: string;
-  compare?: string;
+  algorithm?: string;
+  price_caption?: string;
+  question_example?: string;
   price_rub?: number;
   strike_rub?: number;
   show_strike?: boolean;
@@ -100,11 +103,24 @@ function awaitingKey(token: string) {
   return `leia_awaiting_${token}`;
 }
 
+function rememberReading(token: string) {
+  try {
+    localStorage.setItem("leia_last_reading", token);
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatRub(n: number) {
+  return Math.round(n).toLocaleString("ru-RU");
+}
+
 function shouldWaitForPaid(token: string, reading: Reading) {
   if (fromRobokassaReturn()) return true;
   if (sessionStorage.getItem(awaitingKey(token)) === "1") return true;
+  if (reading.awaiting_pay || reading.generating) return true;
   const ref = document.referrer || "";
-  return Boolean(reading.awaiting_pay && /robokassa/i.test(ref));
+  return /robokassa|auth\.robokassa/i.test(ref);
 }
 
 function readingTrack(reading: Reading) {
@@ -224,6 +240,11 @@ export function App() {
     question_price_rub: 99,
     question_pack5_price_rub: 199,
     question_free_limit: 3,
+    paywall_gift: "В подарок: 3 уточняющих вопроса к твоему разбору",
+    paywall_algorithm_taro: "Карты раскладывает алгоритм, без ручных ошибок. Ответ через минуту",
+    paywall_algorithm_date: "Числа считает алгоритм, без ручных ошибок. Ответ через минуту",
+    paywall_price_caption_taro: "индивидуальный разбор + 3 вопроса",
+    paywall_price_caption_date: "индивидуальный расчёт + 3 вопроса",
   });
   const [tab, setTab] = useState(page === "home" ? "rel" : "rel");
   const [screen, setScreen] = useState(tokenFromPath ? 5 : 1);
@@ -296,6 +317,7 @@ export function App() {
       api<Reading>(`/api/web/readings/${tokenFromPath}`)
         .then((r) => {
           setReading(r);
+          rememberReading(r.token);
           const params = new URLSearchParams(window.location.search);
           if (params.get("pay") === "fail") {
             setErr("Оплата не прошла. Разбор на месте — можно оплатить ещё раз.");
@@ -368,7 +390,12 @@ export function App() {
   }, [waitingPay, tokenFromPath]);
 
   useEffect(() => {
-    if (screen === 7 && reading) track("paywall_view", readingTrack(reading));
+    if (screen === 7 && reading) {
+      track("paywall_view", {
+        ...readingTrack(reading),
+        strike_price: reading.offer?.show_strike ? reading.offer.strike_rub || 0 : 0,
+      });
+    }
     if (screen === 8 && reading?.paid) {
       const key = `leia_purchase_${reading.token}`;
       if (!sessionStorage.getItem(key)) {
@@ -491,6 +518,7 @@ export function App() {
       });
       bumpDeviceMini();
       setReading(r);
+      rememberReading(r.token);
       track("calc_done", readingTrack(r));
       const wait = 1600 - (Date.now() - started);
       if (wait > 0) await new Promise((res) => setTimeout(res, wait));
@@ -618,6 +646,7 @@ export function App() {
       );
       if (r.payment_url) {
         sessionStorage.setItem(awaitingKey(reading.token), "1");
+        rememberReading(reading.token);
         window.location.href = r.payment_url;
         return;
       }
@@ -929,9 +958,6 @@ export function App() {
                     {reading.mini.free && reading.card_id === "daily" && (
                       <button className="btn" type="button" onClick={() => goTelegramExit("mini")}>{reading.mini.cta}</button>
                     )}
-                    {reading.mini.free && reading.card_id === "other" && !reading.mini.pending && (
-                      <button className="btn" type="button" onClick={() => goTelegramExit("mini")}>{reading.mini.cta}</button>
-                    )}
                     {loggedIn ? (
                       <a className="btn ghost" href={`/lk?tab=history&reading=${reading.token}`}>Открыть в кабинете</a>
                     ) : (
@@ -951,17 +977,31 @@ export function App() {
                         <li key={item}>{item}</li>
                       ))}
                     </ul>
-                    <p className="gift">{offer?.gift || "В подарок: 3 вопроса Лее по твоему раскладу"}</p>
-                    {reading.mini.question_example ? <p className="q-ex">«{reading.mini.question_example}»</p> : null}
-                    {offer?.compare ? <p className="fine">{offer.compare}</p> : null}
+                    <p className="algo">
+                      {offer?.algorithm || (reading.branch === "taro" ? cfg.paywall_algorithm_taro : cfg.paywall_algorithm_date)}
+                    </p>
+                    <div className="gift-block">
+                      <p className="gift">{cfg.paywall_gift || offer?.gift}</p>
+                      {(reading.mini.question_example || offer?.question_example || sel?.fallback_question) ? (
+                        <p className="q-ex">
+                          «{reading.mini.question_example || offer?.question_example || sel?.fallback_question}»
+                        </p>
+                      ) : null}
+                    </div>
                     <div className="mini-cta">
                       <div className="pr pay-pr">
-                        {offer?.show_strike && offer.strike_rub ? <s>{offer.strike_rub} ₽</s> : null}
-                        <b>{price} ₽</b>
-                        {offer?.show_strike ? <span>разбор + 3 вопроса по {cfg.question_price_rub} ₽</span> : null}
+                        <div className="pay-row">
+                          {offer?.show_strike && offer.strike_rub ? <s>{formatRub(offer.strike_rub)} ₽</s> : null}
+                          <b>{formatRub(price)} ₽</b>
+                        </div>
+                        {offer?.show_strike ? (
+                          <span className="cap">
+                            {offer.price_caption || (reading.branch === "taro" ? cfg.paywall_price_caption_taro : cfg.paywall_price_caption_date)}
+                          </span>
+                        ) : null}
                       </div>
                       <button className="btn gold" type="button" disabled={paying} onClick={() => openPay("base")}>
-                        {offer?.cta || `Открыть разбор за ${price} ₽`}
+                        {offer?.cta || `Открыть разбор за ${formatRub(price)} ₽`}
                       </button>
                       <p className="fine">{offer?.fine || "СБП или карта · без подписки · откроется сразу здесь"}</p>
                       <button className="btn link" type="button" onClick={() => goTelegramExit("paywall")}>Пока не готова</button>
@@ -972,11 +1012,11 @@ export function App() {
                           <div className="eyebrow">Оплата</div>
                           <div className="tar on">
                             <h4>{reading.product_name}</h4>
-                            <div className="pr">{payAmount} ₽</div>
+                            <div className="pr">{formatRub(payAmount)} ₽</div>
                           </div>
                           <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} marketing={false} />
                           <button className="btn gold" disabled={paying || !priv} onClick={pay}>
-                            {paying ? "Открываю оплату…" : `Перейти к оплате ${payAmount} ₽`}
+                            {paying ? "Открываю оплату…" : `Перейти к оплате ${formatRub(payAmount)} ₽`}
                           </button>
                           {!priv && <p className="fine">Отметь согласие - и откроется страница оплаты.</p>}
                           {err && <p className="err">{err}</p>}

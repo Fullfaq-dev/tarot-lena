@@ -10,7 +10,7 @@
 
 12 экранов как в `leya-prototype.html`. Ветка таро: ритуал → дуга карт. Ветка даты/пары: без ритуала, поля дат. Карта дня бесплатна целиком и ведёт к подписке, не к пейволу.
 
-Каталог сайта отделён от каталога бота. SKU: `web_love_spread`, `web_marry`, `web_return`, `web_other` (0 ₽), `web_matrix`, `web_compat`, `web_money_channel`, `web_forecast`, `web_job`, `web_daily` (0 ₽), `web_unlimited_month` (590 ₽). Безлимит сайта не открывает VIP бота.
+Каталог сайта отделён от каталога бота. SKU: `web_love_spread`, `web_marry`, `web_return`, `web_other` (590 ₽, 3 карты), `web_matrix`, `web_compat`, `web_money_channel`, `web_forecast`, `web_job`, `web_daily` (0 ₽), `web_unlimited_month` (590 ₽). Безлимит сайта не открывает VIP бота.
 
 ## API и данные
 
@@ -24,7 +24,7 @@
 
 Таблицы: `web_sessions`, `web_readings`, `web_card_overrides`, `web_matrix_cache`.
 
-Мини на экране 6 — генерация через OpenAI (`verdict` / `body` / `hook`, один JSON). Карта дня остаётся из библиотеки. Платный текст не отдаётся клиенту до ResultURL. Один пакет оплаты, в подарок 3 вопроса Лее; докупка 1/5 вопросов. Лимит мини: 5 с устройства и 20 с IP в сутки. Выход в Telegram с экранов мини/пейвола; бот шлёт мини и один бесплатный вопрос.
+Мини на экране 6 — генерация через OpenAI (`verdict` / `body` / `hook`, один JSON). Карта дня остаётся из библиотеки. Платный текст не отдаётся клиенту до ResultURL. Один пакет оплаты; в подарок 3 уточняющих вопроса к разбору, строка про алгоритм по ветке, зачёркнутая цена `price_rub + 3 × question_price_rub` только при `show_strike_price`. Докупка 1/5 вопросов. Лимит мини: 5 с устройства и 20 с IP в сутки. Выход в Telegram с экранов мини/пейвола; бот шлёт мини и один бесплатный вопрос.
 
 Диплинк: `t.me/<bot>?start=web_<token>`.
 

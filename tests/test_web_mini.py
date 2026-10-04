@@ -112,7 +112,7 @@ def test_build_mini_does_not_fade_or_clip():
 
 
 def test_offer_payload_hides_strike_by_default():
-    from app.services.web.mini_spec import offer_payload
+    from app.services.web.mini_spec import GIFT_TITLE, offer_payload
 
     offer = offer_payload(
         "feels",
@@ -120,15 +120,63 @@ def test_offer_payload_hides_strike_by_default():
         show_strike=False,
         question_price=99,
         mini={"paywall_title": "Узнай, к чему ведёт Башня"},
+        branch="taro",
     )
     assert offer["price_rub"] == 390
     assert offer["show_strike"] is False
+    assert offer["strike_rub"] == 0
     assert offer["cta"] == "Открыть расклад за 390 ₽"
-    assert "3 вопроса" in offer["gift"]
+    assert offer["gift"] == GIFT_TITLE
+    assert offer["algorithm"].startswith("Карты раскладывает")
+    assert "compare" not in offer
+    blob = " ".join(str(v) for v in offer.values())
+    assert "Консультация" not in blob
+    assert "99 ₽" not in blob
 
-    shown = offer_payload("feels", price_rub=390, show_strike=True, question_price=99)
+    shown = offer_payload("feels", price_rub=390, show_strike=True, question_price=99, branch="taro")
     assert shown["show_strike"] is True
     assert shown["strike_rub"] == 390 + 3 * 99
+    assert shown["price_caption"] == "индивидуальный разбор + 3 вопроса"
+    assert "99" not in shown["price_caption"]
+
+
+def test_paywall_copy_and_strike_table():
+    from app.services.web.catalog import FALLBACK_QUESTIONS, public_card
+    from app.services.web.mini_spec import GIFT_TITLE, offer_payload
+
+    table = {
+        "feels": ("taro", 590, 887),
+        "marry": ("taro", 590, 887),
+        "return": ("taro", 590, 887),
+        "soon": ("taro", 590, 887),
+        "job": ("taro", 590, 887),
+        "money": ("date", 590, 887),
+        "alone": ("date", 990, 1287),
+        "stuck": ("date", 990, 1287),
+        "purpose": ("date", 990, 1287),
+        "compat": ("pair", 890, 1187),
+    }
+    for card_id, (branch, price, strike) in table.items():
+        card = CARDS[card_id]
+        assert card.fallback_question == FALLBACK_QUESTIONS[card_id]
+        assert public_card(card)["fallback_question"] == card.fallback_question
+        hidden = offer_payload(card_id, price_rub=price, show_strike=False, question_price=99, branch=branch)
+        shown = offer_payload(card_id, price_rub=price, show_strike=True, question_price=99, branch=branch)
+        assert hidden["gift"] == shown["gift"] == GIFT_TITLE
+        assert hidden["show_strike"] is False
+        assert hidden["strike_rub"] == 0
+        assert shown["strike_rub"] == strike == price + 3 * 99
+        if branch == "taro":
+            assert hidden["algorithm"].startswith("Карты раскладывает")
+            assert shown["price_caption"] == "индивидуальный разбор + 3 вопроса"
+        else:
+            assert hidden["algorithm"].startswith("Числа считает")
+            assert shown["price_caption"] == "индивидуальный расчёт + 3 вопроса"
+
+    override = offer_payload("feels", price_rub=700, show_strike=True, question_price=99, branch="taro")
+    assert override["strike_rub"] == 700 + 3 * 99
+    money = offer_payload("money", price_rub=590, show_strike=False, question_price=99, mini={})
+    assert money["question_example"] == FALLBACK_QUESTIONS["money"]
 
 
 def test_daily_library_and_crawler():
@@ -140,3 +188,24 @@ def test_daily_library_and_crawler():
     assert "нейросет" not in text.lower()
     assert is_crawler("Mozilla/5.0 (compatible; Googlebot/2.1)")
     assert not is_crawler("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)")
+
+
+def test_other_card_is_paid_three_spread():
+    card = CARDS["other"]
+    assert card.cards_n == 3
+    assert card.price_rub > 0
+    from app.services.web.mini_spec import spec_for
+
+    spec = spec_for("other")
+    assert spec.closed_from == 2
+    mini = build_mini(
+        card,
+        ["Стал отдаляться", "Неизвестность", "Знать правду"],
+        drawn=[
+            {"name": "Луна", "description": "туман", "image": "/a.jpg"},
+            {"name": "Дьявол", "description": "связь", "image": "/b.jpg"},
+            {"name": "Башня", "description": "правда", "image": "/c.jpg"},
+        ],
+    )
+    assert mini["free"] is False
+    assert mini["blocks"][2]["closed"] is True
