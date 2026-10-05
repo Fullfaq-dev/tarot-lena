@@ -1429,7 +1429,7 @@ async def chat_reply(
             "Сейчас человек пишет с сайта в отдельном чате по одному разбору. "
             "Держись контекста этого разбора и профиля пользователя. "
             "Не уходи в новый расклад и не предлагай заново гадать, если не спросили. "
-            "Коротко, на «ты», как Лея.",
+            "На «ты», как Лея. Доводи мысль до конца — не обрывай ответ на полуслове.",
         )
     else:
         messages = _inject_system_addon(
@@ -1491,15 +1491,13 @@ async def chat_reply(
         reply = await KieClient().chat_completion(
             messages,
             reasoning_effort="low",
-            max_output_tokens=400 if reading_thread else None,
+            timeout=180,
         )
     except Exception:
         logger.exception("web chat kie failed token=%s", reading_token)
         raise ValueError("Лея сейчас не отвечает. Напиши ещё раз через минуту.") from None
     if reading_thread:
         reply = (reply or "").strip()
-        if len(reply) > 800:
-            reply = reply[:797].rstrip(" .,;") + "…"
     meta = {
         "channel": "web",
         "reading_token": reading_token,
