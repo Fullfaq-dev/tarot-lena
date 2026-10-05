@@ -178,7 +178,17 @@ async def ask_reading(
         await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(status_code=503, detail="Лея сейчас не отвечает. Напиши ещё раз через минуту.") from None
     return result
+
+
+@router.get("/readings/{token}/chat")
+async def reading_chat(token: str, session: AsyncSession = Depends(get_session)) -> dict:
+    reading = await session.scalar(select(WebReading).where(WebReading.token == token))
+    if reading is None:
+        raise HTTPException(status_code=404, detail="Ссылка не найдена или истекла")
+    return await web.public_reading_chat(session, reading)
 
 
 @router.get("/readings/{token}")
@@ -504,5 +514,7 @@ async def chat(
         await session.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        raise HTTPException(status_code=503, detail="Лея сейчас не отвечает. Напиши ещё раз через минуту.") from None
     return result
 

@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, attribution, guestId, oauthStart, pingSession, track } from "./api";
 import { Cabinet, TelegramLogin } from "./Cabinet";
 import { Landing, type LandingPage } from "./Landing";
 import { CookieBanner, ConsentBoxes, SiteFooter } from "./legal";
+import {
+  isRobokassaReturn,
+  launchRobokassa,
+  listenPayResult,
+  openPayPlaceholder,
+} from "./payReturn";
 import { maskTime, TIME_PLACEHOLDER } from "./timeMask";
 
 type Card = {
@@ -95,13 +101,7 @@ type Reading = {
 };
 
 function fromRobokassaReturn() {
-  const params = new URLSearchParams(window.location.search);
-  return Boolean(
-    params.get("paid") === "1" ||
-      params.get("InvId") ||
-      params.get("OutSum") ||
-      params.get("SignatureValue"),
-  );
+  return isRobokassaReturn();
 }
 
 function awaitingKey(token: string) {
@@ -240,7 +240,7 @@ function AuthWays({
 export function App() {
   const page = landingPage();
   const tokenFromPath = window.location.pathname.startsWith("/r/")
-    ? window.location.pathname.slice(3)
+    ? decodeURIComponent(window.location.pathname.slice(3).split("/")[0] || "")
     : "";
   const [cards, setCards] = useState<Card[]>([]);
   const [cfg, setCfg] = useState({
@@ -280,12 +280,19 @@ export function App() {
   const [paying, setPaying] = useState(false);
   const [waitingPay, setWaitingPay] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [payLive, setPayLive] = useState(false);
+  const [payFrame, setPayFrame] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [askText, setAskText] = useState("");
   const [askLog, setAskLog] = useState<{ role: string; text: string }[]>([]);
   const [askLeft, setAskLeft] = useState<number | null>(null);
+  const [asking, setAsking] = useState(false);
   const [needPack, setNeedPack] = useState(false);
   const [exitFrom, setExitFrom] = useState<"mini" | "paywall">("mini");
+  const payPopup = useRef<Window | null>(null);
+  const payKind = useRef<"reading" | "questions">("reading");
+  const budgetBefore = useRef(0);
+  const payUrlRef = useRef("");
 
   const showLanding = screen === 1 && !tokenFromPath;
 
@@ -357,26 +364,61 @@ export function App() {
   }, [tokenFromPath]);
 
   useEffect(() => {
-    if (!waitingPay || !tokenFromPath) return;
+    const waitToken = reading?.token || tokenFromPath;
+    if (!waitingPay || !waitToken) return;
     let cancelled = false;
     let attempts = 0;
     let timer = 0;
+    const closePayUi = () => {
+      sessionStorage.removeItem(awaitingKey(waitToken));
+      setWaitingPay(false);
+      setPayLive(false);
+      setPayOpen(false);
+      setPayFrame("");
+      setPaying(false);
+      try {
+        payPopup.current?.close();
+      } catch {
+        /* ignore */
+      }
+      payPopup.current = null;
+    };
+    const finishPaid = (r: Reading) => {
+      closePayUi();
+      window.history.replaceState({}, "", `/r/${waitToken}`);
+      setScreen(8);
+      setReading(r);
+    };
     const tick = () => {
-      api<Reading>(`/api/web/readings/${tokenFromPath}`)
+      api<Reading>(`/api/web/readings/${waitToken}`)
         .then((r) => {
           if (cancelled) return;
           setReading(r);
-          if (r.paid) {
-            sessionStorage.removeItem(awaitingKey(tokenFromPath));
-            setWaitingPay(false);
-            window.history.replaceState({}, "", `/r/${tokenFromPath}`);
-            setScreen(8);
+          if (payKind.current === "questions") {
+            const grew = typeof r.question_budget === "number" && r.question_budget > budgetBefore.current;
+            if (grew || attempts >= 6) {
+              closePayUi();
+              setNeedPack(false);
+              payKind.current = "reading";
+              api<{ chat_left?: number; question_budget?: number; chat?: { role: string; text: string }[] }>(
+                `/api/web/readings/${waitToken}/chat`,
+              )
+                .then((d) => {
+                  if (typeof d.chat_left === "number") setAskLeft(d.chat_left);
+                  if (d.chat?.length) setAskLog(d.chat.map((row) => ({ role: row.role, text: row.text })));
+                })
+                .catch(() => undefined);
+              return;
+            }
+          } else if (r.paid) {
+            finishPaid(r);
             return;
           }
           attempts += 1;
-          if (attempts >= 24) {
+          if (attempts >= 80) {
             setWaitingPay(false);
-            setErr("Оплата ещё подтверждается. Обнови страницу через минуту — полный разбор откроется по этой ссылке.");
+            setPayLive(false);
+            setErr("Оплата ещё подтверждается. Обнови страницу — полный разбор откроется по этой ссылке, вход не нужен.");
             setScreen(7);
             return;
           }
@@ -385,9 +427,10 @@ export function App() {
         .catch(() => {
           if (cancelled) return;
           attempts += 1;
-          if (attempts >= 24) {
+          if (attempts >= 80) {
             setWaitingPay(false);
-            setErr("Не получилось открыть разбор. Обнови страницу — ссылка та же.");
+            setPayLive(false);
+            setErr("Не получилось открыть разбор. Обнови страницу — ссылка та же, логин не нужен.");
             return;
           }
           timer = window.setTimeout(tick, 1500);
@@ -398,7 +441,30 @@ export function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [waitingPay, tokenFromPath]);
+  }, [waitingPay, reading?.token, tokenFromPath]);
+
+  useEffect(() => {
+    return listenPayResult((token) => {
+      const current = token || reading?.token || tokenFromPath;
+      if (!current) return;
+      rememberReading(current);
+      sessionStorage.setItem(awaitingKey(current), "1");
+      setWaitingPay(true);
+    });
+  }, [reading?.token, tokenFromPath]);
+
+  useEffect(() => {
+    if (screen !== 8 || !reading?.token) return;
+    api<{ chat?: { role: string; text: string }[]; chat_left?: number; question_budget?: number }>(
+      `/api/web/readings/${reading.token}/chat`,
+    )
+      .then((d) => {
+        if (d.chat?.length) setAskLog(d.chat.map((row) => ({ role: row.role, text: row.text })));
+        if (typeof d.chat_left === "number") setAskLeft(d.chat_left);
+        if (typeof d.question_budget === "number") setNeedPack(d.chat_left === 0);
+      })
+      .catch(() => undefined);
+  }, [screen, reading?.token]);
 
   useEffect(() => {
     if (screen === 7 && reading) {
@@ -530,6 +596,7 @@ export function App() {
       bumpDeviceMini();
       setReading(r);
       rememberReading(r.token);
+      window.history.replaceState({}, "", `/r/${r.token}`);
       track("calc_done", readingTrack(r));
       const wait = 1600 - (Date.now() - started);
       if (wait > 0) await new Promise((res) => setTimeout(res, wait));
@@ -567,11 +634,12 @@ export function App() {
   }
 
   async function askLeia() {
-    if (!reading || !askText.trim() || paying) return;
+    if (!reading || !askText.trim() || asking || paying) return;
     const mine = askText.trim();
     setAskText("");
+    setErr("");
     setAskLog((rows) => [...rows, { role: "user", text: mine }]);
-    setPaying(true);
+    setAsking(true);
     try {
       const r = await api<{
         reply?: string;
@@ -596,14 +664,31 @@ export function App() {
         if (r.chat_left <= 0) setNeedPack(true);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Чат не ответил");
+      setErr(e instanceof Error ? e.message : "Лея сейчас не отвечает. Напиши ещё раз.");
     } finally {
-      setPaying(false);
+      setAsking(false);
     }
+  }
+
+  async function startRobokassa(url: string, token: string, kind: "reading" | "questions" = "reading") {
+    payKind.current = kind;
+    budgetBefore.current = reading?.question_budget || cfg.question_free_limit;
+    payUrlRef.current = url;
+    sessionStorage.setItem(awaitingKey(token), "1");
+    rememberReading(token);
+    const launched = launchRobokassa(url, payPopup.current);
+    payPopup.current = launched.popup;
+    setPayFrame(launched.iframe ? url : "");
+    setPayOpen(true);
+    setPayLive(true);
+    setWaitingPay(true);
+    window.history.replaceState({}, "", `/r/${token}`);
   }
 
   async function buyQuestions(pack: "q1" | "q5") {
     if (!reading || paying) return;
+    const popup = openPayPlaceholder();
+    payPopup.current = popup;
     setPaying(true);
     try {
       const r = await api<{ payment_url?: string; token: string }>(
@@ -612,10 +697,12 @@ export function App() {
       );
       track("question_paid", { card_id: reading.card_id, pack: pack === "q5" ? 5 : 1 });
       if (r.payment_url) {
-        window.location.href = r.payment_url;
+        await startRobokassa(r.payment_url, r.token || reading.token, "questions");
         return;
       }
+      popup?.close();
     } catch (e) {
+      popup?.close();
       setErr(e instanceof Error ? e.message : "Не получилось");
     } finally {
       setPaying(false);
@@ -640,6 +727,8 @@ export function App() {
       return;
     }
     setErr("");
+    const popup = openPayPlaceholder();
+    payPopup.current = popup;
     setPaying(true);
     track("checkout_start", readingTrack(reading));
     try {
@@ -656,16 +745,17 @@ export function App() {
         },
       );
       if (r.payment_url) {
-        sessionStorage.setItem(awaitingKey(reading.token), "1");
-        rememberReading(reading.token);
-        window.location.href = r.payment_url;
+        await startRobokassa(r.payment_url, r.token || reading.token);
         return;
       }
+      popup?.close();
       const full = await api<Reading>(`/api/web/readings/${r.token}`);
       setReading(full);
       window.history.replaceState({}, "", `/r/${r.token}`);
       if (full.paid) {
         sessionStorage.removeItem(awaitingKey(r.token));
+        setPayOpen(false);
+        setPayLive(false);
         setScreen(8);
       } else {
         sessionStorage.setItem(awaitingKey(r.token), "1");
@@ -673,6 +763,7 @@ export function App() {
         setScreen(5);
       }
     } catch (e) {
+      popup?.close();
       setErr(e instanceof Error ? e.message : "Оплата не прошла");
     } finally {
       setPaying(false);
@@ -728,7 +819,7 @@ export function App() {
   const offer = reading?.offer;
   const parts = reading?.includes?.filter(Boolean) || [];
   const miniParas = reading ? miniParagraphs(reading.mini) : [];
-  const inCabinet = window.location.pathname.startsWith("/lk");
+  const inCabinet = window.location.pathname.startsWith("/lk") && !isRobokassaReturn();
 
   if (inCabinet) {
     return <Cabinet />;
@@ -885,7 +976,7 @@ export function App() {
                     </div>
                     <p className="fine">
                       {waitingPay
-                        ? "Оплата прошла — текст откроется на этой странице, вход не нужен"
+                        ? "Оплата прошла — полный разбор откроется здесь, вход не нужен"
                         : "Пишу мини-разбор по твоим ответам. Это займёт несколько секунд."}
                     </p>
                   </>
@@ -969,11 +1060,7 @@ export function App() {
                     {reading.mini.free && reading.card_id === "daily" && (
                       <button className="btn" type="button" onClick={() => goTelegramExit("mini")}>{reading.mini.cta}</button>
                     )}
-                    {loggedIn ? (
-                      <a className="btn ghost" href={`/lk?tab=history&reading=${reading.token}`}>Открыть в кабинете</a>
-                    ) : (
-                      <p className="fine">Мини уже здесь. Полный откроется сразу после оплаты — без регистрации.</p>
-                    )}
+                    <p className="fine">Мини уже здесь. Полный откроется сразу после оплаты — без регистрации.</p>
                     {err && <p className="err">{err}</p>}
                   </>
                 )}
@@ -1018,8 +1105,42 @@ export function App() {
                       <button className="btn link" type="button" onClick={() => goTelegramExit("paywall")}>Пока не готова</button>
                     </div>
                     {payOpen && (
-                      <div className="modal" onClick={() => !paying && setPayOpen(false)}>
+                      <div className="modal" onClick={() => !paying && !payLive && setPayOpen(false)}>
                         <div className="mc pay-window" role="dialog" aria-modal="true" aria-label="Оплата" onClick={(e) => e.stopPropagation()}>
+                          {payLive ? (
+                            <>
+                              <div className="eyebrow">Оплата</div>
+                              <div className="h">Касса открыта рядом</div>
+                              <p className="sub">
+                                Оплати в окне Robokassa. Когда нажмёшь «вернуться в магазин», это окно закроется,
+                                а полный разбор с чатом откроется здесь. Входить не нужно.
+                              </p>
+                              {payFrame ? (
+                                <iframe className="pay-frame" title="Оплата Robokassa" src={payFrame} />
+                              ) : (
+                                <div className="spin" />
+                              )}
+                              <p className="fine">{waitingPay ? "Жду подтверждение оплаты…" : "Если окно кассы закрылось — нажми ещё раз."}</p>
+                              <button
+                                className="btn gold"
+                                type="button"
+                                disabled={paying}
+                                onClick={() => {
+                                  const url = payUrlRef.current || payFrame;
+                                  if (!url) return;
+                                  const launched = launchRobokassa(url, payPopup.current);
+                                  payPopup.current = launched.popup;
+                                  if (launched.iframe) setPayFrame(url);
+                                }}
+                              >
+                                Открыть кассу ещё раз
+                              </button>
+                              <button className="btn link" type="button" onClick={() => { setPayLive(false); setPayOpen(false); }}>
+                                Свернуть
+                              </button>
+                            </>
+                          ) : (
+                            <>
                           <div className="eyebrow">Оплата</div>
                           <div className="tar on">
                             <h4>{reading.product_name}</h4>
@@ -1027,12 +1148,14 @@ export function App() {
                           </div>
                           <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} marketing={false} />
                           <button className="btn gold" disabled={paying || !priv} onClick={pay}>
-                            {paying ? "Открываю оплату…" : `Перейти к оплате ${formatRub(payAmount)} ₽`}
+                            {paying ? "Открываю оплату…" : `Оплатить ${formatRub(payAmount)} ₽`}
                           </button>
                           {!priv && <p className="fine">Отметь согласие - и откроется страница оплаты.</p>}
                           {err && <p className="err">{err}</p>}
-                          <p className="fine">Карта или СБП - на защищённой странице платёжного сервиса. Без подписок.</p>
+                          <p className="fine">Карта или СБП. Разбор откроется на этой странице — без входа в кабинет.</p>
                           <button className="btn link" type="button" disabled={paying} onClick={() => setPayOpen(false)}>Назад</button>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1051,6 +1174,12 @@ export function App() {
                         {askLog.map((row, i) => (
                           <div key={i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>{row.text}</div>
                         ))}
+                        {asking && (
+                          <div className="chat-bubble leia typing" aria-live="polite">
+                            <span className="typing-label">Лея пишет</span>
+                            <span className="typing-dots"><span /><span /><span /></span>
+                          </div>
+                        )}
                       </div>
                       {needPack || askLeft === 0 ? (
                         <div className="q-packs">
@@ -1064,18 +1193,23 @@ export function App() {
                         </div>
                       ) : (
                         <div className="chat-compose">
-                          <input className="inp" value={askText} onChange={(e) => setAskText(e.target.value)} placeholder="Спроси по разбору" />
-                          <button className="btn" type="button" disabled={paying || !askText.trim()} onClick={askLeia}>Спросить</button>
+                          <input
+                            className="inp"
+                            value={askText}
+                            disabled={asking}
+                            onChange={(e) => setAskText(e.target.value)}
+                            placeholder={asking ? "Лея ещё отвечает…" : "Спроси по разбору"}
+                            onKeyDown={(e) => e.key === "Enter" && !asking && askLeia()}
+                          />
+                          <button className="btn" type="button" disabled={asking || paying || !askText.trim()} onClick={askLeia}>
+                            {asking ? "Пишет…" : "Спросить"}
+                          </button>
                         </div>
                       )}
                       {askLeft != null ? <p className="fine">Осталось {askLeft} из {reading.question_budget || cfg.question_free_limit}</p> : null}
                     </section>
                     ) : null}
-                    {loggedIn ? (
-                      <a className="btn ghost" href={`/lk?tab=chat&chat=${reading.token}`}>Открыть в кабинете</a>
-                    ) : (
-                      <p className="fine">Ссылка на этот разбор работает год. Кабинет - чтобы не потерять.</p>
-                    )}
+                    <p className="fine">Ссылка на этот разбор работает год. Сохрани её — вход не обязателен.</p>
                   </>
                 )}
 

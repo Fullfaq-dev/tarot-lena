@@ -252,6 +252,11 @@
         link.setAttribute("href", url);
         link.textContent = "Открыть этот разбор";
       }
+      if (window.opener && !window.opener.closed) {
+        try { window.opener.postMessage({ type: "leia-paid", token: token }, window.location.origin); } catch (e) {}
+        window.close();
+        return;
+      }
       window.location.replace(url);
     })();
   </script>

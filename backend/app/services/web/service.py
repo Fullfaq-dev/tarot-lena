@@ -1050,6 +1050,22 @@ async def load_chat_history(session: AsyncSession, user: User, *, limit: int = 8
     return out
 
 
+async def public_reading_chat(session: AsyncSession, reading: WebReading) -> dict:
+    web = await session.scalar(select(WebSession).where(WebSession.id == reading.session_id))
+    if web is None or not web.user_id:
+        return {"chat": [], "chat_left": _question_budget(reading), "question_budget": _question_budget(reading)}
+    user = await session.get(User, web.user_id)
+    if user is None:
+        return {"chat": [], "chat_left": _question_budget(reading), "question_budget": _question_budget(reading)}
+    budget = _question_budget(reading)
+    used = await _count_reading_user_msgs(session, user.id, reading.token)
+    return {
+        "chat": await load_reading_thread(session, user, reading.token),
+        "chat_left": max(0, budget - used),
+        "question_budget": budget,
+    }
+
+
 async def load_reading_thread(session: AsyncSession, user: User, reading_token: str) -> list[dict]:
     rows = list(
         (
@@ -1137,6 +1153,17 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
             item = public_reading(row, include_paid=True)
             if not item.get("paid_text"):
                 item["paid_text"] = _free_full_text(row.mini or {})
+            if row.payment_id:
+                pay = await session.get(Payment, row.payment_id)
+                if pay is not None and pay.status == "completed":
+                    item["can_pay"] = False
+                    if item.get("paid"):
+                        pass
+                    elif row.paid_text and row.status in {"paid", "ready"}:
+                        item["paid"] = True
+                    else:
+                        item["generating"] = True
+                        item["awaiting_pay"] = False
             readings.append(item)
     tg_rows = list(
         (
@@ -1240,7 +1267,10 @@ async def cabinet_payload(session: AsyncSession, user: User) -> dict:
         item["html"] = leia_markdown_to_web_html(body)
         token = str(item.get("token") or "")
         paid = bool(item.get("paid"))
-        item["can_pay"] = _reading_item_can_pay(item)
+        if item.get("generating") and not paid:
+            item["can_pay"] = False
+        else:
+            item["can_pay"] = False if paid else _reading_item_can_pay(item)
         item["can_chat"] = bool(paid or plan)
         if item["can_chat"] and token:
             used = await _count_reading_user_msgs(session, user.id, token)
@@ -1384,7 +1414,11 @@ async def chat_reply(
     elif not bound and not vip:
         raise ValueError("Свободный чат — с VIP или после привязки Telegram. По оплаченному разбору — кнопка «Обсудить».")
 
-    messages = await ContextBuilder().build(session, user, user_query=text, channel="web")
+    try:
+        messages = await ContextBuilder().build(session, user, user_query=text, channel="web")
+    except Exception:
+        logger.exception("web chat context failed token=%s", reading_token)
+        raise ValueError("Лея сейчас не отвечает. Напиши ещё раз через минуту.") from None
     if reading_thread:
         messages = [m for m in messages if m.get("role") == "system"]
         messages = _inject_system_addon(
@@ -1450,11 +1484,15 @@ async def chat_reply(
         if allowed:
             billing_mode = await billing.reserve_chat_slot(session, user, billing_mode)
 
-    reply = await KieClient().chat_completion(
-        messages,
-        reasoning_effort="low",
-        max_output_tokens=400 if reading_thread else None,
-    )
+    try:
+        reply = await KieClient().chat_completion(
+            messages,
+            reasoning_effort="low",
+            max_output_tokens=400 if reading_thread else None,
+        )
+    except Exception:
+        logger.exception("web chat kie failed token=%s", reading_token)
+        raise ValueError("Лея сейчас не отвечает. Напиши ещё раз через минуту.") from None
     if reading_thread:
         reply = (reply or "").strip()
         if len(reply) > 800:

@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api, oauthStart, guestId } from "./api";
 import { CookieBanner, ConsentBoxes, SiteFooter } from "./legal";
+import {
+  consumeRobokassaReturn,
+  isRobokassaReturn,
+  launchRobokassa,
+  listenPayResult,
+  openPayPlaceholder,
+} from "./payReturn";
 import { maskTime, TIME_PLACEHOLDER } from "./timeMask";
 
 type Reading = {
@@ -10,6 +17,7 @@ type Reading = {
   paid?: boolean;
   can_pay?: boolean;
   can_chat?: boolean;
+  generating?: boolean;
   chat_left?: number;
   question_budget?: number;
   price_rub?: number;
@@ -271,7 +279,9 @@ function ReadingCard({
             ? "Telegram"
             : reading.paid
               ? "полный"
-              : "мини · можно оплатить"}
+              : reading.generating
+                ? "оплачен · готовлю текст"
+                : "мини · можно оплатить"}
         </span>
       </button>
       <div className="lk-reading-actions">
@@ -289,7 +299,7 @@ function ReadingCard({
         ) : null}
         {web ? (
           <a className="btn ghost" href={`/r/${reading.token}${reading.can_pay ? "?pay=1" : ""}`}>
-            {reading.can_pay ? "Открыть и оплатить" : "Открыть"}
+            {reading.paid ? "Открыть разбор" : reading.can_pay ? "Открыть мини" : "Открыть"}
           </a>
         ) : null}
       </div>
@@ -312,6 +322,7 @@ function tabFromUrl(): Tab {
 }
 
 export function Cabinet() {
+  const payReturn = isRobokassaReturn();
   const params = new URLSearchParams(window.location.search);
   const [me, setMe] = useState<Me | null>(null);
   const [tab, setTab] = useState<Tab>(params.get("chat") || params.get("tab") === "chat" ? "chat" : params.get("reading") ? "history" : tabFromUrl());
@@ -335,15 +346,29 @@ export function Cabinet() {
   const [tgUrl, setTgUrl] = useState("");
   const [quizCards, setQuizCards] = useState<QuizCard[]>([]);
   const chatEnd = useRef<HTMLDivElement | null>(null);
+  const payPopup = useRef<Window | null>(null);
 
   async function reload() {
     const data = await api<Me>(`/api/web/me?guest_id=${encodeURIComponent(guestId())}`);
     setMe(data);
     if (data.profile) setProfile({ ...emptyProfile, ...data.profile });
     if (data.chat) setLog(data.chat);
+    return data;
   }
 
   useEffect(() => {
+    if (!payReturn) return;
+    consumeRobokassaReturn();
+  }, [payReturn]);
+
+  useEffect(() => {
+    return listenPayResult(() => {
+      void reload();
+    });
+  }, []);
+
+  useEffect(() => {
+    if (payReturn) return;
     reload().catch((e) => setErr(e instanceof Error ? e.message : "Не открылся кабинет"));
     api<{ cards: QuizCard[] }>("/api/web/cards")
       .then((d) => setQuizCards(d.cards || []))
@@ -423,6 +448,8 @@ export function Cabinet() {
   async function payReading(token: string) {
     if (paying) return;
     setErr("");
+    const popup = openPayPlaceholder();
+    payPopup.current = popup;
     setPaying(true);
     try {
       const r = await api<{ payment_url?: string; demo?: boolean; token?: string }>(
@@ -436,13 +463,32 @@ export function Cabinet() {
         },
       );
       if (r.payment_url) {
-        window.location.href = r.payment_url;
+        const launched = launchRobokassa(r.payment_url, popup);
+        payPopup.current = launched.popup;
+        const started = Date.now();
+        const tick = async () => {
+          const data = await reload();
+          const row = (data.readings || []).find((item) => item.token === token);
+          if (row?.paid || row?.generating) {
+            try { payPopup.current?.close(); } catch { /* ignore */ }
+            setOpenReading(token);
+            setPaying(false);
+            return;
+          }
+          if (Date.now() - started > 120000) {
+            setPaying(false);
+            return;
+          }
+          window.setTimeout(() => void tick(), 1500);
+        };
+        window.setTimeout(() => void tick(), 1500);
         return;
       }
+      popup?.close();
       window.location.href = `/r/${r.token || token}`;
     } catch (e) {
+      popup?.close();
       setErr(e instanceof Error ? e.message : "Оплата не прошла");
-    } finally {
       setPaying(false);
     }
   }
@@ -467,6 +513,8 @@ export function Cabinet() {
   async function buyQuestions(pack: "q1" | "q5") {
     if (!readingThread || paying || !webThread(readingThread)) return;
     setErr("");
+    const popup = openPayPlaceholder();
+    payPopup.current = popup;
     setPaying(true);
     try {
       const r = await api<{ payment_url?: string; token: string }>(
@@ -474,10 +522,12 @@ export function Cabinet() {
         { method: "POST", body: JSON.stringify({ tariff: pack, privacy: true }) },
       );
       if (r.payment_url) {
-        window.location.href = r.payment_url;
+        launchRobokassa(r.payment_url, popup);
         return;
       }
+      popup?.close();
     } catch (e) {
+      popup?.close();
       setErr(e instanceof Error ? e.message : "Не получилось");
     } finally {
       setPaying(false);
@@ -540,6 +590,27 @@ export function Cabinet() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (payReturn) {
+    return (
+      <div className="site">
+        <div className="shell lk-shell guest">
+          <header className="lk-topbar">
+            <a className="brand" href="/">
+              <span className="brand-mark"><img src="/logo.jpg" alt="" /></span>
+              <span>Лея</span>
+            </a>
+          </header>
+          <section className="quiz-frame lk-login">
+            <div className="eyebrow">Оплата прошла</div>
+            <h2 className="h">Открываю полный разбор</h2>
+            <p className="sub">Вход не нужен — сейчас покажу текст по ссылке, которую уже оплатила.</p>
+            <div className="spin" />
+          </section>
+        </div>
+      </div>
+    );
   }
 
   return (

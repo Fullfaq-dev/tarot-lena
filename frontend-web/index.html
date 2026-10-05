@@ -35,6 +35,24 @@
     </script>
   </head>
   <body>
+    <script>
+      (function () {
+        try {
+          var p = new URLSearchParams(location.search);
+          var token = (p.get("Shp_token") || p.get("shp_token") || "").trim();
+          var pay = token || p.get("InvId") || p.get("OutSum") || p.get("SignatureValue") || p.get("Shp_payment_id");
+          if (!pay) return;
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: "leia-paid", token: token }, location.origin);
+            window.close();
+            return;
+          }
+          if (token && location.pathname.indexOf("/r/") !== 0) {
+            location.replace("/r/" + encodeURIComponent(token) + "?paid=1");
+          }
+        } catch (e) {}
+      })();
+    </script>
     <div id="root"><!--LANDING--><!--/LANDING--></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
