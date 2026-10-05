@@ -223,6 +223,16 @@ def test_pay_return_uses_paid_reading_token_not_cabinet():
     assert reading_return_path(paid) == "/r/reading-paid-abc?paid=1"
 
 
+def test_robokassa_lk_return_never_asks_login():
+    from app.services.web.pay_return import bypass_login_return_path, is_robokassa_return_path
+
+    token = "UR2ZbJiJkAqDLDcrk22QyQ"
+    assert is_robokassa_return_path("/lk")
+    assert bypass_login_return_path(path="/lk", shp_token=token) == f"/r/{token}?paid=1"
+    assert bypass_login_return_path(path="/payment/success", shp_token=token) == f"/r/{token}?paid=1"
+    assert bypass_login_return_path(path="/lk", shp_token="") == ""
+
+
 def test_web_paid_cards_are_ten_rub_for_checkout_test():
     from app.services.web.catalog import CARDS, TEST_WEB_PRICE_RUB
 

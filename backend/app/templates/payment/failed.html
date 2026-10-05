@@ -112,7 +112,7 @@
         Платёж был отменён или не прошёл. С карты ничего не списали — можно попробовать ещё раз.
       </p>
       <div class="actions">
-        <a class="btn btn-primary" href="{{ site_url }}/lk">Открыть кабинет</a>
+        <a class="btn btn-primary" id="open-reading" href="{{ site_url }}/">Вернуться к разбору</a>
         {% if bot_url %}
         <a class="btn btn-ghost" href="{{ bot_url }}">Вернуться в бота</a>
         {% endif %}
@@ -123,5 +123,18 @@
       </footer>
     </section>
   </main>
+  <script>
+    (function () {
+      var token = "";
+      try { token = localStorage.getItem("leia_last_reading") || ""; } catch (e) {}
+      var url = token ? "/r/" + encodeURIComponent(token) : "/";
+      var link = document.getElementById("open-reading");
+      if (link) link.setAttribute("href", url);
+      if (window.opener && !window.opener.closed) {
+        try { window.opener.postMessage({ type: "leia-pay-fail", token: token }, window.location.origin); } catch (e) {}
+        window.close();
+      }
+    })();
+  </script>
 </body>
 </html>
