@@ -31,7 +31,7 @@ from app.database.models import (
 from app.services.ai.kie_client import KieClient
 from app.services.billing.robokassa_client import RobokassaNotConfiguredError, build_payment_url, next_invoice_id
 from app.services.tarot.cards import tarot_static_url
-from app.services.web.catalog import CARDS, WebCard, apply_override, public_card
+from app.services.web.catalog import CARDS, TEST_WEB_PRICE_RUB, WebCard, apply_override, public_card
 from app.services.web.mini import build_mini, mini_plain
 from app.services.web.mini_ai import generate_ai_mini, pending_mini
 from app.services.web.mini_spec import is_crawler, offer_payload
@@ -172,16 +172,19 @@ async def resolved_cards(session: AsyncSession) -> dict[str, WebCard]:
         payload = overrides.get(card_id) or {}
         merged = apply_override(card, payload) if payload else card
         if card_id == "other":
+            fallback_price = TEST_WEB_PRICE_RUB or 590
             merged = replace(
                 merged,
                 cards_n=3,
-                price_rub=merged.price_rub or 590,
+                price_rub=merged.price_rub or fallback_price,
                 positions=merged.positions
                 if len(merged.positions or []) >= 3
                 else ["Что происходит", "Его сторона", "Есть ли другая"],
             )
             if merged.price_rub <= 0:
-                merged = replace(merged, price_rub=590)
+                merged = replace(merged, price_rub=fallback_price)
+        if TEST_WEB_PRICE_RUB and merged.price_rub > 0:
+            merged = replace(merged, price_rub=TEST_WEB_PRICE_RUB)
         out[card_id] = merged
     return out
 
@@ -641,7 +644,14 @@ async def _open_robokassa(
         await BillingService().complete_payment(session, payment)
         return _payment_result(payment, token=(payment.payload or {}).get("token"))
     if payment.provider_payment_id and (payment.payload or {}).get("payment_url"):
-        return _payment_result(payment, token=(payment.payload or {}).get("token"))
+        if payment.amount_rub == amount:
+            return _payment_result(payment, token=(payment.payload or {}).get("token"))
+        payment.provider_payment_id = None
+        stale = dict(payment.payload or {})
+        stale.pop("payment_url", None)
+        stale.pop("inv_id", None)
+        payment.payload = stale
+    payment.amount_rub = amount
     inv_id = await next_invoice_id()
     try:
         url = build_payment_url(
@@ -725,13 +735,13 @@ async def checkout(
     elif tariff == "unlimited":
         if not recur_consent:
             raise ValueError("Нужно согласие на подписку")
-        amount = Decimal("590")
+        amount = Decimal("590")  # боевая; TEST_WEB_PRICE_RUB перекрывает на 10
         sku = "web_unlimited_month"
         title = "Безлимит на месяц"
         purpose = "web_unlimited"
         key = f"web_reading:{reading.id}:{tariff}"
     elif tariff == "upsell":
-        amount = Decimal("690") if card.branch == "taro" else Decimal("390")
+        amount = Decimal("690") if card.branch == "taro" else Decimal("390")  # боевые; TEST_WEB_PRICE_RUB перекрывает
         sku = "web_upsell"
         title = "Апселл"
         purpose = "web_reading"
@@ -742,6 +752,8 @@ async def checkout(
         title = card.product_name
         purpose = "web_reading"
         key = f"web_reading:{reading.id}:base"
+    if TEST_WEB_PRICE_RUB and amount > 0:
+        amount = Decimal(TEST_WEB_PRICE_RUB)
     if amount <= 0:
         await fulfill_paid(session, reading)
         return {"ok": True, "token": reading.token}
@@ -765,6 +777,8 @@ async def checkout(
             payment = existing
     if payment is None:
         payment = await _pending_by_key(session, user.id, key)
+        if payment is not None and payment.amount_rub != amount:
+            payment = None
     if payment is not None:
         if bind_reading:
             reading.payment_id = payment.id
@@ -943,15 +957,18 @@ async def checkout_package(session: AsyncSession, user: User, package_id: str) -
         raise ValueError("Нет такого пакета")
     settings = get_settings()
     key = f"web_pkg:{user.id}:{pkg.id}"
+    amount = Decimal(TEST_WEB_PRICE_RUB) if TEST_WEB_PRICE_RUB else pkg.price_rub
     success_url = f"{settings.public_base_url.rstrip('/')}/lk"
     fail_url = f"{settings.public_base_url.rstrip('/')}/payment/failed"
     payment = await _pending_by_key(session, user.id, key)
+    if payment is not None and payment.amount_rub != amount:
+        payment = None
     if payment is None:
         payment = Payment(
             user_id=user.id,
             provider="robokassa",
             purpose=pkg.purpose,
-            amount_rub=pkg.price_rub,
+            amount_rub=amount,
             status="pending",
             payload={"package_id": pkg.id, "title": pkg.title, "idempotency_key": key},
         )
@@ -960,7 +977,7 @@ async def checkout_package(session: AsyncSession, user: User, package_id: str) -
     return await _open_robokassa(
         session,
         payment,
-        amount=pkg.price_rub,
+        amount=amount,
         title=pkg.title,
         success_url=success_url,
         fail_url=fail_url,

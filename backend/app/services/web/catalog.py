@@ -32,6 +32,10 @@ class WebCard:
     fallback_question: str = ""
 
 
+# Временно 10 ₽, чтобы прогнать живую кассу. Снять флаг и раскомментировать цены ниже.
+TEST_WEB_PRICE_RUB = 10
+
+
 CARDS: dict[str, WebCard] = {}
 
 
@@ -41,7 +45,7 @@ def _add(card: WebCard) -> None:
 
 _add(WebCard(
     id="feels", tab="rel", title="Что он ко мне чувствует?", icon="♥",
-    branch="taro", cards_n=3, price_rub=590, sku="web_love_spread",
+    branch="taro", cards_n=3, price_rub=10, sku="web_love_spread",  # price_rub=590
     product_name="Расклад на отношения", context="отношения",
     lead="Вы вместе меньше года, и его молчание — то, что мучает больше всего",
     questions=[
@@ -53,7 +57,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="marry", tab="rel", title="Когда я выйду замуж?", icon="◇",
-    branch="taro", cards_n=3, price_rub=590, sku="web_marry",
+    branch="taro", cards_n=3, price_rub=10, sku="web_marry",  # price_rub=590
     product_name="Расклад на замужество", context="отношения",
     lead="Ты сейчас одна и хочешь понять срок — карты легли именно на это",
     questions=[
@@ -65,7 +69,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="return", tab="rel", title="Вернётся ли он?", icon="↺",
-    branch="taro", cards_n=3, price_rub=590, sku="web_return",
+    branch="taro", cards_n=3, price_rub=10, sku="web_return",  # price_rub=590
     product_name="Расклад на возврат", context="расставание",
     lead="Прошло меньше трёх месяцев — для карт это ещё живая история",
     questions=[
@@ -77,7 +81,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="other", tab="rel", title="Есть ли у него другая?", icon="◉",
-    branch="taro", cards_n=3, price_rub=590, sku="web_other",
+    branch="taro", cards_n=3, price_rub=10, sku="web_other",  # price_rub=590
     product_name="Расклад: есть ли другая", context="отношения",
     lead="Ты почувствовала дистанцию — смотрим, что за ней",
     questions=[
@@ -89,7 +93,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="alone", tab="rel", title="Почему я одна?", icon="✦",
-    branch="date", cards_n=0, price_rub=990, sku="web_matrix",
+    branch="date", cards_n=0, price_rub=10, sku="web_matrix",  # price_rub=990
     product_name="Матрица судьбы", context="отношения",
     lead="Больше трёх лет одна — в матрице это читается как повторяющийся сценарий",
     questions=[
@@ -102,7 +106,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="compat", tab="rel", title="Наша совместимость", icon="∞",
-    branch="pair", cards_n=0, price_rub=890, sku="web_compat",
+    branch="pair", cards_n=0, price_rub=10, sku="web_compat",  # price_rub=890
     product_name="Совместимость по датам", context="отношения",
     lead="Ты спросила про будущее — считаю по двум датам",
     questions=[
@@ -115,7 +119,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="stuck", tab="me", title="Почему всё идёт не так?", icon="◈",
-    branch="date", cards_n=0, price_rub=990, sku="web_matrix",
+    branch="date", cards_n=0, price_rub=10, sku="web_matrix",  # price_rub=990
     product_name="Матрица судьбы", context="общий прогноз",
     lead="Отношения по одному сценарию, и тянется это давно — по дате видно, откуда это взялось",
     questions=[
@@ -128,7 +132,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="money", tab="me", title="Куда уходят деньги?", icon="₽",
-    branch="date", cards_n=0, price_rub=590, sku="web_money_channel",
+    branch="date", cards_n=0, price_rub=10, sku="web_money_channel",  # price_rub=590
     product_name="Денежный канал", context="деньги",
     lead="Зарабатываешь, но не остаётся — смотрю денежный канал",
     questions=[
@@ -141,7 +145,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="purpose", tab="me", title="Моё предназначение", icon="☼",
-    branch="date", cards_n=0, price_rub=990, sku="web_matrix",
+    branch="date", cards_n=0, price_rub=10, sku="web_matrix",  # price_rub=990
     product_name="Матрица судьбы", context="работа",
     lead="Ты в найме и чувствуешь, что занимаешься не своим — матрица покажет, куда разворачивает",
     questions=[
@@ -154,7 +158,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="soon", tab="me", title="Что меня ждёт в ближайшее время?", icon="⟁",
-    branch="taro", cards_n=3, price_rub=590, sku="web_forecast",
+    branch="taro", cards_n=3, price_rub=10, sku="web_forecast",  # price_rub=590
     product_name="Прогноз по картам", context="общий прогноз",
     lead="Ты выбрала деньги и смотришь на три месяца — карты легли на этот срок",
     questions=[
@@ -166,7 +170,7 @@ _add(WebCard(
 ))
 _add(WebCard(
     id="job", tab="me", title="Стоит ли менять работу?", icon="⌁",
-    branch="taro", cards_n=3, price_rub=590, sku="web_job",
+    branch="taro", cards_n=3, price_rub=10, sku="web_job",  # price_rub=590
     product_name="Расклад на решение", context="работа",
     lead="Ты выгорела, и держат деньги — карты показали, дело в месте или в темпе",
     questions=[
@@ -204,6 +208,11 @@ for _card_id, _question in FALLBACK_QUESTIONS.items():
     _card = CARDS.get(_card_id)
     if _card is not None:
         _card.fallback_question = _question
+
+if TEST_WEB_PRICE_RUB:
+    for _card in CARDS.values():
+        if _card.price_rub > 0:
+            _card.price_rub = TEST_WEB_PRICE_RUB
 
 
 def public_card(card: WebCard) -> dict:
