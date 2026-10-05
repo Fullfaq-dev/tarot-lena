@@ -233,12 +233,33 @@ def test_robokassa_lk_return_never_asks_login():
     assert bypass_login_return_path(path="/lk", shp_token="") == ""
 
 
-def test_web_paid_cards_are_ten_rub_for_checkout_test():
+def test_web_catalog_live_prices():
     from app.services.web.catalog import CARDS, TEST_WEB_PRICE_RUB
 
-    assert TEST_WEB_PRICE_RUB == 10
-    for card in CARDS.values():
-        if card.id == "daily":
-            assert card.price_rub == 0
-        else:
-            assert card.price_rub == 10
+    assert TEST_WEB_PRICE_RUB is None
+    assert CARDS["daily"].price_rub == 0
+    assert CARDS["feels"].price_rub == 590
+    assert CARDS["marry"].price_rub == 590
+    assert CARDS["return"].price_rub == 590
+    assert CARDS["other"].price_rub == 590
+    assert CARDS["soon"].price_rub == 590
+    assert CARDS["job"].price_rub == 590
+    assert CARDS["money"].price_rub == 590
+    assert CARDS["compat"].price_rub == 890
+    assert CARDS["alone"].price_rub == 990
+    assert CARDS["stuck"].price_rub == 990
+    assert CARDS["purpose"].price_rub == 990
+
+
+def test_paid_markdown_becomes_headings_and_italic():
+    from app.bot.formatting import leia_markdown_to_web_html
+
+    html = leia_markdown_to_web_html(
+        "# # # Твоё предназначение\n\nТы сильнее там, где можешь влиять на то, *как устроена работа*.\n\n### Сфера\n\nКоординация проектов."
+    )
+    assert "<h3>" in html
+    assert "Твоё предназначение" in html
+    assert "###" not in html
+    assert "# # #" not in html
+    assert "<i>" in html
+    assert "как устроена работа" in html

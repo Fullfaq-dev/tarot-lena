@@ -591,7 +591,10 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
         "expires_at": reading.expires_at.isoformat() if reading.expires_at else None,
     }
     if include_paid and paid:
+        from app.bot.formatting import leia_markdown_to_web_html
+
         payload["paid_text"] = reading.paid_text
+        payload["paid_html"] = leia_markdown_to_web_html(reading.paid_text or "")
     return payload
 
 
@@ -735,13 +738,13 @@ async def checkout(
     elif tariff == "unlimited":
         if not recur_consent:
             raise ValueError("Нужно согласие на подписку")
-        amount = Decimal("590")  # боевая; TEST_WEB_PRICE_RUB перекрывает на 10
+        amount = Decimal("590")
         sku = "web_unlimited_month"
         title = "Безлимит на месяц"
         purpose = "web_unlimited"
         key = f"web_reading:{reading.id}:{tariff}"
     elif tariff == "upsell":
-        amount = Decimal("690") if card.branch == "taro" else Decimal("390")  # боевые; TEST_WEB_PRICE_RUB перекрывает
+        amount = Decimal("690") if card.branch == "taro" else Decimal("390")
         sku = "web_upsell"
         title = "Апселл"
         purpose = "web_reading"
