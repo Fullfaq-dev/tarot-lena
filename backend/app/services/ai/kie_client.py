@@ -62,9 +62,12 @@ def _messages_to_responses_input(messages: list[dict]) -> tuple[str, list[dict]]
         if role == "system":
             instructions.extend(t.strip() for t in texts if t and t.strip())
             continue
+        text_type = "output_text" if role == "assistant" else "input_text"
+        if role == "assistant":
+            parts = [part for part in parts if part.get("type") in {"output_text", "refusal"}]
         for text in texts:
             if text.strip():
-                parts.append({"type": "input_text", "text": text})
+                parts.append({"type": text_type, "text": text})
         if parts:
             items.append({"role": role if role in {"user", "assistant"} else "user", "content": parts})
     return "\n\n".join(instructions), items
@@ -317,7 +320,15 @@ class KieClient:
             json=payload,
             timeout=timeout,
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            detail = response.text[:2000]
+            try:
+                err = response.json().get("error") or {}
+                detail = str(err.get("message") or detail)
+            except Exception:
+                pass
+            logger.warning("OpenAI responses HTTP %s: %s", response.status_code, detail)
+            raise ValueError(detail)
         data = response.json()
         if isinstance(data.get("error"), dict):
             err = data["error"]

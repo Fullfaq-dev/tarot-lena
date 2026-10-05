@@ -263,3 +263,25 @@ def test_paid_markdown_becomes_headings_and_italic():
     assert "# # #" not in html
     assert "<i>" in html
     assert "как устроена работа" in html
+
+
+def test_second_chat_turn_sends_assistant_as_output_text():
+    from app.services.ai.kie_client import _messages_to_responses_input, _normalize_messages
+
+    instructions, items = _messages_to_responses_input(
+        _normalize_messages(
+            [
+                {"role": "system", "content": [{"type": "text", "text": "Ты Лея."}]},
+                {"role": "user", "content": [{"type": "text", "text": "Первый вопрос"}]},
+                {"role": "assistant", "content": [{"type": "text", "text": "Ответ Леи"}]},
+                {"role": "user", "content": [{"type": "text", "text": "Второй вопрос"}]},
+            ]
+        )
+    )
+    assert "Ты Лея." in instructions
+    assert [item["role"] for item in items] == ["user", "assistant", "user"]
+    assert items[0]["content"][0]["type"] == "input_text"
+    assert items[1]["content"][0]["type"] == "output_text"
+    assert items[1]["content"][0]["text"] == "Ответ Леи"
+    assert items[2]["content"][0]["type"] == "input_text"
+    assert items[2]["content"][0]["text"] == "Второй вопрос"
