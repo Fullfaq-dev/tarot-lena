@@ -69,6 +69,7 @@ class EventIn(BaseModel):
 
 @router.get("/config")
 async def web_config() -> dict:
+    from app.services.web.catalog import TEST_WEB_PRICE_RUB
     from app.services.web.mini_spec import GIFT_TITLE, PAYWALL_COPY
 
     settings = get_settings()
@@ -76,7 +77,7 @@ async def web_config() -> dict:
         "metrika_id": settings.yandex_metrika_id,
         "bot_username": settings.telegram_bot_username,
         "legal_url": "/legal",
-        "unlimited_price": 590,
+        "unlimited_price": TEST_WEB_PRICE_RUB or 590,
         "oauth": web_auth.oauth_ready(),
         "show_strike_price": settings.show_strike_price,
         "question_price_rub": settings.question_price_rub,

@@ -221,3 +221,14 @@ def test_pay_return_uses_paid_reading_token_not_cabinet():
     assert pick_return_token(shp_token="", payment_token="", cookie_token=paid) == paid
     assert pick_return_token() == ""
     assert reading_return_path(paid) == "/r/reading-paid-abc?paid=1"
+
+
+def test_web_paid_cards_are_ten_rub_for_checkout_test():
+    from app.services.web.catalog import CARDS, TEST_WEB_PRICE_RUB
+
+    assert TEST_WEB_PRICE_RUB == 10
+    for card in CARDS.values():
+        if card.id == "daily":
+            assert card.price_rub == 0
+        else:
+            assert card.price_rub == 10
