@@ -46,7 +46,7 @@ function miniPlain(mini?: { lead?: string; verdict?: string; body?: string[]; ho
   return mini.lead || "";
 }
 
-function LeiaText({ text, html }: { text: string; html?: string | null }) {
+export function LeiaText({ text, html }: { text: string; html?: string | null }) {
   if (html) {
     return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
   }

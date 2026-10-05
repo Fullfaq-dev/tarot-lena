@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, attribution, guestId, oauthStart, pingSession, track } from "./api";
-import { Cabinet, TelegramLogin } from "./Cabinet";
+import { Cabinet, LeiaText, TelegramLogin } from "./Cabinet";
 import { Landing, type LandingPage } from "./Landing";
 import { CookieBanner, ConsentBoxes, SiteFooter } from "./legal";
 import {
@@ -93,6 +93,7 @@ type Reading = {
   paid?: boolean;
   awaiting_pay?: boolean;
   paid_text?: string;
+  paid_html?: string | null;
   includes?: string[];
   context?: string;
   offer?: Offer;
@@ -284,7 +285,7 @@ export function App() {
   const [payFrame, setPayFrame] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [askText, setAskText] = useState("");
-  const [askLog, setAskLog] = useState<{ role: string; text: string }[]>([]);
+  const [askLog, setAskLog] = useState<{ role: string; text: string; html?: string | null }[]>([]);
   const [askLeft, setAskLeft] = useState<number | null>(null);
   const [asking, setAsking] = useState(false);
   const [needPack, setNeedPack] = useState(false);
@@ -400,12 +401,12 @@ export function App() {
               closePayUi();
               setNeedPack(false);
               payKind.current = "reading";
-              api<{ chat_left?: number; question_budget?: number; chat?: { role: string; text: string }[] }>(
+              api<{ chat_left?: number; question_budget?: number; chat?: { role: string; text: string; html?: string | null }[] }>(
                 `/api/web/readings/${waitToken}/chat`,
               )
                 .then((d) => {
                   if (typeof d.chat_left === "number") setAskLeft(d.chat_left);
-                  if (d.chat?.length) setAskLog(d.chat.map((row) => ({ role: row.role, text: row.text })));
+                  if (d.chat?.length) setAskLog(d.chat.map((row) => ({ role: row.role, text: row.text, html: row.html })));
                 })
                 .catch(() => undefined);
               return;
@@ -455,11 +456,11 @@ export function App() {
 
   useEffect(() => {
     if (screen !== 8 || !reading?.token) return;
-    api<{ chat?: { role: string; text: string }[]; chat_left?: number; question_budget?: number }>(
+    api<{ chat?: { role: string; text: string; html?: string | null }[]; chat_left?: number; question_budget?: number }>(
       `/api/web/readings/${reading.token}/chat`,
     )
       .then((d) => {
-        if (d.chat?.length) setAskLog(d.chat.map((row) => ({ role: row.role, text: row.text })));
+        if (d.chat?.length) setAskLog(d.chat.map((row) => ({ role: row.role, text: row.text, html: row.html })));
         if (typeof d.chat_left === "number") setAskLeft(d.chat_left);
         if (typeof d.question_budget === "number") setNeedPack(d.chat_left === 0);
       })
@@ -483,18 +484,18 @@ export function App() {
   }, [screen, reading]);
 
   useEffect(() => {
-    if (screen === 8 && reading?.paid_text) {
-      let i = 0;
-      const text = reading.paid_text;
-      const id = window.setInterval(() => {
-        i += 4;
-        setStream(text.slice(0, i));
-        if (i >= text.length) window.clearInterval(id);
-      }, 16);
-      return () => window.clearInterval(id);
+    if (screen !== 8 || !reading?.paid_text || reading.paid_html) {
+      return undefined;
     }
-    return undefined;
-  }, [screen, reading?.paid_text]);
+    let i = 0;
+    const text = reading.paid_text;
+    const id = window.setInterval(() => {
+      i += 4;
+      setStream(text.slice(0, i));
+      if (i >= text.length) window.clearInterval(id);
+    }, 16);
+    return () => window.clearInterval(id);
+  }, [screen, reading?.paid_text, reading?.paid_html]);
 
   useEffect(() => {
     if (!reading) return;
@@ -643,7 +644,7 @@ export function App() {
     try {
       const r = await api<{
         reply?: string;
-        chat?: { role: string; text: string }[];
+        chat?: { role: string; text: string; html?: string | null }[];
         chat_left?: number;
         need_pack?: boolean;
       }>(`/api/web/readings/${reading.token}/ask`, {
@@ -653,11 +654,11 @@ export function App() {
       if (r.need_pack) {
         setNeedPack(true);
         setAskLeft(0);
-        if (r.chat) setAskLog(r.chat.map((row) => ({ role: row.role, text: row.text })));
+        if (r.chat) setAskLog(r.chat.map((row) => ({ role: row.role, text: row.text, html: row.html })));
         return;
       }
       track("question_free", { card_id: reading.card_id, n: (reading.question_budget || 3) - (r.chat_left || 0) });
-      if (r.chat) setAskLog(r.chat.map((row) => ({ role: row.role, text: row.text })));
+      if (r.chat) setAskLog(r.chat.map((row) => ({ role: row.role, text: row.text, html: row.html })));
       else if (r.reply) setAskLog((rows) => [...rows, { role: "leia", text: r.reply || "" }]);
       if (typeof r.chat_left === "number") {
         setAskLeft(r.chat_left);
@@ -1166,13 +1167,19 @@ export function App() {
                   <>
                     <div className="eyebrow">Разбор готов</div>
                     <div className="h">{reading.mini.title}</div>
-                    <div className="stream">{stream || "Готовлю текст…"}<span className="cursor" /></div>
-                    {reading.paid_text && stream.length >= reading.paid_text.length ? (
+                    {reading.paid_html ? (
+                      <article className="stream md" dangerouslySetInnerHTML={{ __html: reading.paid_html }} />
+                    ) : (
+                      <div className="stream">{stream || "Готовлю текст…"}<span className="cursor" /></div>
+                    )}
+                    {(reading.paid_html || (reading.paid_text && stream.length >= reading.paid_text.length)) ? (
                     <section className="ask-leia">
                       <div className="eyebrow">Спроси Лею по разбору</div>
                       <div className="chat-log">
                         {askLog.map((row, i) => (
-                          <div key={i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>{row.text}</div>
+                          <div key={i} className={`chat-bubble ${row.role === "user" ? "me" : "leia"}`}>
+                            {row.role === "leia" ? <LeiaText text={row.text} html={row.html} /> : row.text}
+                          </div>
                         ))}
                         {asking && (
                           <div className="chat-bubble leia typing" aria-live="polite">

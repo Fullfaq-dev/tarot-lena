@@ -619,6 +619,25 @@ h1, h2, h3, h4, .h, .q, .c b, .lk-group-title, .lk-reading-head b { letter-spaci
 .c .fine { text-align: left; display: block; margin-top: 6px; }
 .err { color: #c0395a; font-size: 13px; }
 .stream { font-size: 16px; color: var(--soft); line-height: 1.65; white-space: pre-wrap; }
+.stream.md {
+  white-space: normal;
+  color: var(--ink);
+}
+.stream.md h3 {
+  margin: 1.15em 0 0.4em;
+  font-family: var(--font-head);
+  font-size: 1.22em;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.stream.md h3:first-child { margin-top: 0.2em; }
+.stream.md p { margin: 0 0 0.9em; }
+.stream.md p:last-child { margin-bottom: 0; }
+.stream.md ul { margin: 0 0 0.9em; padding-left: 1.2em; }
+.stream.md li { margin: 0 0 0.35em; }
+.stream.md b, .stream.md strong { color: var(--gold-dark); font-weight: 700; }
+.stream.md i, .stream.md em { font-style: italic; }
 .cursor { display: inline-block; width: 7px; height: 14px; background: var(--gold-main); animation: blink 0.7s steps(1) infinite; }
 .chk { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--soft); margin: 12px 0; cursor: pointer; overflow-wrap: anywhere; min-width: 0; }
 .chk a { color: var(--gold-dark); }

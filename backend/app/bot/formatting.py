@@ -22,6 +22,7 @@ _MD_HEADING = re.compile(r"^#{1,6}\s+(.+)$")
 _MD_IMAGE = re.compile(r"^!\[\]\([^)]+\)\s*$")
 _MD_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _TABLE_SEP = re.compile(r"^\|[\s\-:|]+\|$")
+_HASH_RUN = re.compile(r"^(?:#\s*){1,6}\S")
 
 
 def _blockquote_to_markdown(inner: str) -> str:
@@ -75,6 +76,21 @@ def html_to_rich_markdown(text: str) -> str:
     return s.strip()
 
 
+def normalize_heading_line(line: str) -> str:
+    """`# # # Заголовок` и `###Заголовок` → `### Заголовок`."""
+    stripped = line.strip()
+    if not stripped or not _HASH_RUN.match(stripped):
+        return line
+    n = 0
+    rest = stripped
+    while rest.startswith("#") and n < 6:
+        n += 1
+        rest = rest[1:].lstrip()
+    if not rest:
+        return line
+    return f"{'#' * n} {rest}"
+
+
 def prepare_rich_markdown(text: str) -> str:
     """Prepare model output for Telegram rich markdown."""
     if not text:
@@ -82,7 +98,7 @@ def prepare_rich_markdown(text: str) -> str:
     cleaned = _RICH_STRIP_HTML.sub("", text)
     cleaned = cleaned.replace("\r\n", "\n")
     lines = [
-        line
+        normalize_heading_line(line)
         for line in cleaned.split("\n")
         if not _MD_IMAGE.match(line.strip())
         and line.strip() not in {"<tg-collage>", "</tg-collage>"}

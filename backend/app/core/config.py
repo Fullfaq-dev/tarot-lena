@@ -31,10 +31,8 @@ class Settings(BaseSettings):
     openai_chat_model: str = "gpt-6-luna"
     openai_mini_model: str = "gpt-6-luna"
     show_strike_price: bool = False
-    # question_price_rub: int = 99
-    # question_pack5_price_rub: int = 199
-    question_price_rub: int = 10  # TEST касса, вернуть 99
-    question_pack5_price_rub: int = 10  # TEST касса, вернуть 199
+    question_price_rub: int = 99
+    question_pack5_price_rub: int = 199
     web_question_free_limit: int = 3
     mini_per_device_day: int = 5
     mini_per_ip_day: int = 20
