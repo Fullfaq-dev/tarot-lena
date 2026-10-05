@@ -294,7 +294,7 @@ class KieClient:
         reasoning_effort: str,
         model: str | None = None,
         max_output_tokens: int | None = None,
-        timeout: float = 120,
+        timeout: float = 180,
     ) -> str:
         chosen = (model or self._openai_model()).strip()
         instructions, input_items = _messages_to_responses_input(_normalize_messages(messages))
@@ -379,7 +379,7 @@ class KieClient:
                         reasoning_effort=reasoning_effort,
                         model=model,
                         max_output_tokens=max_output_tokens,
-                        timeout=timeout or 120,
+                        timeout=timeout or 180,
                     )
                 except Exception as exc:
                     last_error = exc
