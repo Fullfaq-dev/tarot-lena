@@ -248,7 +248,7 @@ export function App() {
     bot_username: "astro_leia_bot",
     legal_url: "/legal",
     oauth: { yandex: false, vk: false, telegram: false },
-    show_strike_price: false,
+    show_strike_price: true,
     question_price_rub: 99,
     question_pack5_price_rub: 199,
     question_free_limit: 3,
@@ -1145,7 +1145,17 @@ export function App() {
                           <div className="eyebrow">Оплата</div>
                           <div className="tar on">
                             <h4>{reading.product_name}</h4>
-                            <div className="pr">{formatRub(payAmount)} ₽</div>
+                            <div className="pr pay-pr">
+                              <div className="pay-row">
+                                {offer?.show_strike && offer.strike_rub ? <s>{formatRub(offer.strike_rub)} ₽</s> : null}
+                                <b>{formatRub(payAmount)} ₽</b>
+                              </div>
+                              {offer?.show_strike ? (
+                                <span className="cap">
+                                  {offer.price_caption || (reading.branch === "taro" ? cfg.paywall_price_caption_taro : cfg.paywall_price_caption_date)}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                           <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} marketing={false} />
                           <button className="btn gold" disabled={paying || !priv} onClick={pay}>

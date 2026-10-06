@@ -930,6 +930,13 @@ h1, h2, h3, h4, .h, .q, .c b, .lk-group-title, .lk-reading-head b { letter-spaci
 .pay-window .tar.on { cursor: default; margin: 4px 0 14px; }
 .pay-window .tar.on h4 { margin: 0 0 4px; }
 .pay-window .btn.gold { margin-top: 4px; }
+.pay-window .tar .pay-pr {
+  font-family: var(--font-body);
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 400;
+  margin: 6px 0 0;
+}
 .pay-frame {
   width: 100%;
   min-height: min(70vh, 560px);
