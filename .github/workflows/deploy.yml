@@ -100,6 +100,7 @@ jobs:
             set_env PLATEGA_RETURN_URL "${PUBLIC_URL}/payment/success"
             set_env PLATEGA_FAILED_URL "${PUBLIC_URL}/payment/failed"
             set_env LEGAL_PAGE_URL "${PUBLIC_URL}/legal"
+            set_env SHOW_STRIKE_PRICE "true"
             set_env TELEGRAM_USE_POLLING "1"
             set_env HTTP_PORT "80"
             set_env ROBOKASSA_HASH "md5"
