@@ -326,15 +326,15 @@ GIFT_TITLE = "В подарок: 3 уточняющих вопроса к тво
 PAYWALL_COPY = {
     "taro": {
         "algorithm": "Карты раскладывает алгоритм, без ручных ошибок. Ответ через минуту",
-        "price_caption": "индивидуальный разбор + 3 вопроса",
+        "price_caption": "индивидуальный разбор",
     },
     "date": {
         "algorithm": "Числа считает алгоритм, без ручных ошибок. Ответ через минуту",
-        "price_caption": "индивидуальный расчёт + 3 вопроса",
+        "price_caption": "индивидуальный расчёт",
     },
     "pair": {
         "algorithm": "Числа считает алгоритм, без ручных ошибок. Ответ через минуту",
-        "price_caption": "индивидуальный расчёт + 3 вопроса",
+        "price_caption": "индивидуальный расчёт",
     },
 }
 
@@ -400,6 +400,13 @@ def offer_branch(card_id: str, branch: str = "") -> str:
     return "taro"
 
 
+# Зачёркнутая цена варианта A: таро — 690 ₽, матрица, расчёты по датам и совместимость — 890 ₽.
+# Скидку держим в пределах 40–45 %. Показывается, только если она выше текущей цены разбора.
+STRIKE_PRICE_RUB = {"taro": 690, "date": 890, "pair": 890}
+
+OPTION_BADGE = "Берут чаще всего"
+
+
 def offer_payload(
     card_id: str,
     *,
@@ -408,14 +415,34 @@ def offer_payload(
     question_price: int,
     mini: dict | None = None,
     branch: str = "",
+    plus3_extra: int = 200,
+    plus3_strike_extra: int = 300,
+    pass_price: int = 990,
+    pass_strike: int = 1690,
+    returning: bool = False,
+    sub_price: int = 590,
 ) -> dict:
     offer = pay_offer(card_id)
     spec = spec_for(card_id)
     mini = mini or {}
-    copy = paywall_copy(offer_branch(card_id, branch))
-    strike = price_rub + 3 * question_price if show_strike and price_rub > 0 else 0
+    group = offer_branch(card_id, branch)
+    copy = paywall_copy(group)
+    strike = STRIKE_PRICE_RUB.get(group, 0) if show_strike and price_rub > 0 else 0
     title = str(mini.get("paywall_title") or spec.paywall_title_static or spec.fallback_title or offer.eyebrow)
     question_example = str(mini.get("question_example") or "").strip() or spec.fallback_question
+    options = _pay_options(
+        group,
+        price_rub=price_rub,
+        strike_rub=strike,
+        show_strike=show_strike,
+        plus3_extra=plus3_extra,
+        plus3_strike_extra=plus3_strike_extra,
+        pass_price=pass_price,
+        pass_strike=pass_strike,
+        question_example=question_example,
+        returning=returning,
+        sub_price=sub_price,
+    )
     return {
         "eyebrow": offer.eyebrow,
         "title": title,
@@ -430,4 +457,76 @@ def offer_payload(
         "show_strike": bool(show_strike and strike > price_rub),
         "question_price": question_price,
         "fine": "СБП или карта · без подписки · откроется сразу здесь",
+        "guarantee": "Не откликнулось — верну деньги, без вопросов",
+        "options": options,
+    }
+
+
+def _pay_options(
+    group: str,
+    *,
+    price_rub: int,
+    strike_rub: int,
+    show_strike: bool,
+    plus3_extra: int,
+    plus3_strike_extra: int,
+    pass_price: int,
+    pass_strike: int,
+    question_example: str,
+    returning: bool = False,
+    sub_price: int = 590,
+) -> list[dict]:
+    """Три варианта оплаты: A — только разбор, B — разбор + 3 вопроса, C — безлимит.
+
+    C до первой покупки — разовый безлимит на 30 дней (pass30, 990 ₽).
+    После первой покупки вместо него — VIP-доступ на 30 дней со скидкой (unlimited, 590 ₽), тоже разово.
+    """
+    if price_rub <= 0:
+        return []
+    noun = "разбор" if group == "taro" else "расчёт"
+
+    def strike(price: int, old: int) -> int:
+        return old if show_strike and old > price else 0
+
+    plus3_price = price_rub + plus3_extra
+    return [
+        {
+            "id": "base",
+            "title": "Только этот разбор",
+            "caption": f"индивидуальный {noun} без вопросов Лее",
+            "price_rub": price_rub,
+            "strike_rub": strike(price_rub, strike_rub),
+            "featured": False,
+        },
+        {
+            "id": "plus3",
+            "title": "Разбор + 3 вопроса Лее к нему",
+            "caption": f"индивидуальный {noun} + 3 вопроса",
+            "price_rub": plus3_price,
+            "strike_rub": strike(plus3_price, strike_rub + plus3_strike_extra if strike_rub else 0),
+            "featured": True,
+            "badge": OPTION_BADGE,
+            "question_example": question_example,
+        },
+        _unlimited_option(returning, pass_price=pass_price, pass_strike=pass_strike, sub_price=sub_price, strike=strike),
+    ]
+
+
+def _unlimited_option(returning: bool, *, pass_price: int, pass_strike: int, sub_price: int, strike) -> dict:
+    if returning:
+        return {
+            "id": "unlimited",
+            "title": "VIP-доступ на 30 дней: любые разборы и вопросы",
+            "caption": "скидка после первой покупки, без автопродления",
+            "price_rub": sub_price,
+            "strike_rub": strike(sub_price, pass_price),
+            "featured": False,
+        }
+    return {
+        "id": "pass30",
+        "title": "Безлимит на 30 дней: любые разборы и вопросы",
+        "caption": "30 дней без ограничений, без автопродления",
+        "price_rub": pass_price,
+        "strike_rub": strike(pass_price, pass_strike),
+        "featured": False,
     }

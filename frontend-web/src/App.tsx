@@ -58,7 +58,24 @@ type Offer = {
   strike_rub?: number;
   show_strike?: boolean;
   fine?: string;
+  guarantee?: string;
+  options?: PayOption[];
 };
+
+/** Вариант оплаты на пейволе: A — только разбор, B — разбор + 3 вопроса,
+ * C — безлимит на 30 дней (до первой покупки) или VIP-доступ на 30 дней со скидкой (после). Всё разово. */
+type PayOption = {
+  id: Tariff;
+  title: string;
+  caption?: string;
+  price_rub: number;
+  strike_rub?: number;
+  featured?: boolean;
+  badge?: string;
+  question_example?: string;
+};
+
+type Tariff = "base" | "plus3" | "pass30" | "unlimited" | "bundle";
 
 type Mini = {
   source?: string;
@@ -99,7 +116,33 @@ type Reading = {
   offer?: Offer;
   generating?: boolean;
   question_budget?: number;
+  paid_tariff?: string | null;
+  paid_amount_rub?: number | null;
+  buyer?: { returning: boolean; unlimited_active: boolean };
+  sub_price_rub?: number;
+  sub_strike_rub?: number;
 };
+
+function tariffKey(token: string) {
+  return `leia_tariff_${token}`;
+}
+
+/** Запоминаем выбранный вариант до ухода в кассу — для события purchase после возврата. */
+function rememberTariff(token: string, tariff: string, amount: number) {
+  try {
+    sessionStorage.setItem(tariffKey(token), JSON.stringify({ tariff, amount }));
+  } catch {
+    /* ignore */
+  }
+}
+
+function storedTariff(token: string): { tariff?: string; amount?: number } {
+  try {
+    return JSON.parse(sessionStorage.getItem(tariffKey(token)) || "{}");
+  } catch {
+    return {};
+  }
+}
 
 function fromRobokassaReturn() {
   return isRobokassaReturn();
@@ -271,12 +314,16 @@ export function App() {
   const [partner, setPartner] = useState("");
   const [email, setEmail] = useState("");
   const [reading, setReading] = useState<Reading | null>(null);
-  const [tariff, setTariff] = useState<"base" | "bundle">("base");
+  const [tariff, setTariff] = useState<Tariff>("plus3");
   const [err, setErr] = useState("");
   const [vpn, setVpn] = useState(false);
   const [mkt, setMkt] = useState(false);
   const [priv, setPriv] = useState(false);
-  const [recur, setRecur] = useState(false);
+  // Окно «прогноз в Telegram»: после отказа от покупки и после полного разбора.
+  const [tgPopup, setTgPopup] = useState<null | "decline_mini" | "decline_paywall" | "after_reading">(null);
+  const readEndRef = useRef<HTMLDivElement | null>(null);
+  // Откуда открыли экран VIP-доступа: 8 — готовый разбор, 9 — цепочка после оплаты (7 — на всякий случай).
+  const [subFrom, setSubFrom] = useState<7 | 8 | 9>(9);
   const [stream, setStream] = useState("");
   const [paying, setPaying] = useState(false);
   const [waitingPay, setWaitingPay] = useState(false);
@@ -304,6 +351,7 @@ export function App() {
       if (!startId || tokenFromPath) return;
       const card = d.cards.find((item) => item.id === startId);
       if (!card) return;
+      trackQuizStart(card, "start_link");
       setSel(card);
       setQi(0);
       setAnswers(Array(card.questions.length).fill(""));
@@ -478,7 +526,17 @@ export function App() {
       const key = `leia_purchase_${reading.token}`;
       if (!sessionStorage.getItem(key)) {
         sessionStorage.setItem(key, "1");
-        track("purchase", { order_price: reading.price_rub, currency: "RUB" });
+        const saved = storedTariff(reading.token);
+        const amount = reading.paid_amount_rub ?? saved.amount ?? reading.price_rub;
+        // Разбор, открытый внутри безлимита, — не покупка: денег за него не было.
+        if (amount > 0) {
+          track("purchase", {
+            ...readingTrack(reading),
+            tariff: reading.paid_tariff || saved.tariff || "base",
+            order_price: amount,
+            currency: "RUB",
+          });
+        }
       }
     }
   }, [screen, reading]);
@@ -526,14 +584,20 @@ export function App() {
     window.history.replaceState({}, "", page === "home" ? "/" : `/${page}`);
   }
 
+  /** Клик по карточке и вход по ссылке ?start=<id> отправляют одни и те же события. entry отличает трафик. */
+  function trackQuizStart(card: Card, entry: "card" | "start_link") {
+    const extra = { card_id: card.id, entry };
+    track("kart_click", extra);
+    track(`kart_click_${card.id}`, extra);
+    track("quiz_start", extra);
+  }
+
   async function pickCard(card: Card) {
     setSel(card);
     setQi(0);
     setAnswers(Array(card.questions.length).fill(""));
     setPicks([]);
-    track("kart_click");
-    track(`kart_click_${card.id}`);
-    track("quiz_start");
+    trackQuizStart(card, "card");
     if (card.branch === "taro") {
       const d = await api<{ cards: { slug: string; image?: string }[] }>("/api/web/deck?n=7");
       setDeck(d.cards);
@@ -631,7 +695,12 @@ export function App() {
   function goTelegramExit(from: "mini" | "paywall") {
     setExitFrom(from);
     if (reading) track("exit_click", { card_id: reading.card_id, from });
-    setScreen(13);
+    openTgPopup(from === "mini" ? "decline_mini" : "decline_paywall");
+  }
+
+  function openTgPopup(from: "decline_mini" | "decline_paywall" | "after_reading") {
+    track("tg_popup_show", { ...(reading ? readingTrack(reading) : {}), from });
+    setTgPopup(from);
   }
 
   async function askLeia() {
@@ -710,10 +779,17 @@ export function App() {
     }
   }
 
-  function openPay(next: "base" | "bundle" = "base") {
+  function openPay(next: Tariff = "plus3") {
     setTariff(next);
     setErr("");
     setPayOpen(true);
+  }
+
+  function openSub(from: 7 | 8) {
+    if (reading) track("sub_offer_open", { ...readingTrack(reading), from: from === 7 ? "paywall" : "reading" });
+    setErr("");
+    setSubFrom(from);
+    setScreen(10);
   }
 
   async function pay() {
@@ -731,14 +807,15 @@ export function App() {
     const popup = openPayPlaceholder();
     payPopup.current = popup;
     setPaying(true);
-    track("checkout_start", readingTrack(reading));
+    track("checkout_start", { ...readingTrack(reading), tariff: payTariff, order_price: payAmount });
+    rememberTariff(reading.token, payTariff, payAmount);
     try {
       const r = await api<{ payment_url?: string; demo?: boolean; token: string }>(
         `/api/web/readings/${reading.token}/checkout`,
         {
           method: "POST",
           body: JSON.stringify({
-            tariff,
+            tariff: payTariff,
             email: mail || undefined,
             marketing: mkt,
             privacy: priv,
@@ -773,16 +850,8 @@ export function App() {
 
   async function buy(kind: "upsell" | "unlimited") {
     if (!reading || paying) return;
-    if (kind === "unlimited" && !email.trim()) {
-      setErr("Нужна почта — на неё придёт напоминание за сутки до списания");
-      return;
-    }
     if (kind === "unlimited" && !priv) {
       setErr("Нужно согласие на обработку персональных данных и оферту");
-      return;
-    }
-    if (kind === "unlimited" && !recur) {
-      setErr("Нужна галочка согласия на подписку");
       return;
     }
     setPaying(true);
@@ -793,7 +862,6 @@ export function App() {
           method: "POST",
           body: JSON.stringify({
             tariff: kind,
-            recur_consent: recur,
             email: email.trim() || undefined,
             marketing: mkt,
             privacy: priv,
@@ -805,8 +873,15 @@ export function App() {
         window.location.href = r.payment_url;
         return;
       }
-      if (kind === "unlimited") track("subscribe");
+      if (kind === "unlimited") track("vip_purchase", { ...readingTrack(reading), tariff: "unlimited", order_price: subPrice });
       else track("upsell_purchase");
+      if (kind === "unlimited" && subFrom !== 9) {
+        const full = await api<Reading>(`/api/web/readings/${r.token || reading.token}`);
+        setReading(full);
+        setScreen(full.paid ? 8 : 7);
+        return;
+      }
+      if (kind === "upsell") setSubFrom(9);
       setScreen(kind === "upsell" ? 10 : 11);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Не получилось");
@@ -815,9 +890,59 @@ export function App() {
     }
   }
 
-  const price = reading?.price_rub || 590;
-  const payAmount = price;
+  const readingDone = Boolean(
+    reading?.paid && (reading.paid_html || (reading.paid_text && stream.length >= reading.paid_text.length)),
+  );
+  useEffect(() => {
+    if (screen !== 8 || !reading || !readingDone) return;
+    const key = `leia_tg_after_${reading.token}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+    } catch {
+      /* без sessionStorage просто покажем окно */
+    }
+    const el = readEndRef.current;
+    if (!el) return;
+    let timer: number | undefined;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      timer = window.setTimeout(() => {
+        try {
+          sessionStorage.setItem(key, "1");
+        } catch {
+          /* ничего */
+        }
+        openTgPopup("after_reading");
+      }, 1500);
+    });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      if (timer) window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, reading?.token, readingDone]);
+
+  const price = reading?.price_rub || 390;
   const offer = reading?.offer;
+  const payOptions: PayOption[] = offer?.options?.length
+    ? offer.options
+    : [{
+        id: "base",
+        title: "Полный разбор",
+        caption: offer?.price_caption,
+        price_rub: price,
+        strike_rub: offer?.show_strike ? offer.strike_rub : undefined,
+      }];
+  const selOption = payOptions.find((o) => o.id === tariff) || payOptions[0];
+  const payTariff: Tariff = selOption.id;
+  const payAmount = selOption.price_rub ?? price;
+  const subPrice = reading?.sub_price_rub || 590;
+  const subStrike = reading?.sub_strike_rub || 0;
+  const showSubOffer = Boolean(
+    reading?.paid && !reading.buyer?.unlimited_active && !["pass30", "unlimited"].includes(reading.paid_tariff || ""),
+  );
   const parts = reading?.includes?.filter(Boolean) || [];
   const miniParas = reading ? miniParagraphs(reading.mini) : [];
   const inCabinet = window.location.pathname.startsWith("/lk") && !isRobokassaReturn();
@@ -1054,7 +1179,7 @@ export function App() {
                     )}
                     {!reading.mini.pending && !reading.mini.free && (
                       <div className="mini-cta">
-                        <button className="btn gold" type="button" onClick={() => setScreen(7)}>{reading.mini.cta}</button>
+                        <button className="btn gold" type="button" onClick={() => setScreen(7)}>{offer?.cta || reading.mini.cta}</button>
                         <button className="btn link" type="button" onClick={() => goTelegramExit("mini")}>Пока не готова</button>
                       </div>
                     )}
@@ -1079,29 +1204,35 @@ export function App() {
                     <p className="algo">
                       {offer?.algorithm || (reading.branch === "taro" ? cfg.paywall_algorithm_taro : cfg.paywall_algorithm_date)}
                     </p>
-                    <div className="gift-block">
-                      <p className="gift">{cfg.paywall_gift || offer?.gift}</p>
-                      {(reading.mini.question_example || offer?.question_example || sel?.fallback_question) ? (
-                        <p className="q-ex">
-                          «{reading.mini.question_example || offer?.question_example || sel?.fallback_question}»
-                        </p>
-                      ) : null}
+                    <div className="pay-options" role="radiogroup" aria-label="Вариант оплаты">
+                      {payOptions.map((o) => (
+                        <div
+                          key={o.id}
+                          role="radio"
+                          aria-checked={payTariff === o.id}
+                          tabIndex={0}
+                          className={`tar pay-opt${o.featured ? " featured" : ""}${payTariff === o.id ? " on" : ""}`}
+                          onClick={() => openPay(o.id)}
+                          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && openPay(o.id)}
+                        >
+                          {o.badge ? <span className="tag">{o.badge}</span> : null}
+                          <h4>{o.title}</h4>
+                          <div className="pr pay-pr">
+                            <div className="pay-row">
+                              {o.strike_rub ? <s>{formatRub(o.strike_rub)} ₽</s> : null}
+                              <b>{formatRub(o.price_rub)} ₽</b>
+                            </div>
+                            {o.caption ? <span className="cap">{o.caption}</span> : null}
+                          </div>
+                          {o.question_example ? <p className="q-ex">«{o.question_example}»</p> : null}
+                        </div>
+                      ))}
                     </div>
                     <div className="mini-cta">
-                      <div className="pr pay-pr">
-                        <div className="pay-row">
-                          {offer?.show_strike && offer.strike_rub ? <s>{formatRub(offer.strike_rub)} ₽</s> : null}
-                          <b>{formatRub(price)} ₽</b>
-                        </div>
-                        {offer?.show_strike ? (
-                          <span className="cap">
-                            {offer.price_caption || (reading.branch === "taro" ? cfg.paywall_price_caption_taro : cfg.paywall_price_caption_date)}
-                          </span>
-                        ) : null}
-                      </div>
-                      <button className="btn gold" type="button" disabled={paying} onClick={() => openPay("base")}>
-                        {offer?.cta || `Открыть разбор за ${formatRub(price)} ₽`}
+                      <button className="btn gold" type="button" disabled={paying} onClick={() => openPay(payTariff)}>
+                        {`Оплатить ${formatRub(payAmount)} ₽`}
                       </button>
+                      {offer?.guarantee ? <p className="guarantee">{offer.guarantee}</p> : null}
                       <p className="fine">{offer?.fine || "СБП или карта · без подписки · откроется сразу здесь"}</p>
                       <button className="btn link" type="button" onClick={() => goTelegramExit("paywall")}>Пока не готова</button>
                     </div>
@@ -1145,22 +1276,20 @@ export function App() {
                           <div className="eyebrow">Оплата</div>
                           <div className="tar on">
                             <h4>{reading.product_name}</h4>
+                            {selOption ? <p className="opt-name">{selOption.title}</p> : null}
                             <div className="pr pay-pr">
                               <div className="pay-row">
-                                {offer?.show_strike && offer.strike_rub ? <s>{formatRub(offer.strike_rub)} ₽</s> : null}
+                                {selOption.strike_rub ? <s>{formatRub(selOption.strike_rub)} ₽</s> : null}
                                 <b>{formatRub(payAmount)} ₽</b>
                               </div>
-                              {offer?.show_strike ? (
-                                <span className="cap">
-                                  {offer.price_caption || (reading.branch === "taro" ? cfg.paywall_price_caption_taro : cfg.paywall_price_caption_date)}
-                                </span>
-                              ) : null}
+                              {selOption.caption ? <span className="cap">{selOption.caption}</span> : null}
                             </div>
                           </div>
                           <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} marketing={false} />
                           <button className="btn gold" disabled={paying || !priv} onClick={pay}>
                             {paying ? "Открываю оплату…" : `Оплатить ${formatRub(payAmount)} ₽`}
                           </button>
+                          {offer?.guarantee ? <p className="guarantee">{offer.guarantee}</p> : null}
                           {!priv && <p className="fine">Отметь согласие - и откроется страница оплаты.</p>}
                           {err && <p className="err">{err}</p>}
                           <p className="fine">Карта или СБП. Разбор откроется на этой странице — без входа в кабинет.</p>
@@ -1182,6 +1311,7 @@ export function App() {
                     ) : (
                       <div className="stream">{stream || "Готовлю текст…"}<span className="cursor" /></div>
                     )}
+                    <div ref={readEndRef} aria-hidden="true" />
                     {(reading.paid_html || (reading.paid_text && stream.length >= reading.paid_text.length)) ? (
                     <section className="ask-leia">
                       <div className="eyebrow">Спроси Лею по разбору</div>
@@ -1200,7 +1330,11 @@ export function App() {
                       </div>
                       {needPack || askLeft === 0 ? (
                         <div className="q-packs">
-                          <p className="sub">Бесплатные вопросы закончились. Можно докупить.</p>
+                          <p className="sub">
+                            {(reading.question_budget ?? 0) === 0
+                              ? "Хочешь спросить Лею про свой разбор? Вопросы можно докупить."
+                              : "Бесплатные вопросы закончились. Можно докупить."}
+                          </p>
                           <button className="btn" type="button" disabled={paying} onClick={() => buyQuestions("q1")}>
                             1 вопрос за {cfg.question_price_rub} ₽
                           </button>
@@ -1226,6 +1360,20 @@ export function App() {
                       {askLeft != null ? <p className="fine">Осталось {askLeft} из {reading.question_budget || cfg.question_free_limit}</p> : null}
                     </section>
                     ) : null}
+                    {showSubOffer && (
+                      <div className="tar sub-offer" role="button" tabIndex={0} onClick={() => openSub(8)} onKeyDown={(e) => e.key === "Enter" && openSub(8)}>
+                        <span className="tag">Скидка после первой покупки</span>
+                        <h4>VIP-доступ на 30 дней: любые разборы и вопросы</h4>
+                        <div className="pr pay-pr">
+                          <div className="pay-row">
+                            {subStrike > subPrice ? <s>{formatRub(subStrike)} ₽</s> : null}
+                            <b>{formatRub(subPrice)} ₽</b>
+                          </div>
+                          <span className="cap">оплата разовая, без автопродления</span>
+                        </div>
+                        <button className="btn" type="button" onClick={(e) => { e.stopPropagation(); openSub(8); }}>Подробнее</button>
+                      </div>
+                    )}
                     <p className="fine">Ссылка на этот разбор работает год. Сохрани её — вход не обязателен.</p>
                   </>
                 )}
@@ -1245,42 +1393,57 @@ export function App() {
                     <button className="btn gold" disabled={paying} onClick={() => buy("upsell")}>
                       {paying ? "Открываю оплату…" : "Посчитать"}
                     </button>
-                    <button className="btn link" onClick={() => setScreen(10)}>Не сейчас</button>
+                    <button className="btn link" onClick={() => { setSubFrom(9); setScreen(10); }}>Не сейчас</button>
                   </>
                 )}
 
                 {screen === 10 && (
                   <>
-                    <div className="eyebrow">Пакет</div>
-                    <div className="h">Месяц безлимита вместо одного разбора</div>
+                    <div className="eyebrow">Скидка после первой покупки</div>
+                    <div className="h">VIP-доступ на 30 дней</div>
                     <div className="sub-card">
-                      <h4>Безлимит на месяц</h4>
-                      <div className="pr">590 ₽ <em>/ месяц</em></div>
-                      <p>Сайтовые разборы без лимита. VIP бота этим платежом не открывается.</p>
-                    </div>
-                    <p className="sub">
-                      590 ₽ сейчас, дальше 590 ₽ каждые 30 дней, пока не отменишь. Напомним на почту за день до списания. Отменить — в кабинете в один клик.
-                    </p>
-                    {(!loggedIn || !email) && (
-                      <div className="field">
-                        <label>Почта — на неё придёт напоминание за сутки до списания</label>
-                        <input className="inp" type="email" placeholder="ты@почта.ru" value={email} onChange={(e) => setEmail(e.target.value)} />
+                      <h4>Любые разборы и вопросы Лее на сайте</h4>
+                      <div className="pr">
+                        {subStrike > subPrice ? <s>{formatRub(subStrike)} ₽</s> : null} {formatRub(subPrice)} ₽ <em>/ 30 дней</em>
                       </div>
-                    )}
-                    <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} />
-                    <label className={`chk ${recur ? "on" : ""}`} onClick={() => setRecur(!recur)}>
-                      <i />
-                      <span>
-                        Согласна на автоматическое списание 590 ₽ каждые 30 дней с этой карты или счёта по{" "}
-                        <a href="/legal#subscription" onClick={(e) => e.stopPropagation()}>условиям подписки</a>
-                      </span>
-                    </label>
-                    <button className="btn gold" disabled={paying || !recur || !priv} onClick={() => buy("unlimited")}>
-                      {paying ? "Открываю оплату…" : "Подключить безлимит"}
+                      <p>30 дней с момента оплаты, без ограничений.</p>
+                    </div>
+                    <p className="sub">Оплата разовая, без автопродления. Когда 30 дней закончатся, доступ можно взять снова.</p>
+                    <ConsentBoxes priv={priv} mkt={mkt} setPriv={setPriv} setMkt={setMkt} marketing={false} />
+                    <button className="btn gold" disabled={paying || !priv} onClick={() => buy("unlimited")}>
+                      {paying ? "Открываю оплату…" : `Оплатить ${formatRub(subPrice)} ₽`}
                     </button>
-                    <button className="btn link" onClick={() => setScreen(11)}>Пока без подписки</button>
+                    {offer?.guarantee ? <p className="guarantee">{offer.guarantee}</p> : null}
+                    {subFrom === 9 ? (
+                      <button className="btn link" onClick={() => setScreen(11)}>Не сейчас</button>
+                    ) : (
+                      <button className="btn link" onClick={() => setScreen(subFrom)}>Назад</button>
+                    )}
                     {err && <p className="err">{err}</p>}
                   </>
+                )}
+
+                {tgPopup && (
+                  <div className="modal" onClick={() => setTgPopup(null)}>
+                    <div className="mc tg-popup" role="dialog" aria-modal="true" aria-label="Прогноз в Telegram" onClick={(e) => e.stopPropagation()}>
+                      <div className="eyebrow">Лея в Telegram</div>
+                      <h4>Бесплатный прогноз на каждый день</h4>
+                      <p>
+                        {tgPopup === "after_reading"
+                          ? "Лея каждое утро присылает в Telegram короткий прогноз на день. Это бесплатно."
+                          : "Мини-разбор останется по этой ссылке. А Лея может каждое утро присылать тебе в Telegram короткий прогноз на день. Это бесплатно."}
+                      </p>
+                      <a
+                        className="btn gold"
+                        href={`https://t.me/${cfg.bot_username}?start=web_${reading?.token || ""}`}
+                        onClick={() => track("bot_open", { ...(reading ? readingTrack(reading) : {}), from: tgPopup })}
+                      >
+                        Получать прогноз в Telegram
+                      </a>
+                      <p className="fine">Если Telegram не открывается, включи VPN.</p>
+                      <button className="btn link" type="button" onClick={() => setTgPopup(null)}>Не сейчас</button>
+                    </div>
+                  </div>
                 )}
 
                 {screen === 11 && (

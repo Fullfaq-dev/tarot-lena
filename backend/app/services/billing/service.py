@@ -1193,7 +1193,7 @@ class BillingService:
                 grant_question_credits(reading, pack)
         elif payment.purpose in {"web_reading", "web_unlimited"}:
             from app.database.models import WebReading, WebSession
-            from app.services.web.service import fulfill_paid
+            from app.services.web.service import fulfill_paid, mark_paid_tariff
 
             payload = dict(payment.payload or {})
             reading = None
@@ -1204,6 +1204,12 @@ class BillingService:
             if reading is None and token:
                 reading = await session.scalar(select(WebReading).where(WebReading.token == token))
             if reading:
+                tariff = payload.get("tariff")
+                if payment.purpose == "web_unlimited" and tariff not in {"pass30", "unlimited"}:
+                    tariff = "pass30"
+                # Подписку могут оформить на уже оплаченном разборе: сумму его покупки не трогаем.
+                already_paid = bool(reading.paid_text and reading.status in {"paid", "ready"})
+                mark_paid_tariff(reading, tariff, None if already_paid else int(payment.amount_rub or 0))
                 await fulfill_paid(session, reading)
                 if payment.purpose == "web_unlimited":
                     web = await session.scalar(

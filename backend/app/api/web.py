@@ -77,7 +77,7 @@ async def web_config() -> dict:
         "metrika_id": settings.yandex_metrika_id,
         "bot_username": settings.telegram_bot_username,
         "legal_url": "/legal",
-        "unlimited_price": TEST_WEB_PRICE_RUB or 590,
+        "unlimited_price": TEST_WEB_PRICE_RUB or settings.web_sub_price_rub,
         "oauth": web_auth.oauth_ready(),
         "show_strike_price": settings.show_strike_price,
         "question_price_rub": settings.question_price_rub,
@@ -149,7 +149,9 @@ async def create_reading(
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return web.public_reading(reading, include_paid=reading.status in {"paid", "ready"})
+    return web.public_reading(
+        reading, include_paid=reading.status in {"paid", "ready"}, buyer=await web.buyer_state(session, reading)
+    )
 
 
 @router.post("/readings/{token}/retry-mini")
@@ -159,7 +161,9 @@ async def retry_mini(token: str, session: AsyncSession = Depends(get_session)) -
         raise HTTPException(status_code=404, detail="Ссылка не найдена или истекла")
     reading = await web.retry_mini(session, reading)
     await session.commit()
-    return web.public_reading(reading, include_paid=reading.status in {"paid", "ready"})
+    return web.public_reading(
+        reading, include_paid=reading.status in {"paid", "ready"}, buyer=await web.buyer_state(session, reading)
+    )
 
 
 @router.post("/readings/{token}/ask")
@@ -197,7 +201,7 @@ async def get_reading(token: str, session: AsyncSession = Depends(get_session)) 
     if reading is None:
         raise HTTPException(status_code=404, detail="Ссылка не найдена или истекла")
     include = reading.status in {"paid", "ready"}
-    return web.public_reading(reading, include_paid=include)
+    return web.public_reading(reading, include_paid=include, buyer=await web.buyer_state(session, reading))
 
 
 @router.post("/readings/{token}/checkout")
