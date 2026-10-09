@@ -34,6 +34,15 @@ class Settings(BaseSettings):
     question_price_rub: int = 99
     question_pack5_price_rub: int = 199
     web_question_free_limit: int = 3
+    # Три варианта оплаты на пейволе (задачи 9 октября):
+    # A — только разбор; B — разбор + 3 вопроса Лее; C — безлимит на 30 дней без автопродления.
+    web_plus3_extra_rub: int = 200
+    web_plus3_strike_extra_rub: int = 300
+    web_plus3_questions: int = 3
+    web_unlimited_price_rub: int = 990
+    web_unlimited_strike_rub: int = 1690
+    # VIP-доступ на 30 дней со скидкой — для тех, кто уже покупал разбор (вместо варианта C). Разово.
+    web_sub_price_rub: int = 590
     mini_per_device_day: int = 5
     mini_per_ip_day: int = 20
     openai_stt_model: str = "gpt-transcribe"

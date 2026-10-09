@@ -670,7 +670,7 @@ export function Cabinet() {
               <img src="/avatar.png" alt="" />
               <h3>{profile.name || me.user.name || "Ты"}</h3>
               <p>{me.user.email || "аккаунт на сайте"}</p>
-              <p className="eyebrow">{me.plan || "Без подписки"}</p>
+              <p className="eyebrow">{me.plan || "Без пакета"}</p>
               {me.subscription?.status === "active" && me.subscription.expires_at && (
                 <p className="fine">до {formatUntil(me.subscription.expires_at)}</p>
               )}
@@ -746,24 +746,16 @@ export function Cabinet() {
 
                   <section className="quiz-frame wide lk-status">
                     <div className="eyebrow">Статус</div>
-                    <h2 className="h">Подписка и пакеты</h2>
+                    <h2 className="h">Доступ и пакеты</h2>
                     {me.subscription?.status === "active" ? (
                       <>
                         <p className="sub">
                           Сейчас {me.subscription.label}
                           {me.subscription.expires_at ? ` · до ${formatUntil(me.subscription.expires_at)}` : ""}.
-                          {me.subscription.expires_at ? ` Следующее списание: ${formatUntil(me.subscription.expires_at)}, 590 ₽.` : ""}
                         </p>
-                        <a
-                          className="btn ghost"
-                          href="mailto:elenakarpva@gmail.com?subject=%D0%9E%D1%82%D0%BC%D0%B5%D0%BD%D0%B0%20%D0%BF%D0%BE%D0%B4%D0%BF%D0%B8%D1%81%D0%BA%D0%B8%20%D0%9B%D0%B5%D1%8F"
-                        >
-                          Отменить подписку
-                        </a>
-                        <p className="fine">Либо напиши в поддержку t.me/leia_astro_help. Доступ останется до конца оплаченного периода.</p>
                       </>
                     ) : (
-                      <p className="sub">Активной подписки нет. VIP и ЛЮБОВЬ+ можно взять ниже.</p>
+                      <p className="sub">Активного доступа нет. Пакеты можно взять ниже.</p>
                     )}
                     {(me.active_packages || []).length ? (
                       <ul className="lk-active">

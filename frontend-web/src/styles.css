@@ -950,3 +950,48 @@ h1, h2, h3, h4, .h, .q, .c b, .lk-group-title, .lk-reading-head b { letter-spaci
   border: 1.5px solid var(--line-strong); background: var(--surface);
 }
 .lk-offer .h { margin-bottom: 4px; }
+
+/* Три варианта оплаты на пейволе */
+.pay-options { display: flex; flex-direction: column; gap: 12px; margin: 16px 0 14px; }
+.pay-opt { margin: 0; padding: 16px 18px 14px; outline: none; }
+.pay-opt:focus-visible { box-shadow: 0 0 0 3px rgba(169, 136, 234, 0.45); }
+.pay-opt h4 { margin: 0 0 8px; font-size: 1.02rem; line-height: 1.3; padding-right: 4px; }
+.pay-opt .pay-pr { margin: 0; font-family: var(--font-body); color: var(--ink); font-size: 1rem; font-weight: 400; }
+.pay-opt .pay-pr b { color: var(--gold-main); }
+.pay-opt .pay-pr b { font-size: 1.5rem; }
+.pay-opt .pay-pr s { font-size: 0.98rem; }
+.pay-opt .q-ex { margin: 8px 0 0; font-size: 13.5px; }
+.pay-opt.featured { padding-top: 22px; background: linear-gradient(#fbf8ff, #fbf8ff); border-color: #e6b95a; }
+.pay-opt.featured.on {
+  background: linear-gradient(#fbf8ff, #fbf8ff) padding-box, linear-gradient(135deg, #e6b95a, #a988ea) border-box;
+}
+.pay-opt .tag { top: -11px; left: 16px; right: auto; font-size: 11px; letter-spacing: 0.02em; }
+.pay-opt:not(.on) .pay-pr b { color: var(--soft); }
+
+.guarantee {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  margin: 2px 0 10px; font-size: 13.5px; font-weight: 600; color: var(--violet-deep); text-align: center;
+}
+.guarantee::before {
+  content: "✓"; flex: 0 0 auto; display: inline-grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 50%; font-size: 11px; font-weight: 800;
+  background: var(--lilac-soft); color: var(--violet-deep); border: 1px solid var(--line-strong);
+}
+.pay-window .opt-name { margin: 0 0 4px; font-size: 14px; color: var(--soft); line-height: 1.4; }
+
+/* Безлимит со скидкой после первой покупки */
+.sub-offer { margin: 24px 0 14px; padding-top: 22px; cursor: pointer; }
+.sub-offer .tag { left: 16px; right: auto; top: -11px; font-size: 11px; background: var(--lilac-soft); color: var(--violet-deep); border: 1px solid var(--line-strong); }
+.sub-offer h4 { margin: 0 0 8px; font-size: 1.02rem; line-height: 1.3; }
+.sub-offer .pay-pr { margin: 0 0 12px; font-family: var(--font-body); font-size: 1rem; font-weight: 400; color: var(--ink); }
+.sub-offer .pay-pr b { font-size: 1.5rem; color: var(--gold-main); }
+.sub-offer .btn { margin: 0; }
+.sub-card .pr s { color: rgba(255, 255, 255, 0.65); font-size: 1rem; font-weight: 400; margin-right: 4px; }
+
+/* Окно «прогноз в Telegram» */
+.tg-popup { text-align: center; }
+.tg-popup .eyebrow { margin: 0 auto 10px; }
+.tg-popup h4 { margin: 0 0 8px; font-size: 1.3rem; }
+.tg-popup p { margin: 0 0 16px; color: var(--soft); line-height: 1.5; }
+.tg-popup .btn.gold { margin-bottom: 6px; }
+.tg-popup .fine { margin: 0 0 6px; }

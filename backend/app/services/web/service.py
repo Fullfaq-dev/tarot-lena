@@ -172,7 +172,7 @@ async def resolved_cards(session: AsyncSession) -> dict[str, WebCard]:
         payload = overrides.get(card_id) or {}
         merged = apply_override(card, payload) if payload else card
         if card_id == "other":
-            fallback_price = TEST_WEB_PRICE_RUB or 590
+            fallback_price = TEST_WEB_PRICE_RUB or 390
             merged = replace(
                 merged,
                 cards_n=3,
@@ -324,9 +324,68 @@ def _moscow_day_start() -> datetime:
     return datetime.combine(now.date(), time.min, tzinfo=tz).astimezone(UTC)
 
 
+UNLIMITED_QUESTIONS = 999
+
+
 def _question_budget(reading: WebReading) -> int:
-    extra = int((reading.input_payload or {}).get("question_credits") or 0)
-    return get_settings().web_question_free_limit + max(0, extra)
+    settings = get_settings()
+    data = reading.input_payload or {}
+    extra = max(0, int(data.get("question_credits") or 0))
+    tariff = data.get("paid_tariff")
+    if tariff in {"pass30", "unlimited"}:
+        return UNLIMITED_QUESTIONS
+    if tariff == "base":
+        free = 0
+    elif tariff == "plus3":
+        free = settings.web_plus3_questions
+    else:
+        # Разборы, оплаченные до трёх вариантов, сохраняют прежние бесплатные вопросы.
+        free = settings.web_question_free_limit
+    return free + extra
+
+
+def mark_paid_tariff(reading: WebReading, tariff: str | None, amount_rub: int | None = None) -> None:
+    """Запоминает, какой вариант оплачен: от него зависят вопросы Лее и данные для Метрики."""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    if tariff not in {"base", "plus3", "pass30", "unlimited"}:
+        return
+    payload = dict(reading.input_payload or {})
+    payload["paid_tariff"] = tariff
+    if amount_rub is not None:
+        payload["paid_amount_rub"] = int(amount_rub)
+    reading.input_payload = payload
+    flag_modified(reading, "input_payload")
+
+
+async def buyer_state(session: AsyncSession, reading: WebReading) -> dict:
+    """Покупал ли посетитель раньше и активен ли у него безлимит.
+
+    Смотрим разборы этой же гостевой сессии и всех сессий того же аккаунта.
+    От этого зависит третий вариант на пейволе: до первой покупки — безлимит на 30 дней,
+    после — VIP-доступ на 30 дней со скидкой.
+    """
+    web = await session.scalar(select(WebSession).where(WebSession.id == reading.session_id))
+    if web is None:
+        return {"returning": False, "unlimited_active": False}
+    session_ids = [web.id]
+    unlimited_until = [web.unlimited_until]
+    if web.user_id:
+        rows = (await session.scalars(select(WebSession).where(WebSession.user_id == web.user_id))).all()
+        session_ids = list({row.id for row in rows} | {web.id})
+        unlimited_until += [row.unlimited_until for row in rows]
+    paid = await session.scalar(
+        select(func.count())
+        .select_from(WebReading)
+        .where(WebReading.session_id.in_(session_ids), WebReading.status.in_(("paid", "ready")))
+    )
+    now = datetime.now(UTC)
+    active = any(_aware(until) > now for until in unlimited_until if until)
+    return {"returning": bool(paid), "unlimited_active": active}
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
 
 
 async def _mini_quota(session: AsyncSession, *, guest_id: str, ip: str) -> None:
@@ -553,7 +612,7 @@ def _offer_meta(reading: WebReading) -> tuple[list[str], str]:
     return includes, context
 
 
-def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
+def public_reading(reading: WebReading, *, include_paid: bool = False, buyer: dict | None = None) -> dict:
     paid = bool(reading.status in {"paid", "ready"} and reading.paid_text)
     includes, context = _offer_meta(reading)
     mini = dict(reading.mini or {})
@@ -585,8 +644,19 @@ def public_reading(reading: WebReading, *, include_paid: bool = False) -> dict:
             question_price=settings.question_price_rub,
             mini=mini,
             branch=reading.branch,
+            plus3_extra=settings.web_plus3_extra_rub,
+            plus3_strike_extra=settings.web_plus3_strike_extra_rub,
+            pass_price=settings.web_unlimited_price_rub,
+            pass_strike=settings.web_unlimited_strike_rub,
+            returning=bool((buyer or {}).get("returning")),
+            sub_price=settings.web_sub_price_rub,
         ),
+        "buyer": buyer or {"returning": False, "unlimited_active": False},
+        "sub_price_rub": settings.web_sub_price_rub,
+        "sub_strike_rub": settings.web_unlimited_price_rub if settings.show_strike_price else 0,
         "question_budget": budget,
+        "paid_tariff": (reading.input_payload or {}).get("paid_tariff"),
+        "paid_amount_rub": (reading.input_payload or {}).get("paid_amount_rub"),
         "created_at": reading.created_at.isoformat() if reading.created_at else None,
         "expires_at": reading.expires_at.isoformat() if reading.expires_at else None,
     }
@@ -707,6 +777,7 @@ async def checkout(
 
     settings = get_settings()
     if web.unlimited_until and web.unlimited_until > datetime.now(UTC) and tariff not in {"q1", "questions_1", "q5", "questions_5"}:
+        mark_paid_tariff(reading, "pass30", 0)
         await fulfill_paid(session, reading)
         return {"ok": True, "unlimited": True, "token": reading.token}
 
@@ -729,6 +800,20 @@ async def checkout(
             pack_n = 1
         purpose = "web_questions"
         key = f"web_questions:{reading.id}:{sku}"
+    elif tariff == "plus3":
+        amount = Decimal(base + settings.web_plus3_extra_rub)
+        sku = f"{card.sku}_q3"
+        title = f"{card.product_name} + 3 вопроса Лее"
+        purpose = "web_reading"
+        key = f"web_reading:{reading.id}:{tariff}"
+    elif tariff == "pass30":
+        if (await buyer_state(session, reading))["returning"]:
+            raise ValueError("Для тебя действует VIP-доступ со скидкой. Обнови страницу")
+        amount = Decimal(settings.web_unlimited_price_rub)
+        sku = "web_unlimited_month"
+        title = "Безлимит на 30 дней"
+        purpose = "web_unlimited"
+        key = f"web_reading:{reading.id}:{tariff}"
     elif tariff == "bundle":
         amount = Decimal(base + 300)
         sku = f"{card.sku}_bundle"
@@ -736,11 +821,11 @@ async def checkout(
         purpose = "web_reading"
         key = f"web_reading:{reading.id}:{tariff}"
     elif tariff == "unlimited":
-        if not recur_consent:
-            raise ValueError("Нужно согласие на подписку")
-        amount = Decimal("590")
+        if not (await buyer_state(session, reading))["returning"]:
+            raise ValueError("VIP-доступ со скидкой открывается после первой покупки")
+        amount = Decimal(settings.web_sub_price_rub)
         sku = "web_unlimited_month"
-        title = "Безлимит на месяц"
+        title = "VIP-доступ на 30 дней"
         purpose = "web_unlimited"
         key = f"web_reading:{reading.id}:{tariff}"
     elif tariff == "upsell":
@@ -758,10 +843,12 @@ async def checkout(
     if TEST_WEB_PRICE_RUB and amount > 0:
         amount = Decimal(TEST_WEB_PRICE_RUB)
     if amount <= 0:
+        if bind_reading:
+            mark_paid_tariff(reading, tariff, 0)
         await fulfill_paid(session, reading)
         return {"ok": True, "token": reading.token}
 
-    if reading.status in {"paid", "ready"} and tariff in {"base", "bundle"}:
+    if reading.status in {"paid", "ready"} and tariff in {"base", "bundle", "plus3"}:
         return {"ok": True, "token": reading.token}
 
     # Robokassa GET Success/Fail URL cannot contain query string.
@@ -878,7 +965,8 @@ async def fulfill_paid(session: AsyncSession, reading: WebReading) -> None:
         f"{mini_plain(mini)}\n\n"
         "Обязательные блоки полного разбора:\n"
         f"{bullets_txt}\n\n"
-        "Дай полный разбор 8-12 абзацев. В конце - одно конкретное действие на неделю."
+        "Дай полный разбор 8-12 абзацев. Предпоследним - одно конкретное действие на неделю, "
+        "последней - одна резкая фраза, самая сильная в тексте."
     )
     messages = [
         {"role": "system", "content": system},
