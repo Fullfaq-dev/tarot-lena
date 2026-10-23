@@ -341,8 +341,27 @@ export function App() {
   const payKind = useRef<"reading" | "questions">("reading");
   const budgetBefore = useRef(0);
   const payUrlRef = useRef("");
+  /** Есть ли наш pushState для окна оплаты — чтобы Back не уводил с сайта. */
+  const payHistRef = useRef(false);
+  const payOpenRef = useRef(false);
+  const payLiveRef = useRef(false);
+  const screenRef = useRef(screen);
+  const readingRef = useRef(reading);
 
   const showLanding = screen === 1 && !tokenFromPath;
+
+  useEffect(() => {
+    payOpenRef.current = payOpen;
+  }, [payOpen]);
+  useEffect(() => {
+    payLiveRef.current = payLive;
+  }, [payLive]);
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
+  useEffect(() => {
+    readingRef.current = reading;
+  }, [reading]);
 
   useEffect(() => {
     api<{ cards: Card[] }>("/api/web/cards").then(async (d) => {
@@ -425,6 +444,7 @@ export function App() {
       setPayOpen(false);
       setPayFrame("");
       setPaying(false);
+      payHistRef.current = false;
       try {
         payPopup.current?.close();
       } catch {
@@ -502,6 +522,23 @@ export function App() {
     });
   }, [reading?.token, tokenFromPath]);
 
+  // Стрелка «назад»: свернуть кассу / пейвол → неполный расклад, не закрывать вкладку.
+  useEffect(() => {
+    const onPop = () => {
+      if (payOpenRef.current || payLiveRef.current) {
+        payHistRef.current = false;
+        dismissPayUi(true);
+        return;
+      }
+      const r = readingRef.current;
+      if (screenRef.current === 7 && r && !r.paid) {
+        setScreen(6);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   useEffect(() => {
     if (screen !== 8 || !reading?.token) return;
     api<{ chat?: { role: string; text: string; html?: string | null }[]; chat_left?: number; question_budget?: number }>(
@@ -574,6 +611,30 @@ export function App() {
     return cards.filter((c) => c.tab === tab);
   }, [cards, tab, page]);
 
+  function clearPayHistoryFlag() {
+    payHistRef.current = false;
+    const st = window.history.state as { leia?: string } | null;
+    if (st?.leia === "pay" || st?.leia === "paywall") {
+      window.history.replaceState({}, "", window.location.pathname + window.location.search);
+    }
+  }
+
+  function dismissPayUi(toMini: boolean) {
+    try {
+      payPopup.current?.close();
+    } catch {
+      /* ignore */
+    }
+    payPopup.current = null;
+    setPayLive(false);
+    setPayOpen(false);
+    setPayFrame("");
+    setPaying(false);
+    if (toMini) setWaitingPay(false);
+    const r = readingRef.current;
+    if (toMini && r && !r.paid) setScreen(6);
+  }
+
   function goHome() {
     setScreen(1);
     setSel(null);
@@ -581,6 +642,9 @@ export function App() {
     setErr("");
     setWaitingPay(false);
     setPayOpen(false);
+    setPayLive(false);
+    setPayFrame("");
+    payHistRef.current = false;
     window.history.replaceState({}, "", page === "home" ? "/" : `/${page}`);
   }
 
@@ -749,10 +813,18 @@ export function App() {
     const launched = launchRobokassa(url, payPopup.current);
     payPopup.current = launched.popup;
     setPayFrame(launched.iframe ? url : "");
+    if (!payOpenRef.current) {
+      window.history.pushState({ leia: "pay" }, "", window.location.pathname + window.location.search);
+      payHistRef.current = true;
+    }
     setPayOpen(true);
     setPayLive(true);
     setWaitingPay(true);
-    window.history.replaceState({}, "", `/r/${token}`);
+    window.history.replaceState(
+      { leia: "pay" },
+      "",
+      `/r/${token}`,
+    );
   }
 
   async function buyQuestions(pack: "q1" | "q5") {
@@ -779,10 +851,31 @@ export function App() {
     }
   }
 
+  /** Только выбор тарифа — кассу не открываем (правило: тариф кликом, оплата кнопкой). */
+  function selectTariff(next: Tariff) {
+    setTariff(next);
+    setErr("");
+  }
+
+  /** Открыть окно оплаты и положить шаг в history, чтобы Back вернул к мини-раскладу. */
   function openPay(next: Tariff = "plus3") {
     setTariff(next);
     setErr("");
+    if (!payOpen) {
+      window.history.pushState({ leia: "pay" }, "", window.location.pathname + window.location.search);
+      payHistRef.current = true;
+    }
     setPayOpen(true);
+  }
+
+  function enterPaywall() {
+    setScreen(7);
+    window.history.pushState({ leia: "paywall" }, "", window.location.pathname + window.location.search);
+  }
+
+  function closePayModal() {
+    dismissPayUi(false);
+    clearPayHistoryFlag();
   }
 
   function openSub(from: 7 | 8) {
@@ -977,7 +1070,7 @@ export function App() {
               </nav>
             )}
             {!showLanding && (
-              <button className="nav-ghost" type="button" onClick={goHome}>На главную</button>
+              <button className="nav-home" type="button" onClick={goHome}>На главную</button>
             )}
             <a className="nav-lk" href="/lk">Кабинет</a>
           </div>
@@ -1179,7 +1272,7 @@ export function App() {
                     )}
                     {!reading.mini.pending && !reading.mini.free && (
                       <div className="mini-cta">
-                        <button className="btn gold" type="button" onClick={() => setScreen(7)}>{offer?.cta || reading.mini.cta}</button>
+                        <button className="btn gold" type="button" onClick={enterPaywall}>{offer?.cta || reading.mini.cta}</button>
                         <button className="btn link" type="button" onClick={() => goTelegramExit("mini")}>Пока не готова</button>
                       </div>
                     )}
@@ -1212,8 +1305,8 @@ export function App() {
                           aria-checked={payTariff === o.id}
                           tabIndex={0}
                           className={`tar pay-opt${o.featured ? " featured" : ""}${payTariff === o.id ? " on" : ""}`}
-                          onClick={() => openPay(o.id)}
-                          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && openPay(o.id)}
+                          onClick={() => selectTariff(o.id)}
+                          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && selectTariff(o.id)}
                         >
                           {o.badge ? <span className="tag">{o.badge}</span> : null}
                           <h4>{o.title}</h4>
@@ -1237,7 +1330,7 @@ export function App() {
                       <button className="btn link" type="button" onClick={() => goTelegramExit("paywall")}>Пока не готова</button>
                     </div>
                     {payOpen && (
-                      <div className="modal" onClick={() => !paying && !payLive && setPayOpen(false)}>
+                      <div className="modal" onClick={() => !paying && !payLive && closePayModal()}>
                         <div className="mc pay-window" role="dialog" aria-modal="true" aria-label="Оплата" onClick={(e) => e.stopPropagation()}>
                           {payLive ? (
                             <>
@@ -1267,7 +1360,7 @@ export function App() {
                               >
                                 Открыть кассу ещё раз
                               </button>
-                              <button className="btn link" type="button" onClick={() => { setPayLive(false); setPayOpen(false); }}>
+                              <button className="btn link" type="button" onClick={closePayModal}>
                                 Свернуть
                               </button>
                             </>
@@ -1293,7 +1386,7 @@ export function App() {
                           {!priv && <p className="fine">Отметь согласие - и откроется страница оплаты.</p>}
                           {err && <p className="err">{err}</p>}
                           <p className="fine">Карта или СБП. Разбор откроется на этой странице — без входа в кабинет.</p>
-                          <button className="btn link" type="button" disabled={paying} onClick={() => setPayOpen(false)}>Назад</button>
+                          <button className="btn link" type="button" disabled={paying} onClick={closePayModal}>Назад</button>
                             </>
                           )}
                         </div>
