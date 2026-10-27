@@ -343,6 +343,8 @@ export function App() {
   const payUrlRef = useRef("");
   /** Есть ли наш pushState для окна оплаты — чтобы Back не уводил с сайта. */
   const payHistRef = useRef(false);
+  // Кнопка с ценой на мини-разборе: по ней считаем «увидел цену».
+  const priceCtaRef = useRef<HTMLDivElement | null>(null);
   const payOpenRef = useRef(false);
   const payLiveRef = useRef(false);
   const screenRef = useRef(screen);
@@ -552,13 +554,52 @@ export function App() {
       .catch(() => undefined);
   }, [screen, reading?.token]);
 
+  // price_view — «увидел цену»: кнопка с ценой на мини-разборе попала на экран.
+  // Один раз на разбор за сессию браузера.
+  const priceVisible = Boolean(
+    screen === 6 && reading && !reading.mini.pending && !reading.mini.free && (reading.price_rub || 0) > 0,
+  );
   useEffect(() => {
-    if (screen === 7 && reading) {
-      track("paywall_view", {
+    if (!priceVisible || !reading) return;
+    const key = `leia_price_view_${reading.token}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+    } catch {
+      /* без sessionStorage просто отправим */
+    }
+    const el = priceCtaRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      try {
+        sessionStorage.setItem(key, "1");
+      } catch {
+        /* ничего */
+      }
+      track("price_view", {
         ...readingTrack(reading),
         strike_price: reading.offer?.show_strike ? reading.offer.strike_rub || 0 : 0,
       });
-    }
+    });
+    io.observe(el);
+    return () => io.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceVisible, reading?.token]);
+
+  // paywall_view — один раз на заход на экран с вариантами оплаты.
+  // Раньше эффект зависел от всего объекта reading: пока открыта касса, разбор опрашивается
+  // каждые 1,5 секунды, и событие уходило в Метрику при каждом опросе.
+  useEffect(() => {
+    if (screen !== 7 || !reading) return;
+    track("paywall_view", {
+      ...readingTrack(reading),
+      strike_price: reading.offer?.show_strike ? reading.offer.strike_rub || 0 : 0,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, reading?.token]);
+
+  useEffect(() => {
     if (screen === 8 && reading?.paid) {
       const key = `leia_purchase_${reading.token}`;
       if (!sessionStorage.getItem(key)) {
@@ -1271,7 +1312,7 @@ export function App() {
                       </article>
                     )}
                     {!reading.mini.pending && !reading.mini.free && (
-                      <div className="mini-cta">
+                      <div className="mini-cta" ref={priceCtaRef}>
                         <button className="btn gold" type="button" onClick={enterPaywall}>{offer?.cta || reading.mini.cta}</button>
                         <button className="btn link" type="button" onClick={() => goTelegramExit("mini")}>Пока не готова</button>
                       </div>

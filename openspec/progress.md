@@ -81,3 +81,4 @@
 - [Completed] **Тариф ≠ касса:** клик по `.pay-opt` только `selectTariff`; окно оплаты — кнопка «Оплатить» → `openPay`. Hover у `.tar` только при `(hover: hover) and (pointer: fine)`.
 - [Completed] **Back → неполный расклад:** `enterPaywall` / `openPay` / `startRobokassa` делают `pushState({ leia })`; `popstate` сворачивает кассу и возвращает на экран 6 (мини). Кнопки «Назад»/«Свернуть» в модалке — `closePayModal` без ухода с пейвола.
 - [Completed] **«На главную»:** класс `nav-home` — заметная outline-кнопка рядом с «Кабинет».
+- [Completed] **Метрика paywall_view:** deps только `screen` + `token` — не слать цель при каждом poll оплаты (~80 раз). Добавлен `price_view` (кнопка цены на мини в viewport, 1× на разбор).
